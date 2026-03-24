@@ -10,11 +10,14 @@ import {
   Server,
   BarChart3,
   Settings,
+  Refrigerator,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
+import { useAuth } from "../../auth/auth-context";
 
 const navigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
@@ -23,14 +26,16 @@ const navigation = [
   { name: "Maintenance Report", href: "/maintenance-report", icon: Wrench },
   { name: "Regional Map", href: "/regional-map", icon: Map },
   { name: "Unit Detail", href: "/unit/MAC001", icon: Server },
+  { name: "Asset Manager", href: "/admin/assets", icon: Refrigerator },
   { name: "Recommendations", href: "/recommendations", icon: MapPin, disabled: true },
-  { name: "Reports (Grafana)", href: "/reports", icon: BarChart3, disabled: true },
+  // { name: "Reports (Grafana)", href: "/reports", icon: BarChart3, disabled: true, hidden: true },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const { session, logout } = useAuth();
 
   return (
     <>
@@ -60,7 +65,7 @@ export function Sidebar() {
         )}
       >
         <div className="h-16 flex items-center px-6 border-b border-gray-200">
-          <h1 className="text-xl font-semibold text-gray-900">BevFleet</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Frostlink</h1>
         </div>
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
@@ -99,6 +104,24 @@ export function Sidebar() {
             );
           })}
         </nav>
+        <div className="border-t border-gray-200 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-gray-900 truncate">{session?.user.full_name || session?.user.username}</p>
+            <p className="text-xs text-gray-600">Role: {session?.user.permissions}</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-start"
+            onClick={() => {
+              logout();
+              setIsOpen(false);
+            }}
+          >
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </Button>
+        </div>
       </aside>
     </>
   );

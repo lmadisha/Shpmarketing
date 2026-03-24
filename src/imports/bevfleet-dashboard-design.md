@@ -1,4 +1,4 @@
-Design a modern data dashboard web app UI called “BevFleet” for monitoring a fleet of fridges/units.
+Design a modern data dashboard web app UI called “Frostlink” for monitoring a fleet of fridges/units.
 
 Goal: Phase 1 focuses on door activity ranking (Gold/Silver/Bronze tiers), regional performance (map + reporting), and fleet redistribution recommendations. Include an AI insights assistant that explains changes and answers questions in plain language.
 

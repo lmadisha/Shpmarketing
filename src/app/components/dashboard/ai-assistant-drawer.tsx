@@ -19,7 +19,7 @@ export function AIAssistantDrawer({
     {
       role: "assistant",
       content:
-        "Hi! I'm your BevFleet AI assistant. I can help explain tier changes, analyze performance trends, and answer questions about your fleet. What would you like to know?",
+        "Hi! I'm your Frostlink AI assistant. I can help explain tier changes, analyze performance trends, and answer questions about your fleet. What would you like to know?",
     },
   ]);
   const [input, setInput] = useState("");

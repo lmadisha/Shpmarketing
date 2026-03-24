@@ -1,4 +1,5 @@
 import { useParams } from "react-router";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { TierBadge } from "../components/dashboard/tier-badge";
 import { StatusBadge } from "../components/dashboard/status-badge";
@@ -14,6 +15,8 @@ import {
 import { Link } from "react-router";
 import { Server, MapPin } from "lucide-react";
 import { Badge } from "../components/ui/badge";
+import { Checkbox } from "../components/ui/checkbox";
+import { Label } from "../components/ui/label";
 import {
   LineChart,
   Line,
@@ -75,8 +78,38 @@ const poweredData = [
   { date: "Mar 1", powered: 99.8 },
 ];
 
+const condenserData = [
+  { date: "Feb 3", condenser: 38.2 },
+  { date: "Feb 5", condenser: 37.8 },
+  { date: "Feb 7", condenser: 38.1 },
+  { date: "Feb 9", condenser: 37.5 },
+  { date: "Feb 11", condenser: 37.3 },
+  { date: "Feb 13", condenser: 37.9 },
+  { date: "Feb 15", condenser: 37.0 },
+  { date: "Feb 17", condenser: 37.4 },
+  { date: "Feb 19", condenser: 37.6 },
+  { date: "Feb 21", condenser: 37.2 },
+  { date: "Feb 23", condenser: 37.5 },
+  { date: "Feb 25", condenser: 37.0 },
+  { date: "Feb 27", condenser: 37.3 },
+  { date: "Mar 1", condenser: 37.5 },
+];
+
 export function UnitDetailPage() {
   const { unitId } = useParams();
+  const [visibleMetrics, setVisibleMetrics] = useState({
+    doorOpens: true,
+    temperature: true,
+    powered: true,
+    condenser: true,
+  });
+
+  const toggleMetric = (metric: keyof typeof visibleMetrics) => {
+    setVisibleMetrics((prev) => ({
+      ...prev,
+      [metric]: !prev[metric],
+    }));
+  };
 
   return (
     <div className="p-8 max-w-[1440px] mx-auto">
@@ -183,75 +216,159 @@ export function UnitDetailPage() {
       </Card>
 
       {/* Trend Charts */}
+      <div className="mb-8">
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Filter Metrics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="doorOpens"
+                  checked={visibleMetrics.doorOpens}
+                  onCheckedChange={() => toggleMetric("doorOpens")}
+                />
+                <Label htmlFor="doorOpens" className="font-medium cursor-pointer">
+                  Door Opens
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="temperature"
+                  checked={visibleMetrics.temperature}
+                  onCheckedChange={() => toggleMetric("temperature")}
+                />
+                <Label htmlFor="temperature" className="font-medium cursor-pointer">
+                  Temperature
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="powered"
+                  checked={visibleMetrics.powered}
+                  onCheckedChange={() => toggleMetric("powered")}
+                />
+                <Label htmlFor="powered" className="font-medium cursor-pointer">
+                  Power Status
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="condenser"
+                  checked={visibleMetrics.condenser}
+                  onCheckedChange={() => toggleMetric("condenser")}
+                />
+                <Label htmlFor="condenser" className="font-medium cursor-pointer">
+                  Condenser Temp
+                </Label>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Trend Charts */}
       <div className="grid grid-cols-1 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Door Opens Per Day (Last 30 Days)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={doorOpensData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
-                <YAxis stroke="#6b7280" fontSize={12} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="opens"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ fill: "#3b82f6", r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {visibleMetrics.doorOpens && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Door Opens Per Day (Last 30 Days)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={doorOpensData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="opens"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={{ fill: "#3b82f6", r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Average Temperature Per Day (°C)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={tempData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
-                <YAxis stroke="#6b7280" fontSize={12} domain={[3, 5]} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="temp"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={{ fill: "#10b981", r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {visibleMetrics.temperature && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Average Temperature Per Day (°C)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={tempData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} domain={[3, 5]} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="temp"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    dot={{ fill: "#10b981", r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Powered Percentage Per Day (%)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={poweredData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
-                <YAxis stroke="#6b7280" fontSize={12} domain={[99, 100]} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="powered"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  dot={{ fill: "#8b5cf6", r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {visibleMetrics.powered && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Powered Percentage Per Day (%)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={poweredData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} domain={[99, 100]} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="powered"
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    dot={{ fill: "#8b5cf6", r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
+
+        {visibleMetrics.condenser && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Condenser Temperature Per Day (°C)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={condenserData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+                  <YAxis stroke="#6b7280" fontSize={12} domain={[36, 39]} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="condenser"
+                    stroke="#ea580c"
+                    strokeWidth={2}
+                    dot={{ fill: "#ea580c", r: 3 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -25,7 +25,15 @@ import {
   SheetTitle,
 } from "../components/ui/sheet";
 
-type SeverityLevel = "OK" | "Low" | "Medium" | "High" | "Severe";
+type SeverityLevel =
+  | "Normal (Not Meeting Temp)"
+  | "Insufficient Data"
+  | "Gas Leakage Warning"
+  | "Blocked Condenser Critical"
+  | "Normal"
+  | "Power/Voltage Issue"
+  | "Blocked Condenser Warning"
+  | "Gas Leakage Critical";
 
 interface MaintenanceUnit {
   mac_address: string;
@@ -49,27 +57,33 @@ export function MaintenanceReportPage() {
   const kpiData = {
     unitsMeasured: 1248,
     unitsNotMeasured: 52,
-    severeCount: 18,
+    criticalCount: 18,
     avgDiffCon: 7.2,
-    newSevereSinceLast: 3,
+    newCriticalSinceLast: 3,
   };
 
   // Severity distribution data
   const severityDistribution = [
-    { name: "OK", value: 892, color: "#10b981" },
-    { name: "Low", value: 234, color: "#3b82f6" },
-    { name: "Medium", value: 89, color: "#f59e0b" },
-    { name: "High", value: 15, color: "#ef4444" },
-    { name: "Severe", value: 18, color: "#7c2d12" },
+    { name: "Normal", value: 640, color: "#10b981" },
+    { name: "Normal (Not Meeting Temp)", value: 148, color: "#86efac" },
+    { name: "Insufficient Data", value: 74, color: "#9ca3af" },
+    { name: "Power/Voltage Issue", value: 96, color: "#3b82f6" },
+    { name: "Blocked Condenser Warning", value: 110, color: "#f59e0b" },
+    { name: "Gas Leakage Warning", value: 92, color: "#fb7185" },
+    { name: "Blocked Condenser Critical", value: 52, color: "#dc2626" },
+    { name: "Gas Leakage Critical", value: 36, color: "#7f1d1d" },
   ];
 
   // Ranked severity list
   const rankedSeverity = [
-    { severity: "Severe", count: 18, trend: "up", change: 3 },
-    { severity: "High", count: 15, trend: "down", change: -2 },
-    { severity: "Medium", count: 89, trend: "up", change: 7 },
-    { severity: "Low", count: 234, trend: "stable", change: 0 },
-    { severity: "OK", count: 892, trend: "down", change: -8 },
+    { severity: "Blocked Condenser Critical", count: 52, trend: "up", change: 6 },
+    { severity: "Gas Leakage Critical", count: 36, trend: "up", change: 3 },
+    { severity: "Blocked Condenser Warning", count: 110, trend: "up", change: 8 },
+    { severity: "Gas Leakage Warning", count: 92, trend: "up", change: 5 },
+    { severity: "Power/Voltage Issue", count: 96, trend: "down", change: -4 },
+    { severity: "Normal (Not Meeting Temp)", count: 148, trend: "stable", change: 0 },
+    { severity: "Insufficient Data", count: 74, trend: "down", change: -2 },
+    { severity: "Normal", count: 640, trend: "down", change: -10 },
   ];
 
   // Maintenance priority queue data
@@ -78,7 +92,7 @@ export function MaintenanceReportPage() {
       mac_address: "MAC5001",
       c_code: "CC501",
       district: "Cape Town CBD",
-      severity: "Severe",
+      severity: "Blocked Condenser Critical",
       diffCon: 28.4,
       calculated_diff_con: 32.1,
       cabinet_temp: 8.2,
@@ -91,7 +105,7 @@ export function MaintenanceReportPage() {
       mac_address: "MAC5002",
       c_code: "CC502",
       district: "Johannesburg",
-      severity: "Severe",
+      severity: "Gas Leakage Critical",
       diffCon: 26.8,
       calculated_diff_con: 29.9,
       cabinet_temp: 7.8,
@@ -104,7 +118,7 @@ export function MaintenanceReportPage() {
       mac_address: "MAC5003",
       c_code: "CC503",
       district: "Durban",
-      severity: "High",
+      severity: "Gas Leakage Warning",
       diffCon: 22.1,
       calculated_diff_con: 24.5,
       cabinet_temp: 6.9,
@@ -117,7 +131,7 @@ export function MaintenanceReportPage() {
       mac_address: "MAC5004",
       c_code: "CC504",
       district: "Pretoria",
-      severity: "High",
+      severity: "Blocked Condenser Warning",
       diffCon: 20.5,
       calculated_diff_con: 22.8,
       cabinet_temp: 6.2,
@@ -130,7 +144,7 @@ export function MaintenanceReportPage() {
       mac_address: "MAC5005",
       c_code: "CC505",
       district: "Port Elizabeth",
-      severity: "Medium",
+      severity: "Power/Voltage Issue",
       diffCon: 15.3,
       calculated_diff_con: 17.2,
       cabinet_temp: 5.1,
@@ -143,11 +157,14 @@ export function MaintenanceReportPage() {
 
   const getSeverityColor = (severity: SeverityLevel) => {
     const colors = {
-      "OK": "bg-green-100 text-green-800 border-green-300",
-      "Low": "bg-blue-100 text-blue-800 border-blue-300",
-      "Medium": "bg-orange-100 text-orange-800 border-orange-300",
-      "High": "bg-red-100 text-red-800 border-red-300",
-      "Severe": "bg-red-900 text-white border-red-900",
+      "Normal": "bg-green-100 text-green-800 border-green-300",
+      "Normal (Not Meeting Temp)": "bg-lime-100 text-lime-800 border-lime-300",
+      "Insufficient Data": "bg-gray-100 text-gray-800 border-gray-300",
+      "Power/Voltage Issue": "bg-blue-100 text-blue-800 border-blue-300",
+      "Blocked Condenser Warning": "bg-orange-100 text-orange-800 border-orange-300",
+      "Gas Leakage Warning": "bg-rose-100 text-rose-800 border-rose-300",
+      "Blocked Condenser Critical": "bg-red-100 text-red-800 border-red-300",
+      "Gas Leakage Critical": "bg-red-900 text-white border-red-900",
     };
     return colors[severity];
   };
@@ -279,8 +296,8 @@ export function MaintenanceReportPage() {
           icon={<AlertTriangle className="w-5 h-5" />}
         />
         <EnhancedKPICard
-          title="Severe Count"
-          value={kpiData.severeCount}
+          title="Critical Count"
+          value={kpiData.criticalCount}
           delta={{ value: 3, label: "new", isPositiveGood: false }}
         />
         <EnhancedKPICard
@@ -289,8 +306,8 @@ export function MaintenanceReportPage() {
           delta={{ value: 0.8, label: "vs prev", isPositiveGood: false }}
         />
         <EnhancedKPICard
-          title="New Severe"
-          value={kpiData.newSevereSinceLast}
+          title="New Critical"
+          value={kpiData.newCriticalSinceLast}
           subtitle="Since last report"
         />
       </div>
@@ -311,20 +328,22 @@ export function MaintenanceReportPage() {
               <CardTitle className="text-base">Severity Breakdown with Trends</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {rankedSeverity.map((item) => (
-                  <div key={item.severity} className="flex items-center justify-between pb-3 border-b border-gray-100 last:border-0">
-                    <div className="flex items-center gap-3">
+                  <div key={item.severity} className="flex items-center justify-between gap-4 pb-3 border-b border-gray-100 last:border-0">
+                    <div className="flex items-center gap-4 min-w-0">
                       <Badge 
                         variant="outline" 
-                        className={cn("w-20 justify-center", getSeverityColor(item.severity as SeverityLevel))}
+                        className={cn("px-2.5 py-1 text-xs font-medium whitespace-nowrap flex-shrink-0", getSeverityColor(item.severity as SeverityLevel))}
                       >
                         {item.severity}
                       </Badge>
-                      <span className="text-2xl font-semibold text-gray-900">{item.count}</span>
-                      <span className="text-sm text-gray-600">units</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-semibold text-gray-900">{item.count}</span>
+                        <span className="text-sm text-gray-600">units</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       {item.trend === "up" && (
                         <>
                           <TrendingUp className="w-4 h-4 text-red-500" />

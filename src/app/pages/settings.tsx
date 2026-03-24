@@ -41,7 +41,7 @@ export function SettingsPage() {
                 <Input
                   id="email"
                   type="email"
-                  defaultValue="john.smith@bevfleet.com"
+                  defaultValue="sebastian@frostlink.com"
                   className="mt-1.5"
                 />
               </div>
@@ -172,7 +172,7 @@ export function SettingsPage() {
             <CardContent className="space-y-3">
               <div>
                 <p className="text-sm text-gray-600">Version</p>
-                <p className="font-medium">BevFleet v1.2.4</p>
+                <p className="font-medium">Frostlink v1.2.4</p>
               </div>
               <Separator />
               <div>
