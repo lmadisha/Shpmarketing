@@ -1,4 +1,5 @@
 import { useParams } from "react-router";
+import { FilterBar } from "../components/layout/filter-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { KPICard } from "../components/dashboard/kpi-card";
 import { TierBadge } from "../components/dashboard/tier-badge";
@@ -73,7 +74,9 @@ export function RegionDetailPage() {
   const regionName = regionId?.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") || "Region";
 
   return (
-    <div className="p-8 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-8 max-w-[1440px] mx-auto">
       {/* Breadcrumbs */}
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
@@ -284,5 +287,6 @@ export function RegionDetailPage() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { DashboardLayout } from "./components/layout/dashboard-layout";
 import { OverviewPage } from "./pages/overview";
 import { FleetRankingPage } from "./pages/fleet-ranking";
@@ -14,6 +14,10 @@ import { AdminAssetsPage } from "./pages/admin-assets";
 import { LoginPage } from "./pages/login";
 import { SignupPage } from "./pages/signup";
 import { GuestRoute, ProtectedRoute } from "./auth/route-guards";
+
+function AdminAssetsRedirect() {
+  return <Navigate to="/admin/assets/inventory" replace />;
+}
 
 export const router = createBrowserRouter([
   {
@@ -40,11 +44,7 @@ export const router = createBrowserRouter([
           { path: "redistribution", Component: RedistributionPage },
           { path: "reports", Component: ReportsPage },
           { path: "settings", Component: SettingsPage },
-          {
-            path: "admin/assets",
-            Component: AdminAssetsPage,
-            handle: { showFilterBar: false },
-          },
+          { path: "admin/assets", Component: AdminAssetsPage },
         ],
       },
     ],

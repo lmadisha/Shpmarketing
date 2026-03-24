@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { FilterBar } from "../components/layout/filter-bar";
 import { BarChart3, FileText, ExternalLink } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -36,7 +37,9 @@ const reports = [
 
 export function ReportsPage() {
   return (
-    <div className="p-8 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-8 max-w-[1440px] mx-auto">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-2">
@@ -124,5 +127,6 @@ export function ReportsPage() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

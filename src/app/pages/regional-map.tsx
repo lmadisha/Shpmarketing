@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FilterBar } from "../components/layout/filter-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { TierBadge } from "../components/dashboard/tier-badge";
 import { Button } from "../components/ui/button";
@@ -40,7 +41,9 @@ export function RegionalMapPage() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
 
   return (
-    <div className="p-8 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-8 max-w-[1440px] mx-auto">
       <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-2 mb-6">
         <Map className="w-8 h-8 text-blue-600" />
         Regional Map Performance
@@ -273,5 +276,6 @@ export function RegionalMapPage() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { FilterBar } from "../components/layout/filter-bar";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { TierBadge } from "../components/dashboard/tier-badge";
@@ -67,7 +68,9 @@ const recommendations = [
 
 export function RedistributionPage() {
   return (
-    <div className="p-8 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-8 max-w-[1440px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -274,5 +277,6 @@ export function RedistributionPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

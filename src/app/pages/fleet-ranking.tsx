@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FilterBar } from "../components/layout/filter-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { TierBadge, TierType } from "../components/dashboard/tier-badge";
 import { StatusBadge } from "../components/dashboard/status-badge";
@@ -154,7 +155,9 @@ export function FleetRankingPage() {
   const bronzeCount = fleetData.filter((d) => d.tier === "bronze").length;
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-4 md:p-6 lg:p-8 max-w-[1440px] mx-auto">
       {/* Header */}
       <div className="flex items-start md:items-center justify-between mb-6 flex-col md:flex-row gap-4">
         <div>
@@ -376,5 +379,6 @@ export function FleetRankingPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import { Server, Activity, Thermometer, Zap, TrendingUp } from "lucide-react";
+import { FilterBar } from "../components/layout/filter-bar";
 import { KPICard } from "../components/dashboard/kpi-card";
 import { InsightCard } from "../components/dashboard/insight-card";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -46,7 +47,9 @@ const tierDistributionData = [
 
 export function OverviewPage() {
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-4 md:p-6 lg:p-8 max-w-[1440px] mx-auto">
       {/* What's Changed Banner */}
       <Alert className="mb-6 bg-blue-50 border-blue-200">
         <AlertDescription>
@@ -225,5 +228,6 @@ export function OverviewPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

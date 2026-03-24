@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FilterBar } from "../components/layout/filter-bar";
 import { 
   Wrench, 
   AlertTriangle,
@@ -269,7 +270,9 @@ export function MaintenanceReportPage() {
   };
 
   return (
-    <div className="p-4 lg:p-6 space-y-6 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-4 lg:p-6 space-y-6 max-w-[1440px] mx-auto">
       {/* Page Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -522,5 +525,6 @@ export function MaintenanceReportPage() {
         </SheetContent>
       </Sheet>
     </div>
+    </>
   );
 }

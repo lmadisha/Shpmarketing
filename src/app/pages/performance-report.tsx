@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FilterBar } from "../components/layout/filter-bar";
 import { 
   Server, 
   Thermometer, 
@@ -288,7 +289,9 @@ export function PerformanceReportPage() {
   ];
 
   return (
-    <div className="p-4 lg:p-6 space-y-6 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-4 lg:p-6 space-y-6 max-w-[1440px] mx-auto">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
         <div>
@@ -495,6 +498,7 @@ export function PerformanceReportPage() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }
 

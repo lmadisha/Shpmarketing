@@ -956,6 +956,74 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/mismatches/manual", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { fridge_serial_number, mac_address, c_number } = req.body;
+    const serial = String(fridge_serial_number || "").trim();
+    const mac = mac_address ? String(mac_address).trim().toUpperCase() : null;
+    const cNum = c_number ? String(c_number).trim().toUpperCase() : null;
+
+    if (!serial) {
+      return res.status(400).json({ error: "fridge_serial_number is required" });
+    }
+
+    logAssetAction(
+      "submit-manual-mismatch:start",
+      `serial=${serial} byUser=${req.user?.id || "unknown"}`
+    );
+
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
+      String(req.user.id),
+    ]);
+
+    const fridgeRes = await client.query(
+      `SELECT iot_mac_address, c_number
+       FROM fridges
+       WHERE fridge_serial_number = $1`,
+      [serial]
+    );
+
+    if (!fridgeRes.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Fridge not found" });
+    }
+
+    const fridge = fridgeRes.rows[0];
+
+    const mismatchInsert = await client.query(
+      `INSERT INTO fridge_mismatches
+        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status, sender_id)
+       VALUES ($1, $2, $3, $4, $5, 'open', $6)
+       RETURNING *`,
+      [
+        serial,
+        mac,
+        cNum,
+        fridge.iot_mac_address || null,
+        fridge.c_number || null,
+        req.user.id
+      ]
+    );
+
+    await client.query("COMMIT");
+    logAssetAction("submit-manual-mismatch:success", `serial=${serial} id=${mismatchInsert.rows[0].id}`);
+    
+    return res.status(200).json({
+      ok: true,
+      id: mismatchInsert.rows[0].id,
+      fridge_serial_number: mismatchInsert.rows[0].fridge_serial_number,
+      mismatch: mismatchInsert.rows[0]
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return handleAssetError(res, "submit-manual-mismatch", error);
+  } finally {
+    client.release();
+  }
+});
+
 app.get("/mismatches", requireAuth, async (req, res) => {
   try {
     logAssetAction("list-mismatches:start", `status=${String(req.query.status || "open")}`);

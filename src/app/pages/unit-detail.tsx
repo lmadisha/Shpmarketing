@@ -1,4 +1,5 @@
 import { useParams } from "react-router";
+import { FilterBar } from "../components/layout/filter-bar";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { TierBadge } from "../components/dashboard/tier-badge";
@@ -112,7 +113,9 @@ export function UnitDetailPage() {
   };
 
   return (
-    <div className="p-8 max-w-[1440px] mx-auto">
+    <>
+      <FilterBar />
+      <div className="p-8 max-w-[1440px] mx-auto">
       {/* Breadcrumbs */}
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
@@ -371,5 +374,6 @@ export function UnitDetailPage() {
         )}
       </div>
     </div>
+    </>
   );
 }

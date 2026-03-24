@@ -464,6 +464,32 @@ Notes:
 - db_mac and db_c_number are populated from the current fridge record at time of submission.
 - Runs in transaction with myapp.current_user_id set for audit trigger.
 
+## POST /mismatches/manual
+
+Purpose: manually submit a device mismatch (e.g. from Device Checker tab).
+
+Auth: Bearer.
+
+Input body:
+
+- fridge_serial_number: string (required)
+- mac_address: string (optional)
+- c_number: string (optional)
+
+Responses:
+
+- 200: 
+  {
+    "ok": true,
+    "id": 1,
+    "fridge_serial_number": "FR123...",
+    "mismatch": { ...inserted mismatch row... }
+  }
+- 400: missing fridge_serial_number
+- 404: fridge not found
+- 401
+- 500: { "error": "submit-manual-mismatch failed: ..." }
+
 ## GET /mismatches
 
 Purpose: list mismatch records.
