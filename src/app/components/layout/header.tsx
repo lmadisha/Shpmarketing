@@ -44,8 +44,14 @@ export function Header({ onOpenAI }: HeaderProps) {
         <SelectContent>
           <SelectItem value="all">All Regions</SelectItem>
           <SelectItem value="western-cape">Western Cape</SelectItem>
+          <SelectItem value="eastern-cape">Eastern Cape</SelectItem>
+          <SelectItem value="northern-cape">Northern Cape</SelectItem>
+          <SelectItem value="north-west">North West</SelectItem>
+          <SelectItem value="free-state">Free State</SelectItem>
           <SelectItem value="gauteng">Gauteng</SelectItem>
           <SelectItem value="kwazulu-natal">KwaZulu-Natal</SelectItem>
+          <SelectItem value="mpumalanga">Mpumalanga</SelectItem>
+          <SelectItem value="limpopo">Limpopo</SelectItem>
         </SelectContent>
       </Select>
 

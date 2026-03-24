@@ -1,0 +1,33 @@
+{
+  "name": "shpmarketing-operations-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "node --test",
+    "deps:outdated": "npm outdated",
+    "deps:update": "npm update",
+    "deps:audit": "npm audit",
+    "deps:fix": "npm audit fix",
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "eslint": "^9.36.0",
+    "globals": "^16.4.0"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "pg": "^8.13.1",
+    "xlsx": "^0.18.5"
+  }
+}

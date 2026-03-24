@@ -25,8 +25,18 @@ export function FilterBar() {
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const tenants = ["All Tenants", "Coca-Cola", "Pepsi", "Red Bull"];
-  const regions = ["Western Cape", "Gauteng", "KwaZulu-Natal", "Eastern Cape"];
+  const tenants = ["All Tenants", "DigitalTwin", "SignalHill"];
+  const regions = [
+    "Western Cape",
+    "Eastern Cape",
+    "Northern Cape",
+    "North West",
+    "Free State",
+    "Gauteng",
+    "KwaZulu-Natal",
+    "Mpumalanga",
+    "Limpopo",
+  ];
   const tiers = ["Gold", "Silver", "Bronze"];
   const statuses = ["Temp OK", "Temp BAD", "Power OK", "Power WARN"];
 

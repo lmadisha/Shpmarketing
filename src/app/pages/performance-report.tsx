@@ -23,7 +23,7 @@ import { Badge } from "../components/ui/badge";
 import { cn } from "../components/ui/utils";
 
 /**
- * Performance Report Page - BevFleet Dashboard
+ * Performance Report Page - Frostlink Dashboard
  * 
  * Responsive breakpoints:
  * - Desktop: 1440px (xl) - Full layout with all columns
@@ -248,7 +248,6 @@ export function PerformanceReportPage() {
       label: "Power",
       sortable: true,
       render: (row) => <PowerStatusBadge status={row.powerStatus} />,
-      className: "hidden lg:table-cell",
       headerClassName: "hidden lg:table-cell",
     },
     {
