@@ -82,6 +82,9 @@ BEGIN
   END IF;
 END $$;
 
+ALTER TABLE IF EXISTS public.fridge_mismatches
+  ADD COLUMN IF NOT EXISTS sender_id INTEGER REFERENCES users(id);
+
 CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_received_at ON fridge_mismatches (received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_serial ON fridge_mismatches (fridge_serial_number);
 CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_status ON fridge_mismatches (status);

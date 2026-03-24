@@ -437,6 +437,33 @@ Responses:
 - 401: invalid mobile api key
 - 500: { "error": "mobile-verify failed: ..." }
 
+## POST /mismatches/manual
+
+Purpose: manually submit a device check mismatch from the admin UI.
+
+Auth: Bearer.
+
+Input body:
+
+- fridge_serial_number: string (required)
+- mac_address: string | null
+- c_number: string | null
+
+Responses:
+
+- 201: inserted fridge_mismatches row (includes sender_id)
+- 400: missing fridge_serial_number
+- 404: fridge not found
+- 401
+- 500: { "error": "manual-mismatch failed: ..." }
+
+Notes:
+
+- Inserts with status 'open'.
+- sender_id is set to req.user.id (the authenticated user who submitted).
+- db_mac and db_c_number are populated from the current fridge record at time of submission.
+- Runs in transaction with myapp.current_user_id set for audit trigger.
+
 ## GET /mismatches
 
 Purpose: list mismatch records.
@@ -510,6 +537,7 @@ Any unknown route returns:
 - fridges.fridge_serial_number is a primary key in database schema.
 - fridges.iot_mac_address is unique (including partial unique index for non-empty values).
 - Fridge change auditing is trigger-based via fridge_audit_log.
+- fridge_mismatches.sender_id references users(id) and records the admin user who manually submitted the mismatch via POST /mismatches/manual.
 
 ## Operational Notes
 

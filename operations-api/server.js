@@ -902,6 +902,60 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
   }
 });
 
+app.post("/mismatches/manual", requireAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const fridge_serial_number = String(req.body?.fridge_serial_number || "").trim();
+    const received_mac = String(req.body?.mac_address || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 12);
+    const received_c_number = String(req.body?.c_number || "").trim().toUpperCase().slice(0, 10);
+
+    logAssetAction("manual-mismatch:start", `serial=${fridge_serial_number} byUser=${req.user?.id || "unknown"}`);
+
+    if (!fridge_serial_number) {
+      return res.status(400).json({ error: "fridge_serial_number is required." });
+    }
+
+    const fridgeRes = await client.query(
+      `SELECT iot_mac_address, c_number FROM fridges WHERE fridge_serial_number = $1`,
+      [fridge_serial_number],
+    );
+
+    if (!fridgeRes.rows.length) {
+      return res.status(404).json({ error: "Fridge not found." });
+    }
+
+    const fridge = fridgeRes.rows[0];
+
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
+
+    const inserted = await client.query(
+      `INSERT INTO fridge_mismatches
+        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status, sender_id)
+       VALUES ($1, $2, $3, $4, $5, 'open', $6)
+       RETURNING *`,
+      [
+        fridge_serial_number,
+        received_mac || null,
+        received_c_number || null,
+        fridge.iot_mac_address || null,
+        fridge.c_number || null,
+        req.user.id,
+      ],
+    );
+
+    await client.query("COMMIT");
+
+    logAssetAction("manual-mismatch:success", `id=${inserted.rows[0].id} serial=${fridge_serial_number}`);
+    return res.status(201).json(inserted.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return handleAssetError(res, "manual-mismatch", error);
+  } finally {
+    client.release();
+  }
+});
+
 app.get("/mismatches", requireAuth, async (req, res) => {
   try {
     logAssetAction("list-mismatches:start", `status=${String(req.query.status || "open")}`);
