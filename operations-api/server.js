@@ -782,10 +782,12 @@ app.get("/auditLog/:serialNumber", requireAuth, async (req, res) => {
   try {
     logAssetAction("device-history:start", `serial=${req.params.serialNumber || "unknown"}`);
     const result = await pool.query(
-      `SELECT *
-       FROM fridge_audit_log
-       WHERE UPPER(fridge_serial_number) = UPPER($1)
-       ORDER BY changed_at DESC`,
+      `SELECT fal.*,
+              u.username AS changed_by_username
+       FROM fridge_audit_log fal
+       LEFT JOIN users u ON u.id = fal.changed_by
+       WHERE UPPER(fal.fridge_serial_number) = UPPER($1)
+       ORDER BY fal.changed_at DESC`,
       [req.params.serialNumber],
     );
     logAssetAction("device-history:success", `serial=${req.params.serialNumber || "unknown"} count=${result.rows.length}`);
@@ -799,9 +801,11 @@ app.get("/auditLog", requireAuth, async (_req, res) => {
   try {
     logAssetAction("audit-history:start");
     const result = await pool.query(
-      `SELECT *
-       FROM fridge_audit_log
-       ORDER BY changed_at DESC`,
+      `SELECT fal.*,
+              u.username AS changed_by_username
+       FROM fridge_audit_log fal
+       LEFT JOIN users u ON u.id = fal.changed_by
+       ORDER BY fal.changed_at DESC`,
     );
     logAssetAction("audit-history:success", `count=${result.rows.length}`);
     return res.json(result.rows);

@@ -1657,7 +1657,7 @@ export function AdminAssetsPage() {
                     ) : null}
 
                     <Button type="submit" disabled={dcSubmitting || !dcForm.fridge_serial_number}>
-                      {dcSubmitting ? "Submitting…" : "Submit Mismatch"}
+                      {dcSubmitting ? "Submitting…" : `Submit ${dcForm.fridge_serial_number}`}
                     </Button>
                   </form>
                 </CardContent>

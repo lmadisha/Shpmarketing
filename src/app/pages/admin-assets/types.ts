@@ -33,6 +33,7 @@ export type AuditLogRow = {
   new_c_num: string | null;
   changed_at: string;
   changed_by: number | null;
+  changed_by_username: string | null;
 };
 
 export type BulkPreviewRow = {
@@ -45,7 +46,7 @@ export type BulkPreviewRow = {
 export type SortDirection = "asc" | "desc";
 export type InventorySortKey = "fridge_serial_number" | "iot_mac_address" | "c_number" | "verified";
 export type MismatchSortKey = "received_at" | "fridge_serial_number" | "received_mac" | "received_c_number" | "expected" | "status";
-export type HistorySortKey = "changed_at" | "action_type" | "fridge_serial_number" | "old_mac" | "new_mac" | "old_c_num" | "new_c_num" | "changed_by";
+export type HistorySortKey = "changed_at" | "action_type" | "fridge_serial_number" | "old_mac" | "new_mac" | "old_c_num" | "new_c_num" | "changed_by_username";
 export type AdminApiRequestOptions = Omit<RequestInit, "headers"> & {
   headers?: HeadersInit;
 };

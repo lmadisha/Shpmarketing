@@ -28,6 +28,7 @@ const subNavItems = [
   { label: "Inventory", to: "/admin/assets/inventory" },
   { label: "Mismatches", to: "/admin/assets/mismatches" },
   { label: "History", to: "/admin/assets/history" },
+  { label: "Device Checker", to: "/admin/assets/device-checker" },
 ];
 
 // Shared modals are rendered at this level so they're available from all child pages.
@@ -77,7 +78,7 @@ function SharedModals() {
                     </TableCell>
                     <TableCell>{entry.old_mac || "-"} → {entry.new_mac || "-"}</TableCell>
                     <TableCell>{entry.old_c_num || "-"} → {entry.new_c_num || "-"}</TableCell>
-                    <TableCell>{entry.changed_by ?? "system"}</TableCell>
+                    <TableCell>{entry.changed_by_username ?? "system"}</TableCell>
                   </TableRow>
                 ))}
                 {!deviceHistoryLoading && deviceHistoryRows.length === 0 ? (

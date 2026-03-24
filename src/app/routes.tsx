@@ -10,14 +10,15 @@ import { UnitDetailPage } from "./pages/unit-detail";
 import { RedistributionPage } from "./pages/redistribution";
 import { ReportsPage } from "./pages/reports";
 import { SettingsPage } from "./pages/settings";
-import { AdminAssetsPage } from "./pages/admin-assets";
+import { AdminAssetsLayout } from "./pages/admin-assets/layout";
+import { AddFridgePage } from "./pages/admin-assets/add-fridge";
+import { InventoryPage } from "./pages/admin-assets/inventory";
+import { MismatchesPage } from "./pages/admin-assets/mismatches";
+import { HistoryPage } from "./pages/admin-assets/history";
+import { DeviceCheckerPage } from "./pages/admin-assets/device-checker";
 import { LoginPage } from "./pages/login";
 import { SignupPage } from "./pages/signup";
 import { GuestRoute, ProtectedRoute } from "./auth/route-guards";
-
-function AdminAssetsRedirect() {
-  return <Navigate to="/admin/assets/inventory" replace />;
-}
 
 export const router = createBrowserRouter([
   {
@@ -44,7 +45,18 @@ export const router = createBrowserRouter([
           { path: "redistribution", Component: RedistributionPage },
           { path: "reports", Component: ReportsPage },
           { path: "settings", Component: SettingsPage },
-          { path: "admin/assets", Component: AdminAssetsPage },
+          {
+            path: "admin/assets",
+            Component: AdminAssetsLayout,
+            children: [
+              { index: true, element: <Navigate to="/admin/assets/inventory" replace /> },
+              { path: "add", Component: AddFridgePage },
+              { path: "inventory", Component: InventoryPage },
+              { path: "mismatches", Component: MismatchesPage },
+              { path: "history", Component: HistoryPage },
+              { path: "device-checker", Component: DeviceCheckerPage },
+            ],
+          },
         ],
       },
     ],

@@ -11,7 +11,7 @@ export function HistoryPage() {
   const {
     historyLoading, historyError,
     loadAllHistory,
-    historySort, toggleHistorySort,
+    toggleHistorySort,
     historyPage, setHistoryPage,
     paginatedHistory, sortedHistory, historyTotalPages, safeHistoryPage,
   } = useAdminAssets();
@@ -63,7 +63,7 @@ export function HistoryPage() {
                 </Button>
               </TableHead>
               <TableHead>
-                <Button variant="ghost" size="sm" onClick={() => toggleHistorySort("changed_by")}>
+                <Button variant="ghost" size="sm" onClick={() => toggleHistorySort("changed_by_username")}>
                   User <ArrowUpDown className="h-4 w-4" />
                 </Button>
               </TableHead>
@@ -81,7 +81,7 @@ export function HistoryPage() {
                 <TableCell className="font-medium">{entry.fridge_serial_number}</TableCell>
                 <TableCell>{entry.old_mac || "-"} → {entry.new_mac || "-"}</TableCell>
                 <TableCell>{entry.old_c_num || "-"} → {entry.new_c_num || "-"}</TableCell>
-                <TableCell>{entry.changed_by ?? "system"}</TableCell>
+                <TableCell>{entry.changed_by_username ?? "system"}</TableCell>
               </TableRow>
             ))}
             {!historyLoading && sortedHistory.length === 0 ? (
