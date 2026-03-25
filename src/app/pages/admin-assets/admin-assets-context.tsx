@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useApiClient } from "../../auth/use-api-client";
 import { useAuth } from "../../auth/auth-context";
+import { canFilterOrganisation as canFilterOrganisationByRole } from "../../auth/permission-policy";
 import {
   Fridge,
   Mismatch,
   AuditLogRow,
+  OrganisationOption,
   MismatchStatus,
   InventorySortKey,
   MismatchSortKey,
@@ -19,6 +21,14 @@ import { compareValues, summarizeRequestBody, summarizeResponsePayload, cleanHex
 // ─── Context shape ────────────────────────────────────────────────────────────
 
 type AdminAssetsContextValue = {
+  // Organisation scope / filtering
+  isOrganisationFilterEnabled: boolean;
+  organisationFilter: string;
+  setOrganisationFilter: (organisationId: string) => void;
+  organisationOptions: OrganisationOption[];
+  organisationsLoading: boolean;
+  withOrganisationFilter: (path: string) => string;
+
   // Fridges / Inventory
   fridges: Fridge[];
   fridgeLoading: boolean;
@@ -137,6 +147,21 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const { request } = useApiClient();
   const { session } = useAuth();
   const actor = session?.user.full_name || session?.user.username || "Unknown";
+  const permissionLevel = session?.user.permissions;
+  const isOrganisationFilterEnabled = permissionLevel
+    ? canFilterOrganisationByRole(permissionLevel)
+    : false;
+  const [organisationFilter, setOrganisationFilter] = useState("");
+  const [organisationOptions, setOrganisationOptions] = useState<OrganisationOption[]>([]);
+  const [organisationsLoading, setOrganisationsLoading] = useState(false);
+
+  const withOrganisationFilter = (path: string) => {
+    if (!isOrganisationFilterEnabled || !organisationFilter) {
+      return path;
+    }
+    const joiner = path.includes("?") ? "&" : "?";
+    return `${path}${joiner}organisation_id=${encodeURIComponent(organisationFilter)}`;
+  };
 
   // ── API helper ────────────────────────────────────────────────────────────
   async function adminRequest<T>(
@@ -181,8 +206,11 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     try {
       const term = (query ?? "").trim();
       const data = term
-        ? await adminRequest<Fridge[]>("loadFridges.search", `/searchFridges?searchTerm=${encodeURIComponent(term)}`)
-        : await adminRequest<Fridge[]>("loadFridges.list", "/getFridges");
+        ? await adminRequest<Fridge[]>(
+            "loadFridges.search",
+            withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(term)}`),
+          )
+        : await adminRequest<Fridge[]>("loadFridges.list", withOrganisationFilter("/getFridges"));
       setFridges(Array.isArray(data) ? data : []);
     } catch {
       setFridgeError("Could not load fridge inventory.");
@@ -200,7 +228,7 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     setHistoryLoading(true);
     setHistoryError("");
     try {
-      const data = await adminRequest<AuditLogRow[]>("loadHistory.global", "/auditLog");
+      const data = await adminRequest<AuditLogRow[]>("loadHistory.global", withOrganisationFilter("/auditLog"));
       setAllHistory(Array.isArray(data) ? data : []);
     } catch {
       setHistoryError("Could not load change history.");
@@ -227,7 +255,10 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     setDeviceHistoryError("");
     setDeviceHistoryOpen(true);
     try {
-      const data = await adminRequest<AuditLogRow[]>("loadHistory.device", `/auditLog/${encodeURIComponent(serial)}`);
+      const data = await adminRequest<AuditLogRow[]>(
+        "loadHistory.device",
+        withOrganisationFilter(`/auditLog/${encodeURIComponent(serial)}`),
+      );
       setDeviceHistoryRows(Array.isArray(data) ? data : []);
     } catch {
       if (cachedRows.length) {
@@ -262,6 +293,9 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
       if (filters.serial.trim()) params.set("serial", filters.serial.trim());
       if (filters.from) params.set("from", filters.from);
       if (filters.to) params.set("to", filters.to);
+      if (isOrganisationFilterEnabled && organisationFilter) {
+        params.set("organisation_id", organisationFilter);
+      }
       const data = await adminRequest<Mismatch[]>("loadMismatches", `/mismatches?${params.toString()}`);
       setMismatches(Array.isArray(data) ? data : []);
     } catch {
@@ -528,13 +562,55 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
 
   // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
-    void loadFridges();
+    let cancelled = false;
+
+    if (!isOrganisationFilterEnabled) {
+      setOrganisationFilter("");
+      setOrganisationOptions([]);
+      setOrganisationsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadOrganisationOptions = async () => {
+      setOrganisationsLoading(true);
+      try {
+        const data = await request<OrganisationOption[]>("/organisations");
+        if (!cancelled) {
+          setOrganisationOptions(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setOrganisationOptions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setOrganisationsLoading(false);
+        }
+      }
+    };
+
+    void loadOrganisationOptions();
+
+    return () => {
+      cancelled = true;
+    };
+    // request is intentionally excluded; it's recreated by hook and would cause a render loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOrganisationFilterEnabled]);
+
+  useEffect(() => {
+    void loadFridges(searchTerm);
     void loadAllHistory();
     void loadMismatches();
+    // searchTerm intentionally excluded: org changes should reuse the latest search snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [organisationFilter, isOrganisationFilterEnabled]);
 
   const value: AdminAssetsContextValue = {
+    isOrganisationFilterEnabled, organisationFilter, setOrganisationFilter,
+    organisationOptions, organisationsLoading, withOrganisationFilter,
     fridges, fridgeLoading, fridgeError, searchTerm, setSearchTerm, loadFridges,
     inventorySort, toggleInventorySort, inventoryPage, setInventoryPage,
     sortedFridgeRows, paginatedFridgeRows, inventoryTotalPages, safeInventoryPage,

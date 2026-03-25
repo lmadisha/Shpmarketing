@@ -114,6 +114,42 @@ async function getUserOrganisationId(client, userId) {
   return result.rows[0].organisation_id ?? null;
 }
 
+function parseRequestedOrganisationId(rawValue) {
+  if (rawValue == null) return null;
+  const raw = String(rawValue).trim().toLowerCase();
+  if (!raw || raw === "all") {
+    return null;
+  }
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    const error = new Error("Invalid organisation_id filter.");
+    error.code = "INVALID_ORGANISATION_FILTER";
+    throw error;
+  }
+
+  return value;
+}
+
+async function resolveOrganisationScope(client, user, requestedOrganisationIdRaw) {
+  const requestedOrganisationId = parseRequestedOrganisationId(requestedOrganisationIdRaw);
+  const isAdmin = user?.permissions === "Admin";
+  const userOrganisationId = await getUserOrganisationId(client, user.id);
+
+  if (!isAdmin && !userOrganisationId) {
+    const error = new Error("User organisation is not configured.");
+    error.code = "USER_ORGANISATION_REQUIRED";
+    throw error;
+  }
+
+  return {
+    isAdmin,
+    userOrganisationId,
+    requestedOrganisationId,
+    effectiveOrganisationId: isAdmin ? requestedOrganisationId : userOrganisationId,
+  };
+}
+
 function logAssetAction(action, details = "") {
   const suffix = details ? ` ${details}` : "";
   console.log(`[asset-manager] ${action}${suffix}`);
@@ -803,36 +839,64 @@ app.post("/newDevice/bulk/preview", requireAuth, (req, res) => {
   });
 });
 
-app.get("/getFridges", requireAuth, async (_req, res) => {
+app.get("/getFridges", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
-    logAssetAction("list-fridges:start");
-    const result = await pool.query("SELECT * FROM fridges ORDER BY fridge_serial_number ASC");
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction(
+      "list-fridges:start",
+      `orgFilter=${scope.effectiveOrganisationId ?? "all"} byUser=${req.user?.id || "unknown"}`,
+    );
+
+    const result = await client.query(
+      `SELECT *
+       FROM fridges
+       WHERE ($1::int IS NULL OR organisation_id = $1)
+       ORDER BY fridge_serial_number ASC`,
+      [scope.effectiveOrganisationId],
+    );
     logAssetAction("list-fridges:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "list-fridges", error);
+  } finally {
+    client.release();
   }
 });
 
 app.get("/searchFridges", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
     const searchTerm = String(req.query.searchTerm || "");
-    logAssetAction("search-fridges:start", `term=${searchTerm}`);
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction("search-fridges:start", `term=${searchTerm} orgFilter=${scope.effectiveOrganisationId ?? "all"}`);
     const formattedSearch = `%${searchTerm}%`;
 
-    const result = await pool.query(
-      `SELECT * FROM fridges
-       WHERE iot_mac_address ILIKE $1
-          OR fridge_serial_number ILIKE $1
-          OR c_number ILIKE $1
+    const result = await client.query(
+      `SELECT *
+       FROM fridges
+       WHERE ($1::int IS NULL OR organisation_id = $1)
+         AND (
+           iot_mac_address ILIKE $2
+           OR fridge_serial_number ILIKE $2
+           OR c_number ILIKE $2
+         )
        ORDER BY fridge_serial_number ASC`,
-      [formattedSearch],
+      [scope.effectiveOrganisationId, formattedSearch],
     );
 
     logAssetAction("search-fridges:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "search-fridges", error);
+  } finally {
+    client.release();
   }
 });
 
@@ -847,14 +911,16 @@ app.put("/updateDevice/:serialNumber", requireAuth, async (req, res) => {
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
       String(req.user.id),
     ]);
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const result = await client.query(
       `UPDATE fridges
        SET iot_mac_address = COALESCE($1, iot_mac_address),
            c_number = COALESCE($2, c_number)
        WHERE fridge_serial_number = $3
+         AND ($4::int IS NULL OR organisation_id = $4)
        RETURNING *`,
-      [req.body.mac_address, req.body.c_number, req.params.serialNumber],
+      [req.body.mac_address, req.body.c_number, req.params.serialNumber, scope.effectiveOrganisationId],
     );
 
     await client.query("COMMIT");
@@ -867,6 +933,9 @@ app.put("/updateDevice/:serialNumber", requireAuth, async (req, res) => {
     return res.json(result.rows[0]);
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "update-device", error);
   } finally {
     client.release();
@@ -884,12 +953,14 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
       String(req.user.id),
     ]);
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const result = await client.query(
       `DELETE FROM fridges
        WHERE fridge_serial_number = $1
+         AND ($2::int IS NULL OR organisation_id = $2)
        RETURNING *`,
-      [req.params.serialNumber],
+      [req.params.serialNumber, scope.effectiveOrganisationId],
     );
 
     await client.query("COMMIT");
@@ -902,6 +973,9 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
     return res.json({ message: "Fridge deleted successfully", device: result.rows[0] });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "delete-device", error);
   } finally {
     client.release();
@@ -909,38 +983,60 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
 });
 
 app.get("/auditLog/:serialNumber", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
-    logAssetAction("device-history:start", `serial=${req.params.serialNumber || "unknown"}`);
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction(
+      "device-history:start",
+      `serial=${req.params.serialNumber || "unknown"} orgFilter=${scope.effectiveOrganisationId ?? "all"}`,
+    );
+    const result = await client.query(
       `SELECT fal.*,
               u.username AS changed_by_username
        FROM fridge_audit_log fal
        LEFT JOIN users u ON u.id = fal.changed_by
+       LEFT JOIN fridges f ON f.fridge_serial_number = fal.fridge_serial_number
        WHERE UPPER(fal.fridge_serial_number) = UPPER($1)
+         AND ($2::int IS NULL OR f.organisation_id = $2)
        ORDER BY fal.changed_at DESC`,
-      [req.params.serialNumber],
+      [req.params.serialNumber, scope.effectiveOrganisationId],
     );
     logAssetAction("device-history:success", `serial=${req.params.serialNumber || "unknown"} count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "device-history", error);
+  } finally {
+    client.release();
   }
 });
 
-app.get("/auditLog", requireAuth, async (_req, res) => {
+app.get("/auditLog", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
-    logAssetAction("audit-history:start");
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction("audit-history:start", `orgFilter=${scope.effectiveOrganisationId ?? "all"}`);
+    const result = await client.query(
       `SELECT fal.*,
               u.username AS changed_by_username
        FROM fridge_audit_log fal
        LEFT JOIN users u ON u.id = fal.changed_by
+       LEFT JOIN fridges f ON f.fridge_serial_number = fal.fridge_serial_number
+       WHERE ($1::int IS NULL OR f.organisation_id = $1)
        ORDER BY fal.changed_at DESC`,
+      [scope.effectiveOrganisationId],
     );
     logAssetAction("audit-history:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "audit-history", error);
+  } finally {
+    client.release();
   }
 });
 
@@ -1060,12 +1156,14 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
       String(req.user.id),
     ]);
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const fridgeRes = await client.query(
       `SELECT fridge_serial_number, iot_mac_address, c_number, verified
        FROM fridges
-       WHERE fridge_serial_number = $1`,
-      [serial]
+       WHERE fridge_serial_number = $1
+         AND ($2::int IS NULL OR organisation_id = $2)`,
+      [serial, scope.effectiveOrganisationId],
     );
 
     if (!fridgeRes.rows.length) {
@@ -1140,6 +1238,9 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "submit-manual-mismatch", error);
   } finally {
     client.release();
@@ -1147,9 +1248,14 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
 });
 
 app.get("/mismatches", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
     const rawStatus = String(req.query.status || "open").trim().toLowerCase();
-    logAssetAction("list-mismatches:start", `status=${rawStatus}`);
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction(
+      "list-mismatches:start",
+      `status=${rawStatus} orgFilter=${scope.effectiveOrganisationId ?? "all"}`,
+    );
     const from = req.query.from || null;
     const to = req.query.to || null;
     const serial = String(req.query.serial || "").trim();
@@ -1174,34 +1280,39 @@ app.get("/mismatches", requireAuth, async (req, res) => {
     }
 
     if (statusAliases.length) {
-      filters.push(`LOWER(status::text) = ANY($${index++}::text[])`);
+      filters.push(`LOWER(fm.status::text) = ANY($${index++}::text[])`);
       params.push(statusAliases);
     }
 
     if (from) {
-      filters.push(`received_at >= $${index++}::timestamptz`);
+      filters.push(`fm.received_at >= $${index++}::timestamptz`);
       params.push(`${from}T00:00:00Z`);
     }
 
     if (to) {
-      filters.push(`received_at <= $${index++}::timestamptz`);
+      filters.push(`fm.received_at <= $${index++}::timestamptz`);
       params.push(`${to}T23:59:59Z`);
     }
 
     if (serial) {
-      filters.push(`fridge_serial_number ILIKE $${index++}`);
+      filters.push(`fm.fridge_serial_number ILIKE $${index++}`);
       params.push(`%${serial}%`);
     }
 
+    const orgParamIndex = index++;
+    filters.push(`($${orgParamIndex}::int IS NULL OR f.organisation_id = $${orgParamIndex})`);
+    params.push(scope.effectiveOrganisationId);
+
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
-    const result = await pool.query(
-      `SELECT *,
-              db_mac AS expected_mac,
-              db_c_number AS expected_c_number
-       FROM fridge_mismatches
+    const result = await client.query(
+      `SELECT fm.*,
+              fm.db_mac AS expected_mac,
+              fm.db_c_number AS expected_c_number
+       FROM fridge_mismatches fm
+       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
        ${where}
-       ORDER BY received_at DESC
+       ORDER BY fm.received_at DESC
        LIMIT 500`,
       params,
     );
@@ -1209,7 +1320,12 @@ app.get("/mismatches", requireAuth, async (req, res) => {
     logAssetAction("list-mismatches:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "list-mismatches", error);
+  } finally {
+    client.release();
   }
 });
 
@@ -1228,12 +1344,15 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
     const { note = "" } = req.body;
 
     await client.query("BEGIN");
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const mismatchResult = await client.query(
-      `SELECT *
-       FROM fridge_mismatches
-       WHERE id = $1`,
-      [mismatchId],
+      `SELECT fm.*
+       FROM fridge_mismatches fm
+       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+       WHERE fm.id = $1
+         AND ($2::int IS NULL OR f.organisation_id = $2)`,
+      [mismatchId, scope.effectiveOrganisationId],
     );
 
     if (!mismatchResult.rows.length) {
@@ -1282,6 +1401,9 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "resolve-mismatch", error);
   } finally {
     client.release();
@@ -1289,6 +1411,7 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
 });
 
 app.delete("/mismatches/:id", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
     logAssetAction(
       "delete-mismatch:start",
@@ -1304,7 +1427,21 @@ app.delete("/mismatches/:id", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "A reason is required to delete a mismatch." });
     }
 
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    const mismatchResult = await client.query(
+      `SELECT fm.id
+       FROM fridge_mismatches fm
+       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+       WHERE fm.id = $1
+         AND ($2::int IS NULL OR f.organisation_id = $2)`,
+      [mismatchId, scope.effectiveOrganisationId],
+    );
+
+    if (!mismatchResult.rows.length) {
+      return res.status(404).json({ error: "Mismatch not found" });
+    }
+
+    const result = await client.query(
       `UPDATE fridge_mismatches
        SET status = 'delete',
            resolved_at = NOW(),
@@ -1322,7 +1459,12 @@ app.delete("/mismatches/:id", requireAuth, async (req, res) => {
     logAssetAction("delete-mismatch:success", `id=${req.params.id || "unknown"}`);
     return res.json({ ok: true, mismatch: result.rows[0] });
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "delete-mismatch", error);
+  } finally {
+    client.release();
   }
 });
 

@@ -25,11 +25,14 @@ export const PERMISSION_FLAGS = [
 ] as const;
 
 export type PermissionFlag = (typeof PERMISSION_FLAGS)[number];
+export type DataScope = "own_org" | "all_orgs";
 
 type PermissionRolePolicy = {
   description: string;
   // Optional inheritance to avoid repeating shared capabilities.
   inherits?: PermissionLevel[];
+  dataScope: DataScope;
+  canFilterOrganisation?: boolean;
   grants: PermissionFlag[];
 };
 
@@ -37,10 +40,13 @@ type PermissionRolePolicy = {
 export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = {
   Admin: {
     description: "Full administrative access.",
+    dataScope: "all_orgs",
+    canFilterOrganisation: true,
     grants: [...PERMISSION_FLAGS],
   },
   "Fleet Manager": {
     description: "Can manage asset operations and resolution workflows.",
+    dataScope: "own_org",
     inherits: ["Technician"],
     grants: [
       "assets.create",
@@ -53,17 +59,18 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
   },
   Technician: {
     description: "Operational user focused on inventory, checks, and mismatch handling.",
+    dataScope: "own_org",
     grants: [
       "assets.view",
       "history.view",
       "mismatches.view",
-      "mismatches.resolve",
       "device_checker.submit",
     ],
   },
   User: {
     description: "Basic read-only user.",
-    grants: ["assets.view", "history.view", "mismatches.view"],
+    dataScope: "own_org",
+    grants: ["assets.view"],
   },
 };
 
@@ -90,4 +97,12 @@ export function hasPermission(level: PermissionLevel, flag: PermissionFlag): boo
 
 export function listPermissions(level: PermissionLevel): PermissionFlag[] {
   return Array.from(resolveGrants(level)).sort();
+}
+
+export function getDataScope(level: PermissionLevel): DataScope {
+  return PERMISSION_POLICY[level].dataScope;
+}
+
+export function canFilterOrganisation(level: PermissionLevel): boolean {
+  return Boolean(PERMISSION_POLICY[level].canFilterOrganisation);
 }

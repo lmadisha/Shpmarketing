@@ -1,9 +1,20 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { Camera, ScanLine, Upload } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useAdminAssets } from "./admin-assets-context";
+import { findExactSerialMatch, normalizeSerialCandidate } from "./serial-lookup";
+import { decodeSerialFromImageFile, startCameraSerialScan, type CameraScannerSession } from "./serial-scanner";
 import { Fridge } from "./types";
 import { cleanCNumber, cleanHex12 } from "./utils";
 
@@ -19,8 +30,10 @@ type DeviceCheckSuccess = {
   fridge_serial_number: string;
 };
 
+type ScannerMode = "camera" | "upload";
+
 export function DeviceCheckerPage() {
-  const { adminRequest } = useAdminAssets();
+  const { adminRequest, withOrganisationFilter } = useAdminAssets();
 
   const [serials, setSerials] = useState<Fridge[]>([]);
   const [serialsLoading, setSerialsLoading] = useState(false);
@@ -36,6 +49,17 @@ export function DeviceCheckerPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<DeviceCheckSuccess | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerMode, setScannerMode] = useState<ScannerMode>("camera");
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [scannerInfo, setScannerInfo] = useState<string>("Point your camera at the serial barcode.");
+  const [scannerMatching, setScannerMatching] = useState(false);
+  const [scannerDecodingImage, setScannerDecodingImage] = useState(false);
+  const [cameraRestartKey, setCameraRestartKey] = useState(0);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const scannerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraSessionRef = useRef<CameraScannerSession | null>(null);
+  const handleScannedSerialRef = useRef<(value: string) => Promise<void>>(async () => {});
 
   useEffect(() => {
     const requestId = ++serialRequestIdRef.current;
@@ -45,8 +69,11 @@ export function DeviceCheckerPage() {
 
       try {
         const data = query
-          ? await adminRequest<Fridge[]>("loadDcSerials.search", `/searchFridges?searchTerm=${encodeURIComponent(query)}`)
-          : await adminRequest<Fridge[]>("loadDcSerials.list", "/getFridges");
+          ? await adminRequest<Fridge[]>(
+              "loadDcSerials.search",
+              withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(query)}`),
+            )
+          : await adminRequest<Fridge[]>("loadDcSerials.list", withOrganisationFilter("/getFridges"));
 
         if (serialRequestIdRef.current !== requestId) {
           return;
@@ -84,6 +111,117 @@ export function DeviceCheckerPage() {
     return () => window.clearTimeout(timer);
   }, [serialSelectOpen]);
 
+  const handleScannedSerial = async (candidate: string) => {
+    const normalizedCandidate = normalizeSerialCandidate(candidate);
+    if (!normalizedCandidate) {
+      setScannerError("Could not read a valid serial number from barcode.");
+      setScannerInfo("Try scanning again or use image upload.");
+      return;
+    }
+
+    setScannerMatching(true);
+    setScannerError(null);
+    setScannerInfo(`Detected ${normalizedCandidate}. Validating...`);
+
+    try {
+      const data = await adminRequest<Fridge[]>(
+        "deviceCheck:scanLookup",
+        withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(normalizedCandidate)}`),
+      );
+      const matchedSerial = findExactSerialMatch(normalizedCandidate, Array.isArray(data) ? data : []);
+
+      if (!matchedSerial) {
+        setScannerError(`Scanned serial ${normalizedCandidate} was not found in inventory.`);
+        setScannerInfo("Scan again, upload another image, or select from the dropdown.");
+        return;
+      }
+
+      setError(null);
+      setSuccess(null);
+      setForm((prev) => ({ ...prev, fridge_serial_number: matchedSerial }));
+      setSerialQuery(matchedSerial);
+      setScannerInfo(`Serial ${matchedSerial} selected.`);
+      setScannerOpen(false);
+    } catch (scanError) {
+      setScannerError(scanError instanceof Error ? scanError.message : "Could not validate scanned serial.");
+      setScannerInfo("Try again or select serial manually.");
+    } finally {
+      setScannerMatching(false);
+    }
+  };
+
+  handleScannedSerialRef.current = handleScannedSerial;
+
+  useEffect(() => {
+    if (!scannerOpen || scannerMode !== "camera") {
+      cameraSessionRef.current?.stop();
+      cameraSessionRef.current = null;
+      return;
+    }
+
+    const video = cameraVideoRef.current;
+    if (!video) {
+      return;
+    }
+
+    setScannerError(null);
+    setScannerInfo("Point your camera at the serial barcode.");
+    cameraSessionRef.current = startCameraSerialScan(video, {
+      onDecode: (value) => {
+        void handleScannedSerialRef.current(value);
+      },
+      onError: (message) => {
+        setScannerError(message);
+      },
+    });
+
+    return () => {
+      cameraSessionRef.current?.stop();
+      cameraSessionRef.current = null;
+    };
+  }, [cameraRestartKey, scannerMode, scannerOpen]);
+
+  useEffect(() => {
+    if (scannerOpen) {
+      return;
+    }
+    cameraSessionRef.current?.stop();
+    cameraSessionRef.current = null;
+  }, [scannerOpen]);
+
+  const handleImageScanFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setScannerDecodingImage(true);
+    setScannerError(null);
+    setScannerInfo(`Decoding barcode from ${file.name}...`);
+
+    try {
+      const decoded = await decodeSerialFromImageFile(file);
+      await handleScannedSerial(decoded);
+    } catch (decodeError) {
+      setScannerError(decodeError instanceof Error ? decodeError.message : "Could not decode barcode image.");
+      setScannerInfo("Upload a clearer barcode image and try again.");
+    } finally {
+      setScannerDecodingImage(false);
+      if (scannerFileInputRef.current) {
+        scannerFileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const resetScannerState = () => {
+    setScannerError(null);
+    setScannerInfo("Point your camera at the serial barcode.");
+    setScannerMode("camera");
+    setScannerDecodingImage(false);
+    setScannerMatching(false);
+    setCameraRestartKey((prev) => prev + 1);
+  };
+
   const submitDeviceCheck = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -114,7 +252,24 @@ export function DeviceCheckerPage() {
       <CardContent>
         <form onSubmit={(event) => void submitDeviceCheck(event)} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium">Serial Number</label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-sm font-medium">Serial Number</label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                disabled={submitting}
+                onClick={() => {
+                  setScannerOpen(true);
+                  setScannerError(null);
+                  setScannerInfo("Point your camera at the serial barcode.");
+                }}
+              >
+                <ScanLine className="h-4 w-4" />
+                Scan Serial
+              </Button>
+            </div>
             <Select
               open={serialSelectOpen}
               onOpenChange={(open) => {
@@ -204,6 +359,89 @@ export function DeviceCheckerPage() {
             {submitting ? "Submitting..." : `Submit ${form.fridge_serial_number}`}
           </Button>
         </form>
+
+        <Dialog
+          open={scannerOpen}
+          onOpenChange={(open) => {
+            setScannerOpen(open);
+            if (!open) {
+              resetScannerState();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Scan Serial Number</DialogTitle>
+              <DialogDescription>
+                Use camera scan or upload a barcode image. Only serials in inventory can be selected.
+              </DialogDescription>
+            </DialogHeader>
+
+            <Tabs value={scannerMode} onValueChange={(value) => setScannerMode(value as ScannerMode)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="camera" disabled={scannerDecodingImage || scannerMatching}>
+                  <Camera className="h-4 w-4" />
+                  Camera
+                </TabsTrigger>
+                <TabsTrigger value="upload" disabled={scannerDecodingImage || scannerMatching}>
+                  <Upload className="h-4 w-4" />
+                  Upload Image
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="camera" className="space-y-3">
+                <video
+                  ref={cameraVideoRef}
+                  className="h-64 w-full rounded-md border bg-black object-cover"
+                  autoPlay
+                  muted
+                  playsInline
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">If scanning does not start, restart the camera.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={scannerDecodingImage || scannerMatching}
+                    onClick={() => {
+                      setScannerError(null);
+                      setCameraRestartKey((prev) => prev + 1);
+                    }}
+                  >
+                    Restart Camera
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="upload" className="space-y-3">
+                <Input
+                  ref={scannerFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => void handleImageScanFile(event)}
+                  disabled={scannerDecodingImage || scannerMatching}
+                />
+                <p className="text-xs text-muted-foreground">Upload a clear image where the barcode is visible.</p>
+              </TabsContent>
+            </Tabs>
+
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">{scannerInfo}</p>
+              {scannerError ? (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {scannerError}
+                </p>
+              ) : null}
+              {(scannerMatching || scannerDecodingImage) ? (
+                <p className="text-sm text-blue-700">
+                  {scannerDecodingImage ? "Decoding image..." : "Validating scanned serial..."}
+                </p>
+              ) : null}
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

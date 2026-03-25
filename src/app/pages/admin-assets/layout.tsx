@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { cn } from "../../components/ui/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 
 const subNavItems = [
   { label: "Add Fridge", to: "/admin/assets/add" },
@@ -185,16 +186,43 @@ function SharedModals() {
 }
 
 function AdminAssetsLayoutInner() {
+  const {
+    isOrganisationFilterEnabled,
+    organisationFilter,
+    setOrganisationFilter,
+    organisationOptions,
+    organisationsLoading,
+  } = useAdminAssets();
+
   return (
     <div className="flex flex-col min-h-full">
       {/* Page Header */}
       <div className="border-b border-gray-200 bg-white px-4 md:px-6 lg:px-8 pt-6 pb-0">
-        <div className="flex items-center gap-3 mb-4">
-          <Refrigerator className="w-6 h-6 text-blue-600" />
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Asset Manager</h1>
-            <p className="text-sm text-gray-500">Store, register, and manage fridge device identities</p>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <Refrigerator className="w-6 h-6 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">Asset Manager</h1>
+              <p className="text-sm text-gray-500">Store, register, and manage fridge device identities</p>
+            </div>
           </div>
+          {isOrganisationFilterEnabled ? (
+            <div className="min-w-[240px]">
+              <Select value={organisationFilter || "all"} onValueChange={(value) => setOrganisationFilter(value === "all" ? "" : value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder={organisationsLoading ? "Loading organisations..." : "Filter organisation"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All organisations</SelectItem>
+                  {organisationOptions.map((org) => (
+                    <SelectItem key={org.id} value={String(org.id)}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </div>
 
         {/* Sub-navigation tabs */}

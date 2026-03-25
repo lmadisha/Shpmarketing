@@ -382,11 +382,21 @@ Purpose: list all fridges.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional, admin-only filter)
+
 Responses:
 
 - 200: array of fridge rows
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "list-fridges failed: ..." }
+
+Notes:
+
+- Non-admin users are always scoped to their own `users.organisation_id`.
+- Admin users can see all organisations by default and may pass `organisation_id` to filter.
 
 ## GET /searchFridges
 
@@ -397,10 +407,12 @@ Auth: Bearer.
 Query params:
 
 - searchTerm: string
+- organisation_id: number | "all" (optional, admin-only filter)
 
 Responses:
 
 - 200: array of fridge rows
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "search-fridges failed: ..." }
 
@@ -419,6 +431,7 @@ Responses:
 
 - 200: updated fridge row
 - 404: no fridge found
+- 400: user organisation not configured (non-admin)
 - 401
 - 500: { "error": "update-device failed: ..." }
 
@@ -432,6 +445,7 @@ Responses:
 
 - 200: { "message": "Fridge deleted successfully", "device": { ... } }
 - 404: fridge not found
+- 400: user organisation not configured (non-admin)
 - 401
 - 500: { "error": "delete-device failed: ..." }
 
@@ -441,9 +455,14 @@ Purpose: device-specific audit history.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional, admin-only filter)
+
 Responses:
 
 - 200: array ordered by changed_at DESC; includes `changed_by_username`
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "device-history failed: ..." }
 
@@ -453,9 +472,14 @@ Purpose: global audit history.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional, admin-only filter)
+
 Responses:
 
 - 200: array ordered by changed_at DESC; includes `changed_by_username`
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "audit-history failed: ..." }
 
@@ -531,6 +555,7 @@ Notes:
   fridge is updated with `verified=false` and `verified_at=NOW()`.
 - Runs in transaction with `myapp.current_user_id` set for audit trigger context.
 - sender_id is set to req.user.id (the authenticated user who submitted).
+- Non-admin users can only submit against fridges in their own organisation.
 
 ## GET /mismatches
 
@@ -544,10 +569,12 @@ Query params:
 - from: YYYY-MM-DD (optional)
 - to: YYYY-MM-DD (optional)
 - serial: string (optional, partial match)
+- organisation_id: number | "all" (optional, admin-only filter)
 
 Responses:
 
 - 200: array ordered by received_at DESC, max 500 rows
+- 400: invalid status or organisation filter
 - 401
 - 500: { "error": "list-mismatches failed: ..." }
 
@@ -578,6 +605,7 @@ Notes:
 
 - On resolve, server updates fridge `iot_mac_address` and `c_number` from mismatch `received_mac` and `received_c_number` (when present).
 - On resolve, server always sets fridge `verified = true` and `verified_at = NOW()`.
+- Non-admin users can only resolve mismatches that belong to their own organisation.
 
 ## DELETE /mismatches/:id
 
@@ -596,6 +624,10 @@ Responses:
 - 404: mismatch not found
 - 401
 - 500: { "error": "delete-mismatch failed: ..." }
+
+Notes:
+
+- Non-admin users can only delete mismatches that belong to their own organisation.
 
 ## Fallback Route
 

@@ -5,6 +5,12 @@ export type Fridge = {
   verified: boolean;
 };
 
+export type OrganisationOption = {
+  id: number;
+  name: string;
+  domin: string | null;
+};
+
 export type MismatchStatus = "open" | "resolve" | "cancel" | "delete" | "all";
 
 export type Mismatch = {
