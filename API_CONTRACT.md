@@ -25,7 +25,7 @@ This document describes the Operations API used by the Shpmarketing application.
 
 - id: number
 - username: string
-- permissions: Admin | Fleet Manager | Technician | User
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User
 
 ### Common auth-related responses
 
@@ -71,7 +71,7 @@ Input body:
 - username: string (required)
 - password: string (required, min 8)
 - full_name: string (required)
-- permissions: Admin | Fleet Manager | Technician | User (required)
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User (required)
 - organisation_id: number (required)
 
 Responses:
@@ -175,7 +175,7 @@ Input body:
 - username: string (required)
 - password: string (required)
 - full_name: string (required)
-- permissions: Admin | Fleet Manager | Technician | User (required)
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User (required)
 - organisation_id: number (optional)
 
 Responses:
@@ -194,7 +194,7 @@ Auth: Bearer + Admin.
 
 Input body:
 
-- permissions: Admin | Fleet Manager | Technician | User
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User
 
 Responses:
 
@@ -639,7 +639,7 @@ Any unknown route returns:
 
 - fridges.fridge_serial_number is a primary key in database schema.
 - fridges.iot_mac_address is unique (including partial unique index for non-empty values).
-- users.permissions is an enum: Admin | Fleet Manager | Technician | User.
+- users.permissions is an enum: Admin | Fleet Manager | Factory | Outlet | Technician | User.
 - organisation has optional `domin` column (unique when provided).
 - Fridge change auditing is trigger-based via fridge_audit_log.
 - fridge_mismatches.sender_id references users(id) and records the admin user who manually submitted the mismatch via POST /mismatches/manual.

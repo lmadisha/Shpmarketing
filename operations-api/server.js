@@ -90,11 +90,14 @@ function requireMobileKey(req, res, next) {
 
 function normalizePermission(value) {
   const permission = String(value || "").trim().toLowerCase();
+  const compactPermission = permission.replace(/[\s_-]+/g, "");
 
-  if (permission === "admin") return "Admin";
-  if (permission === "fleet manager" || permission === "intermediate") return "Fleet Manager";
-  if (permission === "technician") return "Technician";
-  if (permission === "users" || permission === "user" || permission === "basic") return "User";
+  if (compactPermission === "admin") return "Admin";
+  if (compactPermission === "fleetmanager" || compactPermission === "intermediate") return "Fleet Manager";
+  if (compactPermission === "factory" || compactPermission === "factorymanager") return "Factory";
+  if (compactPermission === "outlet" || compactPermission === "outletmanager") return "Outlet";
+  if (compactPermission === "technician") return "Technician";
+  if (compactPermission === "users" || compactPermission === "user" || compactPermission === "basic") return "User";
 
   return null;
 }

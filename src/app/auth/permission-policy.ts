@@ -4,6 +4,8 @@
 export const USER_PERMISSION_LEVELS = [
   "Admin",
   "Fleet Manager",
+  "Factory",
+  "Outlet",
   "Technician",
   "User",
 ] as const;
@@ -47,7 +49,32 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
   "Fleet Manager": {
     description: "Can manage asset operations and resolution workflows.",
     dataScope: "own_org",
-    inherits: ["Technician"],
+    grants: [
+      "assets.create",
+      "assets.edit",
+      "assets.delete",
+      "users.view",
+      "mismatches.resolve",
+      "mismatches.delete",
+    ],
+  },
+  Factory: {
+    description: "Factory role with the same capabilities as Fleet Manager.",
+    dataScope: "own_org",
+    inherits: ["Fleet Manager"],
+    grants: [
+      "assets.create",
+      "assets.edit",
+      "assets.delete",
+      "users.view",
+      "mismatches.resolve",
+      "mismatches.delete",
+    ],
+  },
+  Outlet: {
+    description: "Outlet role with the same capabilities as Fleet Manager.",
+    dataScope: "own_org",
+    inherits: ["Fleet Manager"],
     grants: [
       "assets.create",
       "assets.edit",
@@ -70,7 +97,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
   User: {
     description: "Basic read-only user.",
     dataScope: "own_org",
-    grants: ["assets.view"],
+    grants: [],
   },
 };
 
