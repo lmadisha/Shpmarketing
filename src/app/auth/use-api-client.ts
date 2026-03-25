@@ -23,7 +23,7 @@ export function useApiClient() {
       },
     });
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       logout();
       throw new Error("Your session has expired. Please sign in again.");
     }
@@ -47,6 +47,10 @@ export function useApiClient() {
       const fallbackMessage = rawBody
         ? `${response.status} ${response.statusText}: ${rawBody.slice(0, 220)}`
         : `${response.status} ${response.statusText}`;
+
+      if (response.status === 403) {
+        throw new Error(structuredMessage || "You do not have permission for this action.");
+      }
 
       throw new Error(structuredMessage || fallbackMessage || "Request failed");
     }

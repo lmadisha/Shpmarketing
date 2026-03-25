@@ -2,13 +2,8 @@ import { Link, useLocation } from "react-router";
 import { useState } from "react";
 import {
   LayoutDashboard,
-  Trophy,
   FileBarChart,
-  Wrench,
-  MapPin,
-  Map,
   Server,
-  BarChart3,
   Settings,
   Refrigerator,
   Menu,
@@ -20,6 +15,7 @@ import {
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
 import { useAuth } from "../../auth/auth-context";
+import { hasPermission } from "../../auth/permission-policy";
 
 type NavigationItem = {
   name: string;
@@ -47,6 +43,16 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { session, logout } = useAuth();
+  const permissionLevel = session?.user.permissions;
+  const canAccessAssetManager = permissionLevel
+    ? ([
+      "assets.create",
+      "assets.view",
+      "mismatches.view",
+      "device_checker.submit",
+      "history.view",
+    ] as const).some((flag) => hasPermission(permissionLevel, flag))
+    : false;
 
   return (
     <>
@@ -94,6 +100,10 @@ export function Sidebar() {
         </div>
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
+            if (item.href === "/admin/assets" && !canAccessAssetManager) {
+              return null;
+            }
+
             const Icon = item.icon;
             const isActive =
               location.pathname === item.href ||

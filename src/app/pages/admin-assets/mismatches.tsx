@@ -7,6 +7,7 @@ import {
 } from "../../components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, RefreshCw, Search } from "lucide-react";
+import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
 import { downloadCsv } from "./utils";
 import { Mismatch, MismatchSortKey, MismatchStatus } from "./types";
@@ -20,7 +21,17 @@ export function MismatchesPage() {
     paginatedMismatches, sortedMismatches, mismatchTotalPages, safeMismatchPage,
     mismatchCsvRows,
     openResolveMismatch, openDeleteMismatch,
+    canViewMismatches, canResolveMismatches, canDeleteMismatches,
   } = useAdminAssets();
+
+  if (!canViewMismatches) {
+    return (
+      <AccessDeniedCard
+        title="Mismatches access denied"
+        description="You do not have permission to view mismatch records."
+      />
+    );
+  }
 
   const renderSortIcon = (key: MismatchSortKey) => {
     if (mismatchSort.key !== key) {
@@ -189,12 +200,16 @@ export function MismatchesPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex gap-2 flex-wrap justify-end">
-                      <Button size="sm" variant="outline" disabled={!canMutate} onClick={() => openResolveMismatch(row)}>
-                        Resolve
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={!canMutate} onClick={() => openDeleteMismatch(row)}>
-                        Delete
-                      </Button>
+                      {canResolveMismatches ? (
+                        <Button size="sm" variant="outline" disabled={!canMutate} onClick={() => openResolveMismatch(row)}>
+                          Resolve
+                        </Button>
+                      ) : null}
+                      {canDeleteMismatches ? (
+                        <Button size="sm" variant="outline" disabled={!canMutate} onClick={() => openDeleteMismatch(row)}>
+                          Delete
+                        </Button>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>

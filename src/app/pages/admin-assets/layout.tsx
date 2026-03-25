@@ -1,6 +1,7 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Navigate, Outlet, useLocation } from "react-router";
 import { Refrigerator } from "lucide-react";
 import { AdminAssetsProvider, useAdminAssets } from "./admin-assets-context";
+import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import {
   Dialog,
   DialogContent,
@@ -24,11 +25,11 @@ import { cn } from "../../components/ui/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 
 const subNavItems = [
-  { label: "Add Fridge", to: "/admin/assets/add" },
-  { label: "Inventory", to: "/admin/assets/inventory" },
-  { label: "Mismatches", to: "/admin/assets/mismatches" },
-  { label: "Device Checker", to: "/admin/assets/device-checker" },
-  { label: "History", to: "/admin/assets/history" },
+  { label: "Add Fridge", to: "/admin/assets/add", permissionKey: "canCreateAssets" as const },
+  { label: "Inventory", to: "/admin/assets/inventory", permissionKey: "canViewAssets" as const },
+  { label: "Mismatches", to: "/admin/assets/mismatches", permissionKey: "canViewMismatches" as const },
+  { label: "Device Checker", to: "/admin/assets/device-checker", permissionKey: "canSubmitDeviceCheck" as const },
+  { label: "History", to: "/admin/assets/history", permissionKey: "canViewHistory" as const },
 ];
 
 // Shared modals are rendered at this level so they're available from all child pages.
@@ -186,13 +187,47 @@ function SharedModals() {
 }
 
 function AdminAssetsLayoutInner() {
+  const location = useLocation();
   const {
     isOrganisationFilterEnabled,
     organisationFilter,
     setOrganisationFilter,
     organisationOptions,
     organisationsLoading,
+    canCreateAssets,
+    canViewAssets,
+    canViewMismatches,
+    canSubmitDeviceCheck,
+    canViewHistory,
   } = useAdminAssets();
+  const permissionByKey = {
+    canCreateAssets,
+    canViewAssets,
+    canViewMismatches,
+    canSubmitDeviceCheck,
+    canViewHistory,
+  };
+  const visibleSubNavItems = subNavItems.filter((item) => permissionByKey[item.permissionKey]);
+  const hasVisibleTab = visibleSubNavItems.length > 0;
+  const currentPath = location.pathname;
+  const currentPathIsAllowed = visibleSubNavItems.some(
+    (item) => currentPath === item.to || currentPath.startsWith(`${item.to}/`),
+  );
+
+  if (!hasVisibleTab) {
+    return (
+      <div className="p-4 md:p-6 lg:p-8">
+        <AccessDeniedCard
+          title="Asset Manager access denied"
+          description="You do not have permission to access any Asset Manager tabs."
+        />
+      </div>
+    );
+  }
+
+  if (!currentPathIsAllowed) {
+    return <Navigate to={visibleSubNavItems[0].to} replace />;
+  }
 
   return (
     <div className="flex flex-col min-h-full">
@@ -227,7 +262,7 @@ function AdminAssetsLayoutInner() {
 
         {/* Sub-navigation tabs */}
         <nav className="flex gap-0 -mb-px">
-          {subNavItems.map((item) => (
+          {visibleSubNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

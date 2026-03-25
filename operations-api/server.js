@@ -73,11 +73,125 @@ function requireAuth(req, res, next) {
   }
 }
 
-function requireAdmin(req, res, next) {
-  if (!req.user || req.user.permissions !== "Admin") {
-    return res.status(403).json({ error: "Admin permission required" });
+const PERMISSION_FLAGS = Object.freeze([
+  "users.manage",
+  "users.view",
+  "assets.create",
+  "assets.edit",
+  "assets.delete",
+  "assets.view",
+  "mismatches.resolve",
+  "mismatches.delete",
+  "mismatches.view",
+  "history.view",
+  "device_checker.submit",
+]);
+
+const PERMISSION_POLICY = Object.freeze({
+  Admin: {
+    inherits: [],
+    grants: [...PERMISSION_FLAGS],
+  },
+  "Fleet Manager": {
+    inherits: [],
+    grants: [
+      "assets.create",
+      "assets.edit",
+      "assets.delete",
+      "assets.view",
+      "mismatches.resolve",
+      "mismatches.delete",
+      "mismatches.view",
+      "history.view",
+      "device_checker.submit",
+    ],
+  },
+  Factory: {
+    inherits: [],
+    grants: [
+      "assets.create",
+      "assets.edit",
+      "assets.delete",
+      "mismatches.view",
+    ],
+  },
+  Outlet: {
+    inherits: [],
+    grants: [
+      "assets.create",
+      "assets.edit",
+      "assets.delete",
+      "mismatches.view",
+    ],
+  },
+  Technician: {
+    inherits: [],
+    grants: [
+      "mismatches.view",
+      "device_checker.submit",
+    ],
+  },
+  User: {
+    inherits: [],
+    grants: [],
+  },
+});
+
+function resolvePermissionGrants(level, visited = new Set()) {
+  if (!level || visited.has(level)) {
+    return new Set();
   }
-  return next();
+
+  const policy = PERMISSION_POLICY[level];
+  if (!policy) {
+    return new Set();
+  }
+
+  visited.add(level);
+  const grants = new Set(policy.grants || []);
+
+  for (const inheritedLevel of policy.inherits || []) {
+    const inheritedGrants = resolvePermissionGrants(inheritedLevel, visited);
+    inheritedGrants.forEach((grant) => grants.add(grant));
+  }
+
+  return grants;
+}
+
+function hasUserPermission(user, flag) {
+  if (!user || !flag || !PERMISSION_FLAGS.includes(flag)) {
+    return false;
+  }
+  return resolvePermissionGrants(user.permissions).has(flag);
+}
+
+function requirePermission(flag) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Missing user context" });
+    }
+
+    if (!hasUserPermission(req.user, flag)) {
+      return res.status(403).json({ error: `Permission required: ${flag}` });
+    }
+
+    return next();
+  };
+}
+
+function requireAnyPermission(flags) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Missing user context" });
+    }
+
+    const permitted = (flags || []).some((flag) => hasUserPermission(req.user, flag));
+    if (!permitted) {
+      return res.status(403).json({ error: `Any of these permissions required: ${(flags || []).join(", ")}` });
+    }
+
+    return next();
+  };
 }
 
 function requireMobileKey(req, res, next) {
@@ -483,7 +597,7 @@ app.get("/profile", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/users", requireAuth, requireAdmin, async (_req, res) => {
+app.get("/users", requireAuth, requirePermission("users.view"), async (_req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, username, full_name, permissions, is_active, created_at, organisation_id
@@ -497,7 +611,7 @@ app.get("/users", requireAuth, requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/users", requireAuth, requireAdmin, async (req, res) => {
+app.post("/users", requireAuth, requirePermission("users.manage"), async (req, res) => {
   try {
     const { username, password, full_name, permissions, organisation_id } = req.body;
 
@@ -535,7 +649,7 @@ app.post("/users", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.put("/users/:id/permissions", requireAuth, requireAdmin, async (req, res) => {
+app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage"), async (req, res) => {
   try {
     const permission = normalizePermission(req.body.permissions);
     if (!permission) {
@@ -565,9 +679,9 @@ app.put("/users/:id/password", requireAuth, async (req, res) => {
   try {
     const targetId = Number(req.params.id);
     const isSelf = req.user.id === targetId;
-    const isAdmin = req.user.permissions === "Admin";
+    const canManageUsers = hasUserPermission(req.user, "users.manage");
 
-    if (!isSelf && !isAdmin) {
+    if (!isSelf && !canManageUsers) {
       return res.status(403).json({ error: "Not allowed" });
     }
 
@@ -596,7 +710,7 @@ app.put("/users/:id/password", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/newDevice", requireAuth, async (req, res) => {
+app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (req, res) => {
   const client = await pool.connect();
   try {
     const { mac_address, fridge_serial_number, c_number } = req.body;
@@ -630,7 +744,7 @@ app.post("/newDevice", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/newDevice/bulk", requireAuth, (req, res) => {
+app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (req, res) => {
   upload.single("file")(req, res, async (uploadError) => {
     if (uploadError) {
       return res.status(400).json({ error: uploadError.message || "Invalid upload." });
@@ -799,7 +913,7 @@ app.post("/newDevice/bulk", requireAuth, (req, res) => {
   });
 });
 
-app.post("/newDevice/bulk/preview", requireAuth, (req, res) => {
+app.post("/newDevice/bulk/preview", requireAuth, requirePermission("assets.create"), (req, res) => {
   upload.single("file")(req, res, async (uploadError) => {
     if (uploadError) {
       return res.status(400).json({ error: uploadError.message || "Invalid upload." });
@@ -842,7 +956,11 @@ app.post("/newDevice/bulk/preview", requireAuth, (req, res) => {
   });
 });
 
-app.get("/getFridges", requireAuth, async (req, res) => {
+app.get(
+  "/getFridges",
+  requireAuth,
+  requireAnyPermission(["assets.view", "device_checker.submit"]),
+  async (req, res) => {
   const client = await pool.connect();
   try {
     const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
@@ -870,7 +988,11 @@ app.get("/getFridges", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/searchFridges", requireAuth, async (req, res) => {
+app.get(
+  "/searchFridges",
+  requireAuth,
+  requireAnyPermission(["assets.view", "device_checker.submit"]),
+  async (req, res) => {
   const client = await pool.connect();
   try {
     const searchTerm = String(req.query.searchTerm || "");
@@ -903,7 +1025,7 @@ app.get("/searchFridges", requireAuth, async (req, res) => {
   }
 });
 
-app.put("/updateDevice/:serialNumber", requireAuth, async (req, res) => {
+app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.edit"), async (req, res) => {
   const client = await pool.connect();
   try {
     logAssetAction(
@@ -945,7 +1067,7 @@ app.put("/updateDevice/:serialNumber", requireAuth, async (req, res) => {
   }
 });
 
-app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
+app.delete("/deleteDevice/:serialNumber", requireAuth, requirePermission("assets.delete"), async (req, res) => {
   const client = await pool.connect();
   try {
     logAssetAction(
@@ -985,7 +1107,7 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/auditLog/:serialNumber", requireAuth, async (req, res) => {
+app.get("/auditLog/:serialNumber", requireAuth, requirePermission("history.view"), async (req, res) => {
   const client = await pool.connect();
   try {
     const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
@@ -1016,7 +1138,7 @@ app.get("/auditLog/:serialNumber", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/auditLog", requireAuth, async (req, res) => {
+app.get("/auditLog", requireAuth, requirePermission("history.view"), async (req, res) => {
   const client = await pool.connect();
   try {
     const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
@@ -1135,7 +1257,7 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
   }
 });
 
-app.post("/mismatches/manual", requireAuth, async (req, res) => {
+app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.submit"), async (req, res) => {
   const client = await pool.connect();
   try {
     const serial = String(req.body?.fridge_serial_number || "").trim();
@@ -1250,7 +1372,7 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/mismatches", requireAuth, async (req, res) => {
+app.get("/mismatches", requireAuth, requirePermission("mismatches.view"), async (req, res) => {
   const client = await pool.connect();
   try {
     const rawStatus = String(req.query.status || "open").trim().toLowerCase();
@@ -1332,7 +1454,7 @@ app.get("/mismatches", requireAuth, async (req, res) => {
   }
 });
 
-app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
+app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.resolve"), async (req, res) => {
   const client = await pool.connect();
   try {
     logAssetAction(
@@ -1413,7 +1535,7 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
   }
 });
 
-app.delete("/mismatches/:id", requireAuth, async (req, res) => {
+app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"), async (req, res) => {
   const client = await pool.connect();
   try {
     logAssetAction(

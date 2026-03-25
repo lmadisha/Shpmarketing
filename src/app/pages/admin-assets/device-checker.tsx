@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useAdminAssets } from "./admin-assets-context";
@@ -33,7 +34,7 @@ type DeviceCheckSuccess = {
 type ScannerMode = "camera" | "upload";
 
 export function DeviceCheckerPage() {
-  const { adminRequest, withOrganisationFilter } = useAdminAssets();
+  const { adminRequest, withOrganisationFilter, canSubmitDeviceCheck } = useAdminAssets();
 
   const [serials, setSerials] = useState<Fridge[]>([]);
   const [serialsLoading, setSerialsLoading] = useState(false);
@@ -228,6 +229,12 @@ export function DeviceCheckerPage() {
     setSuccess(null);
     setSubmitting(true);
 
+    if (!canSubmitDeviceCheck) {
+      setError("You do not have permission to submit device checks.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const result = await adminRequest<DeviceCheckSuccess>("deviceCheck:submit", "/mismatches/manual", {
         method: "POST",
@@ -242,6 +249,15 @@ export function DeviceCheckerPage() {
       setSubmitting(false);
     }
   };
+
+  if (!canSubmitDeviceCheck) {
+    return (
+      <AccessDeniedCard
+        title="Device Checker access denied"
+        description="You do not have permission to run device checks."
+      />
+    );
+  }
 
   return (
     <Card className="max-w-2xl">
