@@ -8,13 +8,14 @@ import {
 } from "react";
 import { loggedFetch } from "./logged-fetch";
 
-type PermissionLevel = "Admin" | "Intermediate" | "Basic";
+type PermissionLevel = "Admin" | "Fleet Manager" | "Technician" | "User";
 
 type AuthUser = {
   id: number;
   username: string;
   full_name?: string | null;
   permissions: PermissionLevel;
+  organisation_id?: number | null;
 };
 
 type AuthSession = {
@@ -32,6 +33,7 @@ type SignupPayload = {
   username: string;
   password: string;
   permissions: PermissionLevel;
+  organisation_id: number;
 };
 
 type AuthContextValue = {

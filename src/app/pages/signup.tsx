@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -6,6 +6,17 @@ import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { PermissionLevel, useAuth } from "../auth/auth-context";
+import { loggedFetch } from "../auth/logged-fetch";
+
+const API_BASE =
+  (import.meta.env.VITE_OPERATIONS_API_BASE as string | undefined) ||
+  "http://localhost:5001";
+
+type OrganisationOption = {
+  id: number;
+  name: string;
+  domin: string | null;
+};
 
 export function SignupPage() {
   const { signup } = useAuth();
@@ -15,15 +26,50 @@ export function SignupPage() {
     full_name: "",
     username: "",
     password: "",
-    permissions: "Basic" as PermissionLevel,
+    permissions: "User" as PermissionLevel,
+    organisation_id: "",
   });
+  const [organisations, setOrganisations] = useState<OrganisationOption[]>([]);
+  const [organisationsLoading, setOrganisationsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const loadOrganisations = async () => {
+      setOrganisationsLoading(true);
+      try {
+        const response = await loggedFetch(`${API_BASE}/organisations`);
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(
+            (data && typeof data === "object" && "error" in data && String(data.error)) ||
+            "Could not load organisations",
+          );
+        }
+
+        setOrganisations(Array.isArray(data) ? data : []);
+      } catch (loadError) {
+        const message = loadError instanceof Error ? loadError.message : "Could not load organisations";
+        setError(message);
+      } finally {
+        setOrganisationsLoading(false);
+      }
+    };
+
+    void loadOrganisations();
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
     setError("");
+
+    const organisationId = Number(form.organisation_id);
+    if (!Number.isInteger(organisationId) || organisationId <= 0) {
+      setError("Please select an organisation.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       await signup({
@@ -31,6 +77,7 @@ export function SignupPage() {
         username: form.username.trim(),
         password: form.password,
         permissions: form.permissions,
+        organisation_id: organisationId,
       });
       navigate("/", { replace: true });
     } catch (submitError) {
@@ -95,9 +142,30 @@ export function SignupPage() {
                   <SelectValue placeholder="Select permission" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Basic">Basic</SelectItem>
-                  <SelectItem value="Intermediate">Intermediate</SelectItem>
                   <SelectItem value="Admin">Admin</SelectItem>
+                  <SelectItem value="Fleet Manager">Fleet Manager</SelectItem>
+                  <SelectItem value="Technician">Technician</SelectItem>
+                  <SelectItem value="User">User</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Organisation</Label>
+              <Select
+                value={form.organisation_id}
+                onValueChange={(value) => setForm((prev) => ({ ...prev, organisation_id: value }))}
+                disabled={organisationsLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={organisationsLoading ? "Loading organisations..." : "Select organisation"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {organisations.map((organisation) => (
+                    <SelectItem key={organisation.id} value={String(organisation.id)}>
+                      {organisation.name}{organisation.domin ? ` (${organisation.domin})` : ""}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

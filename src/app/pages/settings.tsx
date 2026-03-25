@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Settings as SettingsIcon, Bell, User, Palette, Database } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -5,8 +6,48 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
+import { useApiClient } from "../auth/use-api-client";
+
+type ProfileDetails = {
+  id: number;
+  username: string;
+  full_name: string | null;
+  permissions: string;
+  organisation_id: number | null;
+  organisation_name: string | null;
+  organisation_domin: string | null;
+};
 
 export function SettingsPage() {
+  const { request } = useApiClient();
+  const [profile, setProfile] = useState<ProfileDetails | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+
+  const loadProfile = async () => {
+    setProfileLoading(true);
+    setProfileError("");
+    try {
+      const data = await request<ProfileDetails>("/profile");
+      setProfile(data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load profile details.";
+      setProfileError(message);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProfile();
+    // request comes from hook context and is stable enough for initial load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fullName = String(profile?.full_name || "").trim();
+  const [firstName = "", ...lastNameParts] = fullName ? fullName.split(/\s+/) : [];
+  const lastName = lastNameParts.join(" ");
+
   return (
     <div className="p-8 max-w-[1440px] mx-auto">
       <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-2 mb-6">
@@ -26,14 +67,16 @@ export function SettingsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {profileError ? <p className="text-sm text-red-600">{profileError}</p> : null}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="first-name">First Name</Label>
-                  <Input id="first-name" defaultValue="John" className="mt-1.5" />
+                  <Input id="first-name" value={firstName} className="mt-1.5" readOnly disabled={profileLoading} />
                 </div>
                 <div>
                   <Label htmlFor="last-name">Last Name</Label>
-                  <Input id="last-name" defaultValue="Smith" className="mt-1.5" />
+                  <Input id="last-name" value={lastName} className="mt-1.5" readOnly disabled={profileLoading} />
                 </div>
               </div>
               <div>
@@ -41,20 +84,45 @@ export function SettingsPage() {
                 <Input
                   id="email"
                   type="email"
-                  defaultValue="sebastian@frostlink.com"
+                  value={profile?.username || ""}
                   className="mt-1.5"
+                  readOnly
+                  disabled={profileLoading}
                 />
               </div>
               <div>
                 <Label htmlFor="role">Role</Label>
                 <Input
                   id="role"
-                  defaultValue="Fleet Manager"
-                  disabled
+                  value={profile?.permissions || ""}
                   className="mt-1.5"
+                  readOnly
+                  disabled={profileLoading}
                 />
               </div>
-              <Button>Save Changes</Button>
+              <div>
+                <Label htmlFor="organisation">Organisation</Label>
+                <Input
+                  id="organisation"
+                  value={profile?.organisation_name || ""}
+                  className="mt-1.5"
+                  readOnly
+                  disabled={profileLoading}
+                />
+              </div>
+              <div>
+                <Label htmlFor="organisation-domain">Organisation Domain</Label>
+                <Input
+                  id="organisation-domain"
+                  value={profile?.organisation_domin || ""}
+                  className="mt-1.5"
+                  readOnly
+                  disabled={profileLoading}
+                />
+              </div>
+              <Button type="button" variant="outline" onClick={() => void loadProfile()} disabled={profileLoading}>
+                {profileLoading ? "Refreshing..." : "Refresh Profile"}
+              </Button>
             </CardContent>
           </Card>
 

@@ -3,14 +3,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../../components/ui/table";
 import { Download, Plus } from "lucide-react";
+import { useAuth } from "../../auth/auth-context";
 import { useAdminAssets } from "./admin-assets-context";
 import { cleanHex12, cleanCNumber, downloadCsv } from "./utils";
 
 export function AddFridgePage() {
+  const { session } = useAuth();
   const { loadFridges, loadAllHistory, searchTerm, adminRequest } = useAdminAssets();
+  const organisationId = session?.user.organisation_id ?? null;
 
   const [createForm, setCreateForm] = useState({
     fridge_serial_number: "",
@@ -26,6 +37,8 @@ export function AddFridgePage() {
   const [bulkPreviewLoading, setBulkPreviewLoading] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkErrors, setBulkErrors] = useState<Array<{ rowNumber: number; reason: string; message: string; serial?: string }>>([]);
+  const [bulkSkippedRows, setBulkSkippedRows] = useState<Array<{ rowNumber: number; reason: string; message: string; serial?: string }>>([]);
+  const [skippedModalOpen, setSkippedModalOpen] = useState(false);
   const [bulkPreviewRows, setBulkPreviewRows] = useState<Array<{ rowNumber: number; fridge_serial_number: string; mac_address: string | null; c_number: string | null }>>([]);
   const [bulkPreviewSummary, setBulkPreviewSummary] = useState<{ totalRows: number; previewRows: number; excludedRows: number } | null>(null);
 
@@ -47,6 +60,10 @@ export function AddFridgePage() {
     event.preventDefault();
     const { isValid, serial, mac, cNumber } = validateCreate();
     if (!isValid) return;
+    if (!organisationId) {
+      setCreateResult("Could not add fridge. Your account has no organisation assigned.");
+      return;
+    }
 
     setCreating(true);
     setCreateResult("");
@@ -54,7 +71,12 @@ export function AddFridgePage() {
       await adminRequest("createFridge", "/newDevice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fridge_serial_number: serial, mac_address: mac, c_number: cNumber }),
+        body: JSON.stringify({
+          fridge_serial_number: serial,
+          mac_address: mac,
+          c_number: cNumber,
+          organisation_id: organisationId,
+        }),
       });
       setCreateForm({ fridge_serial_number: "", mac_address: "", c_number: "" });
       setCreateErrors({});
@@ -73,11 +95,16 @@ export function AddFridgePage() {
     setBulkPreviewLoading(true);
     setBulkMessage("");
     setBulkErrors([]);
+    setBulkSkippedRows([]);
+    setSkippedModalOpen(false);
     setBulkPreviewRows([]);
     setBulkPreviewSummary(null);
     try {
       const formData = new FormData();
       formData.append("file", bulkFile);
+      if (organisationId) {
+        formData.append("organisation_id", String(organisationId));
+      }
       const response = await adminRequest<{
         summary: { totalRows: number; previewRows: number; excludedRows: number };
         rows: Array<{ rowNumber: number; fridge_serial_number: string; mac_address: string | null; c_number: string | null }>;
@@ -98,15 +125,26 @@ export function AddFridgePage() {
     setBulkSubmitting(true);
     setBulkMessage("");
     setBulkErrors([]);
+    setBulkSkippedRows([]);
+    setSkippedModalOpen(false);
     try {
       const formData = new FormData();
       formData.append("file", bulkFile);
+      if (organisationId) {
+        formData.append("organisation_id", String(organisationId));
+      }
       const response = await adminRequest<{
-        summary: { totalRows: number; excludedRows?: number; validRows: number; insertedRows: number; failedRows: number };
+        summary: { totalRows: number; excludedRows?: number; validRows: number; insertedRows: number; skippedRows?: number; failedRows: number };
+        skippedRows?: Array<{ rowNumber: number; reason: string; message: string; serial?: string }>;
         errors?: Array<{ rowNumber: number; reason: string; message: string; serial?: string }>;
       }>("bulkUpload", "/newDevice/bulk", { method: "POST", body: formData });
       const summary = response.summary;
-      setBulkMessage(`Upload complete. Total: ${summary.totalRows}, Excluded(no serial): ${summary.excludedRows || 0}, Ready: ${summary.validRows}, Inserted: ${summary.insertedRows}, Failed: ${summary.failedRows}`);
+      setBulkMessage(`Upload complete. Total: ${summary.totalRows}, Excluded(no serial): ${summary.excludedRows || 0}, Ready: ${summary.validRows}, Inserted: ${summary.insertedRows}, Skipped(existing): ${summary.skippedRows || 0}, Failed: ${summary.failedRows}`);
+      const skipped = response.skippedRows || [];
+      setBulkSkippedRows(skipped);
+      if (skipped.length) {
+        setSkippedModalOpen(true);
+      }
       setBulkErrors(response.errors || []);
       await loadFridges(searchTerm);
       await loadAllHistory();
@@ -188,6 +226,8 @@ export function AddFridgePage() {
                 setBulkPreviewRows([]);
                 setBulkPreviewSummary(null);
                 setBulkErrors([]);
+                setBulkSkippedRows([]);
+                setSkippedModalOpen(false);
               }}
               disabled={bulkSubmitting}
             />
@@ -219,6 +259,14 @@ export function AddFridgePage() {
               {bulkErrors.length > 20 ? (
                 <p className="text-xs text-muted-foreground mt-1">Showing first 20 errors of {bulkErrors.length}.</p>
               ) : null}
+            </div>
+          ) : null}
+
+          {bulkSkippedRows.length ? (
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" onClick={() => setSkippedModalOpen(true)}>
+                View Skipped Rows ({bulkSkippedRows.length})
+              </Button>
             </div>
           ) : null}
 
@@ -259,6 +307,42 @@ export function AddFridgePage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <Dialog open={skippedModalOpen} onOpenChange={setSkippedModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Skipped Rows</DialogTitle>
+            <DialogDescription>
+              These rows were skipped because they already exist in the database.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[420px] overflow-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Row</TableHead>
+                  <TableHead>Serial</TableHead>
+                  <TableHead>Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bulkSkippedRows.map((item, index) => (
+                  <TableRow key={`${item.rowNumber}-${item.serial || ""}-${index}`}>
+                    <TableCell>{item.rowNumber}</TableCell>
+                    <TableCell>{item.serial || "-"}</TableCell>
+                    <TableCell>{item.message}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSkippedModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

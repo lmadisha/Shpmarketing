@@ -25,7 +25,7 @@ This document describes the Operations API used by the Shpmarketing application.
 
 - id: number
 - username: string
-- permissions: Admin | Intermediate | Basic
+- permissions: Admin | Fleet Manager | Technician | User
 
 ### Common auth-related responses
 
@@ -71,7 +71,8 @@ Input body:
 - username: string (required)
 - password: string (required, min 8)
 - full_name: string (required)
-- permissions: Admin | Intermediate | Basic (required)
+- permissions: Admin | Fleet Manager | Technician | User (required)
+- organisation_id: number (required)
 
 Responses:
 
@@ -82,10 +83,11 @@ Responses:
       "id": 1,
       "username": "user@example.com",
       "full_name": "User Name",
-      "permissions": "Basic"
+      "permissions": "User",
+      "organisation_id": 2
     }
   }
-- 400: missing fields, invalid permission, short password
+- 400: missing fields, invalid permission, short password, invalid/missing organisation_id, organisation not found
 - 409: { "error": "That email/username already exists" }
 - 500: { "error": "Server Error" }
 
@@ -108,13 +110,47 @@ Responses:
     "user": {
       "id": 1,
       "username": "user@example.com",
-      "full_name": "User Name",
-      "permissions": "Admin"
+      "full_name": "User Name", 
+      "permissions": "Admin",
+      "organisation_id": 2
     }
   }
 - 401: invalid credentials
 - 403: user inactive
 - 500: server error
+
+## GET /organisations
+
+Purpose: list organisations for signup selection.
+
+Auth: none.
+
+Responses:
+
+- 200: array of { id, name, domin }
+- 500: { "error": "Server Error" }
+
+## GET /profile
+
+Purpose: fetch authenticated user profile details from operations DB.
+
+Auth: Bearer.
+
+Responses:
+
+- 200:
+  {
+    "id": 3,
+    "username": "user@example.com",
+    "full_name": "User Name",
+    "permissions": "Fleet Manager",
+    "organisation_id": 2,
+    "organisation_name": "Org Name",
+    "organisation_domin": "org.com"
+  }
+- 404: profile not found
+- 401
+- 500: { "error": "Server Error" }
 
 ## GET /users
 
@@ -124,7 +160,7 @@ Auth: Bearer + Admin.
 
 Responses:
 
-- 200: array of users with id, username, full_name, permissions, is_active, created_at
+- 200: array of users with id, username, full_name, permissions, is_active, created_at, organisation_id
 - 401/403
 - 500
 
@@ -139,7 +175,8 @@ Input body:
 - username: string (required)
 - password: string (required)
 - full_name: string (required)
-- permissions: Admin | Intermediate | Basic (required)
+- permissions: Admin | Fleet Manager | Technician | User (required)
+- organisation_id: number (optional)
 
 Responses:
 
@@ -157,7 +194,7 @@ Auth: Bearer + Admin.
 
 Input body:
 
-- permissions: Admin | Intermediate | Basic
+- permissions: Admin | Fleet Manager | Technician | User
 
 Responses:
 
@@ -201,6 +238,7 @@ Input body:
 Responses:
 
 - 200: inserted fridge row
+- 400: { "error": "User organisation is not configured." }
 - 401
 - 500: { "error": "create-device failed: ..." }
 
@@ -208,6 +246,7 @@ Notes:
 
 - Runs in transaction.
 - Sets myapp.current_user_id for audit trigger context.
+- Fridge `organisation_id` is derived from authenticated user (`users.organisation_id`) on server side.
 
 ## POST /newDevice/bulk
 
@@ -226,8 +265,8 @@ Parsing and sanitization behavior:
 
 - Serial is required per row (non-empty after trim).
 - Rows with empty serial are excluded.
-- Serial length is not validated by parser.
-- Invalid MAC values are converted to null.
+- Serial is truncated to 12 characters.
+- MAC is cleaned to hex and truncated to 12 characters; empty becomes null.
 - Invalid C-number values are converted to null.
 - Duplicate serials in same file are rejected.
 
@@ -265,9 +304,18 @@ Responses:
       "excludedRows": 5,
       "validRows": 90,
       "insertedRows": 88,
+      "skippedRows": 1,
       "failedRows": 2
     },
     "inserted": [ ...fridgeRows... ],
+    "skippedRows": [
+      {
+        "rowNumber": 11,
+        "serial": "ABC123",
+        "reason": "DUPLICATE_IN_DB",
+        "message": "Serial number already exists in database."
+      }
+    ],
     "errors": [
       {
         "rowNumber": 14,
@@ -283,8 +331,9 @@ Responses:
 
 Notes:
 
-- DB unique conflicts are captured as DUPLICATE_IN_DB and do not abort the whole bulk operation.
-- Uses a single transaction for inserts.
+- Fridge `organisation_id` is derived from authenticated user (`users.organisation_id`) on server side.
+- DB duplicates are skipped and reported in `skippedRows`.
+- Row-level insert errors are reported in `errors` without aborting entire bulk run.
 
 ## POST /newDevice/bulk/preview
 
@@ -394,7 +443,7 @@ Auth: Bearer.
 
 Responses:
 
-- 200: array ordered by changed_at DESC
+- 200: array ordered by changed_at DESC; includes `changed_by_username`
 - 401
 - 500: { "error": "device-history failed: ..." }
 
@@ -406,7 +455,7 @@ Auth: Bearer.
 
 Responses:
 
-- 200: array ordered by changed_at DESC
+- 200: array ordered by changed_at DESC; includes `changed_by_username`
 - 401
 - 500: { "error": "audit-history failed: ..." }
 
@@ -562,6 +611,8 @@ Any unknown route returns:
 
 - fridges.fridge_serial_number is a primary key in database schema.
 - fridges.iot_mac_address is unique (including partial unique index for non-empty values).
+- users.permissions is an enum: Admin | Fleet Manager | Technician | User.
+- organisation has optional `domin` column (unique when provided).
 - Fridge change auditing is trigger-based via fridge_audit_log.
 - fridge_mismatches.sender_id references users(id) and records the admin user who manually submitted the mismatch via POST /mismatches/manual.
 

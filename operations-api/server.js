@@ -89,8 +89,29 @@ function requireMobileKey(req, res, next) {
 }
 
 function normalizePermission(value) {
-  const permission = String(value || "").trim();
-  return ["Admin", "Intermediate", "Basic"].includes(permission) ? permission : null;
+  const permission = String(value || "").trim().toLowerCase();
+
+  if (permission === "admin") return "Admin";
+  if (permission === "fleet manager" || permission === "intermediate") return "Fleet Manager";
+  if (permission === "technician") return "Technician";
+  if (permission === "users" || permission === "user" || permission === "basic") return "User";
+
+  return null;
+}
+
+async function getUserOrganisationId(client, userId) {
+  const result = await client.query(
+    `SELECT organisation_id
+     FROM users
+     WHERE id = $1`,
+    [userId],
+  );
+
+  if (!result.rows.length) {
+    return null;
+  }
+
+  return result.rows[0].organisation_id ?? null;
 }
 
 function logAssetAction(action, details = "") {
@@ -144,14 +165,14 @@ function normalizeRowKeys(row) {
 }
 
 function sanitizeBulkSerial(value) {
-  return String(value || "").trim();
+  return String(value || "").trim().slice(0, 12);
 }
 
 function sanitizeBulkMac(value) {
   const cleaned = String(value || "")
     .replace(/[^a-fA-F0-9]/g, "")
     .toUpperCase();
-  return cleaned.length === 12 ? cleaned : null;
+  return cleaned ? cleaned.slice(0, 12) : null;
 }
 
 function sanitizeBulkCNumber(value) {
@@ -258,11 +279,25 @@ app.get("/health", async (_req, res) => {
   }
 });
 
+app.get("/organisations", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, domin
+       FROM organisation
+       ORDER BY name ASC`,
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  }
+});
+
 app.post("/signup", loginLimiter, async (req, res) => {
   try {
-    const { username, password, full_name, permissions } = req.body;
+    const { username, password, full_name, permissions, organisation_id } = req.body;
 
-    if (!username || !password || !full_name || !permissions) {
+    if (!username || !password || !full_name || !permissions || organisation_id == null) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
@@ -277,13 +312,28 @@ app.post("/signup", loginLimiter, async (req, res) => {
 
     const email = String(username).trim().toLowerCase();
     const name = String(full_name).trim();
+    const organisationId = Number(organisation_id);
+
+    if (!Number.isInteger(organisationId) || organisationId <= 0) {
+      return res.status(400).json({ error: "Invalid organisation_id" });
+    }
+
+    const organisationResult = await pool.query(
+      `SELECT id FROM organisation WHERE id = $1`,
+      [organisationId],
+    );
+
+    if (!organisationResult.rows.length) {
+      return res.status(400).json({ error: "Organisation not found" });
+    }
+
     const passwordHash = await bcrypt.hash(String(password), 12);
 
     const result = await pool.query(
-      `INSERT INTO users (username, password_hash, full_name, permissions, is_active)
-       VALUES ($1, $2, $3, $4, true)
-       RETURNING id, username, full_name, permissions, is_active`,
-      [email, passwordHash, name, normalizedPermission],
+      `INSERT INTO users (username, password_hash, full_name, permissions, is_active, organisation_id)
+       VALUES ($1, $2, $3, $4, true, $5)
+       RETURNING id, username, full_name, permissions, is_active, organisation_id`,
+      [email, passwordHash, name, normalizedPermission, organisationId],
     );
 
     const createdUser = result.rows[0];
@@ -304,6 +354,7 @@ app.post("/signup", loginLimiter, async (req, res) => {
         username: createdUser.username,
         full_name: createdUser.full_name,
         permissions: createdUser.permissions,
+        organisation_id: createdUser.organisation_id,
       },
     });
   } catch (error) {
@@ -320,7 +371,7 @@ app.post("/login", loginLimiter, async (req, res) => {
     const { username, password } = req.body;
 
     const result = await pool.query(
-      `SELECT id, username, password_hash, is_active, full_name, permissions
+      `SELECT id, username, password_hash, is_active, full_name, permissions, organisation_id
        FROM users
        WHERE username = $1`,
       [String(username || "").trim().toLowerCase()],
@@ -357,8 +408,36 @@ app.post("/login", loginLimiter, async (req, res) => {
         username: user.username,
         full_name: user.full_name,
         permissions: user.permissions,
+        organisation_id: user.organisation_id,
       },
     });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  }
+});
+
+app.get("/profile", requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id,
+              u.username,
+              u.full_name,
+              u.permissions,
+              u.organisation_id,
+              o.name AS organisation_name,
+              o.domin AS organisation_domin
+       FROM users u
+       LEFT JOIN organisation o ON o.id = u.organisation_id
+       WHERE u.id = $1`,
+      [req.user.id],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    return res.json(result.rows[0]);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
@@ -368,7 +447,7 @@ app.post("/login", loginLimiter, async (req, res) => {
 app.get("/users", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, username, full_name, permissions, is_active, created_at
+      `SELECT id, username, full_name, permissions, is_active, created_at, organisation_id
        FROM users
        ORDER BY created_at DESC`,
     );
@@ -381,7 +460,7 @@ app.get("/users", requireAuth, requireAdmin, async (_req, res) => {
 
 app.post("/users", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { username, password, full_name, permissions } = req.body;
+    const { username, password, full_name, permissions, organisation_id } = req.body;
 
     if (!username || !password || !full_name || !permissions) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -394,12 +473,17 @@ app.post("/users", requireAuth, requireAdmin, async (req, res) => {
 
     const email = String(username).trim().toLowerCase();
     const passwordHash = await bcrypt.hash(String(password), 12);
+    const organisationId = organisation_id == null ? null : Number(organisation_id);
+
+    if (organisationId != null && (!Number.isInteger(organisationId) || organisationId <= 0)) {
+      return res.status(400).json({ error: "Invalid organisation_id" });
+    }
 
     const result = await pool.query(
-      `INSERT INTO users (username, password_hash, full_name, permissions, is_active)
-       VALUES ($1, $2, $3, $4, true)
-       RETURNING id, username, full_name, permissions, is_active, created_at`,
-      [email, passwordHash, String(full_name).trim(), normalizedPermission],
+      `INSERT INTO users (username, password_hash, full_name, permissions, is_active, organisation_id)
+       VALUES ($1, $2, $3, $4, true, $5)
+       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
+      [email, passwordHash, String(full_name).trim(), normalizedPermission, organisationId],
     );
 
     return res.json(result.rows[0]);
@@ -423,7 +507,7 @@ app.put("/users/:id/permissions", requireAuth, requireAdmin, async (req, res) =>
       `UPDATE users
        SET permissions = $1
        WHERE id = $2
-       RETURNING id, username, full_name, permissions, is_active, created_at`,
+       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
       [permission, req.params.id],
     );
 
@@ -483,12 +567,17 @@ app.post("/newDevice", requireAuth, async (req, res) => {
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
       String(req.user.id),
     ]);
+    const organisationId = await getUserOrganisationId(client, req.user.id);
+    if (!organisationId) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "User organisation is not configured." });
+    }
 
     const result = await client.query(
-      `INSERT INTO fridges (iot_mac_address, fridge_serial_number, c_number)
-       VALUES ($1, $2, $3)
+      `INSERT INTO fridges (iot_mac_address, fridge_serial_number, c_number, organisation_id)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [mac_address, fridge_serial_number, c_number],
+      [mac_address, fridge_serial_number, c_number, organisationId],
     );
 
     await client.query("COMMIT");
@@ -576,38 +665,78 @@ app.post("/newDevice/bulk", requireAuth, (req, res) => {
 
     const client = await pool.connect();
     const inserted = [];
+    const skippedRows = [];
 
     try {
-      await client.query("BEGIN");
       await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
+      const organisationId = await getUserOrganisationId(client, req.user.id);
+      if (!organisationId) {
+        return res.status(400).json({ error: "User organisation is not configured." });
+      }
 
+      console.info(`[bulk-upload] rows-to-process=${validRows.length}`);
       for (const row of validRows) {
+        console.info(
+          `[bulk-upload] row rowNumber=${row.rowNumber} serial_number=${row.fridge_serial_number} mac_address=${row.mac_address || ""} c_number=${row.c_number || ""}`,
+        );
+
+        const existing = await client.query(
+          `SELECT fridge_serial_number, iot_mac_address
+           FROM fridges
+           WHERE fridge_serial_number = $1
+              OR ($2::text IS NOT NULL AND iot_mac_address = $2)
+           LIMIT 1`,
+          [row.fridge_serial_number, row.mac_address],
+        );
+
+        if (existing.rows.length) {
+          const existingRow = existing.rows[0];
+          const isSerialMatch = existingRow.fridge_serial_number === row.fridge_serial_number;
+          const isMacMatch = row.mac_address && existingRow.iot_mac_address === row.mac_address;
+          skippedRows.push({
+            rowNumber: row.rowNumber,
+            serial: row.fridge_serial_number,
+            reason: "DUPLICATE_IN_DB",
+            message: isSerialMatch
+              ? "Serial number already exists in database."
+              : isMacMatch
+                ? "MAC address already exists in database."
+                : "Row already exists in database.",
+          });
+          continue;
+        }
+
         try {
           const result = await client.query(
-            `INSERT INTO fridges (iot_mac_address, fridge_serial_number, c_number)
-             VALUES ($1, $2, $3)
+            `INSERT INTO fridges (iot_mac_address, fridge_serial_number, c_number, organisation_id)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT DO NOTHING
              RETURNING *`,
-            [row.mac_address, row.fridge_serial_number, row.c_number],
+            [row.mac_address, row.fridge_serial_number, row.c_number, organisationId],
           );
-          inserted.push(result.rows[0]);
-        } catch (error) {
-          if (error.code === "23505") {
-            errors.push({
+          if (result.rows.length) {
+            inserted.push(result.rows[0]);
+          } else {
+            skippedRows.push({
               rowNumber: row.rowNumber,
               serial: row.fridge_serial_number,
               reason: "DUPLICATE_IN_DB",
-              message: "Fridge already exists.",
+              message: "Row skipped because it already exists in database.",
             });
-            continue;
           }
-          throw error;
+        } catch (rowError) {
+          errors.push({
+            rowNumber: row.rowNumber,
+            serial: row.fridge_serial_number,
+            reason: "INSERT_ERROR",
+            message: rowError.message || "Unexpected insert error.",
+          });
         }
       }
 
-      await client.query("COMMIT");
       logAssetAction(
         "bulk-upload:success",
-        `file=${file.originalname || "unknown"} inserted=${inserted.length} failed=${errors.length}`,
+        `file=${file.originalname || "unknown"} inserted=${inserted.length} skipped=${skippedRows.length} failed=${errors.length}`,
       );
       return res.json({
         ok: true,
@@ -616,13 +745,14 @@ app.post("/newDevice/bulk", requireAuth, (req, res) => {
           excludedRows,
           validRows: validRows.length,
           insertedRows: inserted.length,
+          skippedRows: skippedRows.length,
           failedRows: errors.length,
         },
         inserted,
+        skippedRows,
         errors,
       });
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
       return handleAssetError(res, "bulk-upload", error);
     } finally {
       client.release();

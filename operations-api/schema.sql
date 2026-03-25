@@ -7,9 +7,17 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$
+BEGIN
+  CREATE TYPE user_permission_enum AS ENUM ('Admin', 'Fleet Manager', 'Technician', 'User');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS organisation (
   id SERIAL PRIMARY KEY,
   name VARCHAR(120) UNIQUE NOT NULL,
+  domin VARCHAR(120) UNIQUE,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -18,9 +26,11 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   full_name VARCHAR(100),
+  first_name VARCHAR(100),
+  last_name VARCHAR(100),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  permissions TEXT NOT NULL,
+  permissions user_permission_enum NOT NULL,
   organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL
 );
 
@@ -50,8 +60,38 @@ CREATE TABLE IF NOT EXISTS fridge_mismatches (
 ALTER TABLE IF EXISTS public.users
   ADD COLUMN IF NOT EXISTS organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL;
 
+ALTER TABLE IF EXISTS public.organisation
+  ADD COLUMN IF NOT EXISTS domin VARCHAR(120);
+
 ALTER TABLE IF EXISTS public.fridges
   ADD COLUMN IF NOT EXISTS organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'users'
+      AND column_name = 'permissions'
+      AND udt_name <> 'user_permission_enum'
+  ) THEN
+    ALTER TABLE public.users
+      ALTER COLUMN permissions TYPE user_permission_enum
+      USING (
+        CASE LOWER(TRIM(permissions::text))
+          WHEN 'admin' THEN 'Admin'
+          WHEN 'fleet manager' THEN 'Fleet Manager'
+          WHEN 'intermediate' THEN 'Fleet Manager'
+          WHEN 'technician' THEN 'Technician'
+          WHEN 'basic' THEN 'User'
+          WHEN 'user' THEN 'User'
+          WHEN 'users' THEN 'User'
+          ELSE 'User'
+        END
+      )::user_permission_enum;
+  END IF;
+END $$;
 
 DO $$
 BEGIN
@@ -90,6 +130,9 @@ CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_serial ON fridge_mismatches (fr
 CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_status ON fridge_mismatches (status);
 CREATE INDEX IF NOT EXISTS idx_users_organisation_id ON users (organisation_id);
 CREATE INDEX IF NOT EXISTS idx_fridges_organisation_id ON fridges (organisation_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organisation_domin_unique
+ON organisation ((LOWER(domin)))
+WHERE domin IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS fridge_audit_log (
   log_id SERIAL PRIMARY KEY,
