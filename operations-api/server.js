@@ -1039,67 +1039,16 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
 app.post("/mismatches/manual", requireAuth, async (req, res) => {
   const client = await pool.connect();
   try {
-    const fridge_serial_number = String(req.body?.fridge_serial_number || "").trim();
-    const received_mac = String(req.body?.mac_address || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 12);
-    const received_c_number = String(req.body?.c_number || "").trim().toUpperCase().slice(0, 10);
-
-    logAssetAction("manual-mismatch:start", `serial=${fridge_serial_number} byUser=${req.user?.id || "unknown"}`);
-
-    if (!fridge_serial_number) {
-      return res.status(400).json({ error: "fridge_serial_number is required." });
-    }
-
-    const fridgeRes = await client.query(
-      `SELECT iot_mac_address, c_number FROM fridges WHERE fridge_serial_number = $1`,
-      [fridge_serial_number],
-    );
-
-    if (!fridgeRes.rows.length) {
-      return res.status(404).json({ error: "Fridge not found." });
-    }
-
-    const fridge = fridgeRes.rows[0];
-
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
-
-    const inserted = await client.query(
-      `INSERT INTO fridge_mismatches
-        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status, sender_id)
-       VALUES ($1, $2, $3, $4, $5, 'open', $6)
-       RETURNING *`,
-      [
-        fridge_serial_number,
-        received_mac || null,
-        received_c_number || null,
-        fridge.iot_mac_address || null,
-        fridge.c_number || null,
-        req.user.id,
-      ],
-    );
-
-    await client.query("COMMIT");
-
-    logAssetAction("manual-mismatch:success", `id=${inserted.rows[0].id} serial=${fridge_serial_number}`);
-    return res.status(201).json(inserted.rows[0]);
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    return handleAssetError(res, "manual-mismatch", error);
-  } finally {
-    client.release();
-  }
-});
-
-app.post("/mismatches/manual", requireAuth, async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { fridge_serial_number, mac_address, c_number } = req.body;
-    const serial = String(fridge_serial_number || "").trim();
-    const mac = mac_address ? String(mac_address).trim().toUpperCase() : null;
-    const cNum = c_number ? String(c_number).trim().toUpperCase() : null;
+    const serial = String(req.body?.fridge_serial_number || "").trim();
+    const mac = String(req.body?.mac_address || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 12);
+    const cNum = String(req.body?.c_number || "").trim().toUpperCase().slice(0, 10);
 
     if (!serial) {
       return res.status(400).json({ error: "fridge_serial_number is required" });
+    }
+
+    if (!mac || !cNum) {
+      return res.status(400).json({ error: "mac_address and c_number are required" });
     }
 
     logAssetAction(
@@ -1113,7 +1062,7 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     ]);
 
     const fridgeRes = await client.query(
-      `SELECT iot_mac_address, c_number
+      `SELECT fridge_serial_number, iot_mac_address, c_number, verified
        FROM fridges
        WHERE fridge_serial_number = $1`,
       [serial]
@@ -1125,6 +1074,43 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     }
 
     const fridge = fridgeRes.rows[0];
+    const norm = (value) => String(value || "").trim().toUpperCase();
+    const macMatches = norm(fridge.iot_mac_address) === norm(mac);
+    const cMatches = norm(fridge.c_number) === norm(cNum);
+
+    if (macMatches && cMatches) {
+      const updatedFridge = await client.query(
+        `UPDATE fridges
+         SET verified = true,
+             verified_at = NOW()
+         WHERE fridge_serial_number = $1
+         RETURNING *`,
+        [serial],
+      );
+
+      await client.query("COMMIT");
+      logAssetAction("submit-manual-mismatch:verified", `serial=${serial}`);
+
+      return res.status(200).json({
+        ok: true,
+        result: "VERIFIED",
+        fridge_serial_number: serial,
+        fridge: updatedFridge.rows[0],
+      });
+    }
+
+    let updatedFridge = null;
+    if (fridge.verified) {
+      const updated = await client.query(
+        `UPDATE fridges
+         SET verified = false,
+             verified_at = NOW()
+         WHERE fridge_serial_number = $1
+         RETURNING *`,
+        [serial],
+      );
+      updatedFridge = updated.rows[0] || null;
+    }
 
     const mismatchInsert = await client.query(
       `INSERT INTO fridge_mismatches
@@ -1133,8 +1119,8 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
        RETURNING *`,
       [
         serial,
-        mac,
-        cNum,
+        mac || null,
+        cNum || null,
         fridge.iot_mac_address || null,
         fridge.c_number || null,
         req.user.id
@@ -1146,9 +1132,11 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     
     return res.status(200).json({
       ok: true,
+      result: "MISMATCH_CREATED",
       id: mismatchInsert.rows[0].id,
       fridge_serial_number: mismatchInsert.rows[0].fridge_serial_number,
-      mismatch: mismatchInsert.rows[0]
+      mismatch: mismatchInsert.rows[0],
+      fridge: updatedFridge,
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});

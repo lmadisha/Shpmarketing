@@ -886,8 +886,8 @@ export function AdminAssetsPage() {
               <TabsTrigger value="add-fridge">Add Fridge</TabsTrigger>
               <TabsTrigger value="inventory">Inventory</TabsTrigger>
               <TabsTrigger value="mismatches">Mismatches</TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
               <TabsTrigger value="device-checker">Device Checker</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
             </TabsList>
 
             <TabsContent value="add-fridge">

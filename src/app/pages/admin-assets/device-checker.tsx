@@ -14,7 +14,8 @@ type DeviceCheckForm = {
 };
 
 type DeviceCheckSuccess = {
-  id: number;
+  result: "VERIFIED" | "MISMATCH_CREATED";
+  id?: number;
   fridge_serial_number: string;
 };
 
@@ -108,7 +109,7 @@ export function DeviceCheckerPage() {
     <Card className="max-w-2xl">
       <CardHeader>
         <CardTitle>Device Checker</CardTitle>
-        <CardDescription>Manually submit a device mismatch for review.</CardDescription>
+        <CardDescription>Submit a manual device check to verify or flag a mismatch.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={(event) => void submitDeviceCheck(event)} className="space-y-4">
@@ -193,11 +194,13 @@ export function DeviceCheckerPage() {
 
           {success ? (
             <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-              Mismatch #{success.id} submitted for {success.fridge_serial_number}.
+              {success.result === "VERIFIED"
+                ? `${success.fridge_serial_number} matched and was marked verified.`
+                : `Mismatch #${success.id} submitted for ${success.fridge_serial_number}.`}
             </p>
           ) : null}
 
-          <Button type="submit" disabled={submitting || !form.fridge_serial_number}>
+          <Button type="submit" disabled={submitting || !form.fridge_serial_number || !form.mac_address || !form.c_number}>
             {submitting ? "Submitting..." : `Submit ${form.fridge_serial_number}`}
           </Button>
         </form>

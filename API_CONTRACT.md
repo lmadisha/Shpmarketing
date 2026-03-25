@@ -488,56 +488,49 @@ Responses:
 
 ## POST /mismatches/manual
 
-Purpose: manually submit a device check mismatch from the admin UI.
+Purpose: submit a manual device check from the admin UI.
 
 Auth: Bearer.
 
 Input body:
 
 - fridge_serial_number: string (required)
-- mac_address: string | null
-- c_number: string | null
+- mac_address: string (required)
+- c_number: string (required)
 
 Responses:
 
-- 201: inserted fridge_mismatches row (includes sender_id)
-- 400: missing fridge_serial_number
-- 404: fridge not found
-- 401
-- 500: { "error": "manual-mismatch failed: ..." }
-
-Notes:
-
-- Inserts with status 'open'.
-- sender_id is set to req.user.id (the authenticated user who submitted).
-- db_mac and db_c_number are populated from the current fridge record at time of submission.
-- Runs in transaction with myapp.current_user_id set for audit trigger.
-
-## POST /mismatches/manual
-
-Purpose: manually submit a device mismatch (e.g. from Device Checker tab).
-
-Auth: Bearer.
-
-Input body:
-
-- fridge_serial_number: string (required)
-- mac_address: string (optional)
-- c_number: string (optional)
-
-Responses:
-
-- 200: 
+- 200 verified:
   {
     "ok": true,
+    "result": "VERIFIED",
+    "fridge_serial_number": "FR123...",
+    "fridge": { ...updated fridge row... }
+  }
+- 200 mismatch created:
+  {
+    "ok": true,
+    "result": "MISMATCH_CREATED",
     "id": 1,
     "fridge_serial_number": "FR123...",
-    "mismatch": { ...inserted mismatch row... }
+    "mismatch": { ...inserted mismatch row... },
+    "fridge": { ...updated fridge row... } | null
   }
-- 400: missing fridge_serial_number
+- 400: missing fridge_serial_number, mac_address, or c_number
 - 404: fridge not found
 - 401
 - 500: { "error": "submit-manual-mismatch failed: ..." }
+
+Notes:
+
+- If submitted MAC and C-number match the fridge row:
+  no mismatch is inserted; fridge is updated with `verified=true` and `verified_at=NOW()`.
+- If submitted values do not match:
+  inserts a mismatch row with status `open`, `db_mac`, `db_c_number`, and `sender_id`.
+- On mismatch, if the fridge was previously verified:
+  fridge is updated with `verified=false` and `verified_at=NOW()`.
+- Runs in transaction with `myapp.current_user_id` set for audit trigger context.
+- sender_id is set to req.user.id (the authenticated user who submitted).
 
 ## GET /mismatches
 
@@ -547,7 +540,7 @@ Auth: Bearer.
 
 Query params:
 
-- status: open | resolved | deleted | all (default open)
+- status: open | resolve | cancel | delete | all (default open)
 - from: YYYY-MM-DD (optional)
 - to: YYYY-MM-DD (optional)
 - serial: string (optional, partial match)
