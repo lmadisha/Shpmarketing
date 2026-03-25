@@ -1148,8 +1148,8 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
 
 app.get("/mismatches", requireAuth, async (req, res) => {
   try {
-    logAssetAction("list-mismatches:start", `status=${String(req.query.status || "open")}`);
-    const status = String(req.query.status || "open").toLowerCase();
+    const rawStatus = String(req.query.status || "open").trim().toLowerCase();
+    logAssetAction("list-mismatches:start", `status=${rawStatus}`);
     const from = req.query.from || null;
     const to = req.query.to || null;
     const serial = String(req.query.serial || "").trim();
@@ -1158,9 +1158,24 @@ app.get("/mismatches", requireAuth, async (req, res) => {
     const params = [];
     let index = 1;
 
-    if (status !== "all") {
-      filters.push(`status::text = $${index++}`);
-      params.push(status);
+    let statusAliases = [];
+    if (rawStatus === "all") {
+      statusAliases = [];
+    } else if (rawStatus === "open") {
+      statusAliases = ["open"];
+    } else if (rawStatus === "resolve" || rawStatus === "resolved") {
+      statusAliases = ["resolve", "resolved"];
+    } else if (rawStatus === "cancel" || rawStatus === "cancelled" || rawStatus === "canceled") {
+      statusAliases = ["cancel", "cancelled", "canceled"];
+    } else if (rawStatus === "delete" || rawStatus === "deleted") {
+      statusAliases = ["delete", "deleted"];
+    } else {
+      return res.status(400).json({ error: "Invalid status filter" });
+    }
+
+    if (statusAliases.length) {
+      filters.push(`LOWER(status::text) = ANY($${index++}::text[])`);
+      params.push(statusAliases);
     }
 
     if (from) {
@@ -1210,7 +1225,7 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid id" });
     }
 
-    const { applyToFridge = false, setVerified = true, note = "" } = req.body;
+    const { note = "" } = req.body;
 
     await client.query("BEGIN");
 
@@ -1227,29 +1242,23 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
     }
 
     const mismatch = mismatchResult.rows[0];
-    let fridgeUpdated = null;
+    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
 
-    if (applyToFridge) {
-      await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
+    const newMac = mismatch.received_mac ? String(mismatch.received_mac).trim().toUpperCase() : null;
+    const newC = mismatch.received_c_number ? String(mismatch.received_c_number).trim().toUpperCase() : null;
 
-      const newMac = mismatch.received_mac ? String(mismatch.received_mac).trim().toUpperCase() : null;
-      const newC = mismatch.received_c_number
-        ? String(mismatch.received_c_number).trim().toUpperCase()
-        : null;
+    const updateFridge = await client.query(
+      `UPDATE fridges
+       SET iot_mac_address = COALESCE($1, iot_mac_address),
+           c_number = COALESCE($2, c_number),
+           verified = true,
+           verified_at = NOW()
+       WHERE fridge_serial_number = $3
+       RETURNING *`,
+      [newMac, newC, mismatch.fridge_serial_number],
+    );
 
-      const updateFridge = await client.query(
-        `UPDATE fridges
-         SET iot_mac_address = COALESCE($1, iot_mac_address),
-             c_number = COALESCE($2, c_number),
-             verified = CASE WHEN $3::boolean THEN true ELSE verified END,
-             verified_at = CASE WHEN $3::boolean THEN NOW() ELSE verified_at END
-         WHERE fridge_serial_number = $4
-         RETURNING *`,
-        [newMac, newC, Boolean(setVerified), mismatch.fridge_serial_number],
-      );
-
-      fridgeUpdated = updateFridge.rows[0] || null;
-    }
+    const fridgeUpdated = updateFridge.rows[0] || null;
 
     const resolved = await client.query(
       `UPDATE fridge_mismatches

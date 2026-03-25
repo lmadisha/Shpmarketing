@@ -553,14 +553,12 @@ Responses:
 
 ## PUT /mismatches/:id/resolve
 
-Purpose: resolve mismatch, optionally apply received values to fridge.
+Purpose: resolve mismatch and automatically apply received values to fridge.
 
 Auth: Bearer.
 
 Input body:
 
-- applyToFridge: boolean (default false)
-- setVerified: boolean (default true)
 - note: string (optional)
 
 Responses:
@@ -575,6 +573,11 @@ Responses:
 - 404: mismatch not found
 - 401
 - 500: { "error": "resolve-mismatch failed: ..." }
+
+Notes:
+
+- On resolve, server updates fridge `iot_mac_address` and `c_number` from mismatch `received_mac` and `received_c_number` (when present).
+- On resolve, server always sets fridge `verified = true` and `verified_at = NOW()`.
 
 ## DELETE /mismatches/:id
 

@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { Button } from "../../components/ui/button";
-import { Checkbox } from "../../components/ui/checkbox";
 import { Textarea } from "../../components/ui/textarea";
 import { Badge } from "../../components/ui/badge";
 import {
@@ -27,8 +26,8 @@ const subNavItems = [
   { label: "Add Fridge", to: "/admin/assets/add" },
   { label: "Inventory", to: "/admin/assets/inventory" },
   { label: "Mismatches", to: "/admin/assets/mismatches" },
-  { label: "History", to: "/admin/assets/history" },
   { label: "Device Checker", to: "/admin/assets/device-checker" },
+  { label: "History", to: "/admin/assets/history" },
 ];
 
 // Shared modals are rendered at this level so they're available from all child pages.
@@ -101,43 +100,28 @@ function SharedModals() {
       {/* Resolve Mismatch Dialog */}
       <Dialog
         open={resolveModal.open}
-        onOpenChange={(open) => setResolveModal({ ...resolveModal, open })}
+        onOpenChange={(open) =>
+          setResolveModal((prev) =>
+            open
+              ? { ...prev, open: true }
+              : { open: false, row: null, note: "", submitting: false },
+          )
+        }
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Resolve Mismatch</DialogTitle>
             <DialogDescription>
-              Decide whether to apply incoming values back to the fridge record.
+              Resolving will apply received MAC/C-number to the fridge and mark it verified.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={resolveModal.applyToFridge}
-                onCheckedChange={(checked) =>
-                  setResolveModal({ ...resolveModal, applyToFridge: checked === true })
-                }
-              />
-              Apply received values to fridge record
-            </label>
-
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={resolveModal.setVerified}
-                disabled={!resolveModal.applyToFridge}
-                onCheckedChange={(checked) =>
-                  setResolveModal({ ...resolveModal, setVerified: checked === true })
-                }
-              />
-              Mark fridge as verified
-            </label>
-
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Resolution note (optional)</p>
               <Textarea
                 value={resolveModal.note}
-                onChange={(e) => setResolveModal({ ...resolveModal, note: e.target.value })}
+                onChange={(e) => setResolveModal((prev) => ({ ...prev, note: e.target.value }))}
                 placeholder="Reason or context for this resolution"
               />
             </div>
@@ -146,9 +130,7 @@ function SharedModals() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() =>
-                setResolveModal({ open: false, row: null, applyToFridge: false, setVerified: true, note: "", submitting: false })
-              }
+              onClick={() => setResolveModal({ open: false, row: null, note: "", submitting: false })}
             >
               Cancel
             </Button>
@@ -162,7 +144,11 @@ function SharedModals() {
       {/* Delete Mismatch Dialog */}
       <Dialog
         open={deleteMismatchModal.open}
-        onOpenChange={(open) => setDeleteMismatchModal({ ...deleteMismatchModal, open })}
+        onOpenChange={(open) =>
+          setDeleteMismatchModal((prev) =>
+            open ? { ...prev, open: true } : { open: false, row: null, note: "", submitting: false },
+          )
+        }
       >
         <DialogContent>
           <DialogHeader>
@@ -176,7 +162,7 @@ function SharedModals() {
             <p className="text-sm text-muted-foreground">Delete reason (required)</p>
             <Textarea
               value={deleteMismatchModal.note}
-              onChange={(e) => setDeleteMismatchModal({ ...deleteMismatchModal, note: e.target.value })}
+              onChange={(e) => setDeleteMismatchModal((prev) => ({ ...prev, note: e.target.value }))}
               placeholder="Provide reason for deleting this mismatch"
             />
           </div>

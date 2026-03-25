@@ -1481,6 +1481,74 @@ export function AdminAssetsPage() {
               </Card>
             </TabsContent>
 
+            <TabsContent value="device-checker">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Device Checker</CardTitle>
+                  <CardDescription>Manually submit a device mismatch for review.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={submitDeviceCheck} className="space-y-4 max-w-md">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Serial Number</label>
+                      <Select
+                        value={dcForm.fridge_serial_number}
+                        onValueChange={(val) => setDcForm((prev) => ({ ...prev, fridge_serial_number: val }))}
+                        disabled={dcSerialsLoading || dcSubmitting}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={dcSerialsLoading ? "Loading serials…" : "Select a serial number"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {dcSerials.map((f) => (
+                            <SelectItem key={f.fridge_serial_number} value={f.fridge_serial_number}>
+                              {f.fridge_serial_number}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">MAC Address</label>
+                      <Input
+                        value={dcForm.mac_address}
+                        onChange={(e) => setDcForm((prev) => ({ ...prev, mac_address: cleanHex12(e.target.value) }))}
+                        placeholder="MAC Address (12 hex chars)"
+                        disabled={dcSubmitting}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">C-Code / C-Number</label>
+                      <Input
+                        value={dcForm.c_number}
+                        onChange={(e) => setDcForm((prev) => ({ ...prev, c_number: cleanCNumber(e.target.value) }))}
+                        placeholder="C-Code / C-Number"
+                        disabled={dcSubmitting}
+                      />
+                    </div>
+
+                    {dcError ? (
+                      <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                        {dcError}
+                      </p>
+                    ) : null}
+
+                    {dcSuccess ? (
+                      <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
+                        Mismatch #{dcSuccess.id} submitted for {dcSuccess.fridge_serial_number}.
+                      </p>
+                    ) : null}
+
+                    <Button type="submit" disabled={dcSubmitting || !dcForm.fridge_serial_number}>
+                      {dcSubmitting ? "Submitting…" : `Submit ${dcForm.fridge_serial_number}`}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             <TabsContent value="history">
               <Card>
                 <CardHeader>
@@ -1592,74 +1660,6 @@ export function AdminAssetsPage() {
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="device-checker">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Device Checker</CardTitle>
-                  <CardDescription>Manually submit a device mismatch for review.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={submitDeviceCheck} className="space-y-4 max-w-md">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">Serial Number</label>
-                      <Select
-                        value={dcForm.fridge_serial_number}
-                        onValueChange={(val) => setDcForm((prev) => ({ ...prev, fridge_serial_number: val }))}
-                        disabled={dcSerialsLoading || dcSubmitting}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={dcSerialsLoading ? "Loading serials…" : "Select a serial number"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {dcSerials.map((f) => (
-                            <SelectItem key={f.fridge_serial_number} value={f.fridge_serial_number}>
-                              {f.fridge_serial_number}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">MAC Address</label>
-                      <Input
-                        value={dcForm.mac_address}
-                        onChange={(e) => setDcForm((prev) => ({ ...prev, mac_address: cleanHex12(e.target.value) }))}
-                        placeholder="MAC Address (12 hex chars)"
-                        disabled={dcSubmitting}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">C-Code / C-Number</label>
-                      <Input
-                        value={dcForm.c_number}
-                        onChange={(e) => setDcForm((prev) => ({ ...prev, c_number: cleanCNumber(e.target.value) }))}
-                        placeholder="C-Code / C-Number"
-                        disabled={dcSubmitting}
-                      />
-                    </div>
-
-                    {dcError ? (
-                      <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                        {dcError}
-                      </p>
-                    ) : null}
-
-                    {dcSuccess ? (
-                      <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
-                        Mismatch #{dcSuccess.id} submitted for {dcSuccess.fridge_serial_number}.
-                      </p>
-                    ) : null}
-
-                    <Button type="submit" disabled={dcSubmitting || !dcForm.fridge_serial_number}>
-                      {dcSubmitting ? "Submitting…" : `Submit ${dcForm.fridge_serial_number}`}
-                    </Button>
-                  </form>
                 </CardContent>
               </Card>
             </TabsContent>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useApiClient } from "../../auth/use-api-client";
 import { useAuth } from "../../auth/auth-context";
 import {
@@ -72,12 +72,16 @@ type AdminAssetsContextValue = {
   loadDeviceHistory: (serial: string) => Promise<void>;
 
   // Mismatches
+  mismatchFilters: { status: MismatchStatus; serial: string; from: string; to: string };
+  setMismatchFilters: Dispatch<
+    SetStateAction<{ status: MismatchStatus; serial: string; from: string; to: string }>
+  >;
+  loadMismatches: (
+    filters?: { status: MismatchStatus; serial: string; from: string; to: string },
+  ) => Promise<void>;
   mismatches: Mismatch[];
   mismatchLoading: boolean;
   mismatchError: string;
-  mismatchFilters: { status: MismatchStatus; serial: string; from: string; to: string };
-  setMismatchFilters: (f: { status: MismatchStatus; serial: string; from: string; to: string }) => void;
-  loadMismatches: () => Promise<void>;
   mismatchSort: { key: MismatchSortKey; direction: SortDirection };
   toggleMismatchSort: (key: MismatchSortKey) => void;
   mismatchPage: number;
@@ -91,12 +95,10 @@ type AdminAssetsContextValue = {
   resolveModal: {
     open: boolean;
     row: Mismatch | null;
-    applyToFridge: boolean;
-    setVerified: boolean;
     note: string;
     submitting: boolean;
   };
-  setResolveModal: (v: AdminAssetsContextValue["resolveModal"]) => void;
+  setResolveModal: Dispatch<SetStateAction<AdminAssetsContextValue["resolveModal"]>>;
   openResolveMismatch: (row: Mismatch) => void;
   submitResolveMismatch: () => Promise<void>;
 
@@ -107,7 +109,7 @@ type AdminAssetsContextValue = {
     note: string;
     submitting: boolean;
   };
-  setDeleteMismatchModal: (v: AdminAssetsContextValue["deleteMismatchModal"]) => void;
+  setDeleteMismatchModal: Dispatch<SetStateAction<AdminAssetsContextValue["deleteMismatchModal"]>>;
   openDeleteMismatch: (row: Mismatch) => void;
   submitDeleteMismatch: () => Promise<void>;
 
@@ -249,15 +251,17 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     to: string;
   }>({ status: "open", serial: "", from: "", to: "" });
 
-  const loadMismatches = async () => {
+  const loadMismatches = async (
+    filters: { status: MismatchStatus; serial: string; from: string; to: string } = mismatchFilters,
+  ) => {
     setMismatchLoading(true);
     setMismatchError("");
     try {
       const params = new URLSearchParams();
-      if (mismatchFilters.status) params.set("status", mismatchFilters.status);
-      if (mismatchFilters.serial.trim()) params.set("serial", mismatchFilters.serial.trim());
-      if (mismatchFilters.from) params.set("from", mismatchFilters.from);
-      if (mismatchFilters.to) params.set("to", mismatchFilters.to);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.serial.trim()) params.set("serial", filters.serial.trim());
+      if (filters.from) params.set("from", filters.from);
+      if (filters.to) params.set("to", filters.to);
       const data = await adminRequest<Mismatch[]>("loadMismatches", `/mismatches?${params.toString()}`);
       setMismatches(Array.isArray(data) ? data : []);
     } catch {
@@ -271,14 +275,12 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const [resolveModal, setResolveModal] = useState<{
     open: boolean;
     row: Mismatch | null;
-    applyToFridge: boolean;
-    setVerified: boolean;
     note: string;
     submitting: boolean;
-  }>({ open: false, row: null, applyToFridge: false, setVerified: true, note: "", submitting: false });
+  }>({ open: false, row: null, note: "", submitting: false });
 
   const openResolveMismatch = (row: Mismatch) => {
-    setResolveModal({ open: true, row, applyToFridge: false, setVerified: true, note: "", submitting: false });
+    setResolveModal({ open: true, row, note: "", submitting: false });
   };
 
   const submitResolveMismatch = async () => {
@@ -290,12 +292,10 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          applyToFridge: resolveModal.applyToFridge,
-          setVerified: resolveModal.setVerified,
           note: resolveModal.note,
         }),
       });
-      setResolveModal({ open: false, row: null, applyToFridge: false, setVerified: true, note: "", submitting: false });
+      setResolveModal({ open: false, row: null, note: "", submitting: false });
       await loadMismatches();
       await loadFridges(searchTerm);
       await loadAllHistory();

@@ -6,10 +6,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../../components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, RefreshCw, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, RefreshCw, Search } from "lucide-react";
 import { useAdminAssets } from "./admin-assets-context";
 import { downloadCsv } from "./utils";
-import { Mismatch, MismatchStatus } from "./types";
+import { Mismatch, MismatchSortKey, MismatchStatus } from "./types";
 
 export function MismatchesPage() {
   const {
@@ -22,6 +22,17 @@ export function MismatchesPage() {
     openResolveMismatch, openDeleteMismatch,
   } = useAdminAssets();
 
+  const renderSortIcon = (key: MismatchSortKey) => {
+    if (mismatchSort.key !== key) {
+      return <ArrowUpDown className="h-4 w-4" />;
+    }
+    return mismatchSort.direction === "asc" ? (
+      <ArrowUp className="h-4 w-4" />
+    ) : (
+      <ArrowDown className="h-4 w-4" />
+    );
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -33,7 +44,9 @@ export function MismatchesPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <Select
             value={mismatchFilters.status}
-            onValueChange={(value) => setMismatchFilters({ ...mismatchFilters, status: value as MismatchStatus })}
+            onValueChange={(value) =>
+              setMismatchFilters((prev) => ({ ...prev, status: value as MismatchStatus }))
+            }
           >
             <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
@@ -47,30 +60,47 @@ export function MismatchesPage() {
 
           <Input
             value={mismatchFilters.serial}
-            onChange={(e) => setMismatchFilters({ ...mismatchFilters, serial: e.target.value })}
+            onChange={(e) => setMismatchFilters((prev) => ({ ...prev, serial: e.target.value }))}
             placeholder="Serial contains"
           />
 
           <Input
             type="date"
             value={mismatchFilters.from}
-            onChange={(e) => setMismatchFilters({ ...mismatchFilters, from: e.target.value })}
+            onChange={(e) => setMismatchFilters((prev) => ({ ...prev, from: e.target.value }))}
           />
 
           <Input
             type="date"
             value={mismatchFilters.to}
-            onChange={(e) => setMismatchFilters({ ...mismatchFilters, to: e.target.value })}
+            onChange={(e) => setMismatchFilters((prev) => ({ ...prev, to: e.target.value }))}
           />
 
           <div className="flex gap-2">
-            <Button className="flex-1" variant="outline" onClick={() => void loadMismatches()}>
+            <Button
+              className="flex-1"
+              variant="outline"
+              onClick={() => {
+                setMismatchPage(1);
+                void loadMismatches(mismatchFilters);
+              }}
+            >
               <Search className="h-4 w-4" /> Apply
             </Button>
             <Button
               className="flex-1"
               variant="outline"
-              onClick={() => { setMismatchFilters({ status: "open", serial: "", from: "", to: "" }); void loadMismatches(); }}
+              onClick={() => {
+                const clearedFilters: { status: MismatchStatus; serial: string; from: string; to: string } = {
+                  status: "open",
+                  serial: "",
+                  from: "",
+                  to: "",
+                };
+                setMismatchFilters(clearedFilters);
+                setMismatchPage(1);
+                void loadMismatches(clearedFilters);
+              }}
             >
               <RefreshCw className="h-4 w-4" /> Clear
             </Button>
@@ -99,27 +129,27 @@ export function MismatchesPage() {
             <TableRow>
               <TableHead>
                 <Button variant="ghost" size="sm" onClick={() => toggleMismatchSort("received_at")}>
-                  Received At <ArrowUpDown className="h-4 w-4" />
+                  Received At {renderSortIcon("received_at")}
                 </Button>
               </TableHead>
               <TableHead>
                 <Button variant="ghost" size="sm" onClick={() => toggleMismatchSort("fridge_serial_number")}>
-                  Serial <ArrowUpDown className="h-4 w-4" />
+                  Serial {renderSortIcon("fridge_serial_number")}
                 </Button>
               </TableHead>
               <TableHead>
                 <Button variant="ghost" size="sm" onClick={() => toggleMismatchSort("received_mac")}>
-                  Received MAC / C <ArrowUpDown className="h-4 w-4" />
+                  Received MAC / C {renderSortIcon("received_mac")}
                 </Button>
               </TableHead>
               <TableHead>
                 <Button variant="ghost" size="sm" onClick={() => toggleMismatchSort("expected")}>
-                  Expected MAC / C <ArrowUpDown className="h-4 w-4" />
+                  Expected MAC / C {renderSortIcon("expected")}
                 </Button>
               </TableHead>
               <TableHead>
                 <Button variant="ghost" size="sm" onClick={() => toggleMismatchSort("status")}>
-                  Status <ArrowUpDown className="h-4 w-4" />
+                  Status {renderSortIcon("status")}
                 </Button>
               </TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -146,12 +176,12 @@ export function MismatchesPage() {
                     <Badge
                       variant={
                         row.status === "open"
-                          ? "destructive"
+                          ? "outline"
                           : row.status === "resolve"
                             ? "default"
                             : row.status === "cancel"
                               ? "secondary"
-                              : "outline"
+                              : "destructive"
                       }
                     >
                       {row.status}

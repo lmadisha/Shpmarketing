@@ -7,6 +7,7 @@ import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { PermissionLevel, useAuth } from "../auth/auth-context";
 import { loggedFetch } from "../auth/logged-fetch";
+import { USER_PERMISSION_LEVELS } from "../auth/permission-policy";
 
 const API_BASE =
   (import.meta.env.VITE_OPERATIONS_API_BASE as string | undefined) ||
@@ -142,10 +143,11 @@ export function SignupPage() {
                   <SelectValue placeholder="Select permission" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Admin">Admin</SelectItem>
-                  <SelectItem value="Fleet Manager">Fleet Manager</SelectItem>
-                  <SelectItem value="Technician">Technician</SelectItem>
-                  <SelectItem value="User">User</SelectItem>
+                  {USER_PERMISSION_LEVELS.map((permission) => (
+                    <SelectItem key={permission} value={permission}>
+                      {permission}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
