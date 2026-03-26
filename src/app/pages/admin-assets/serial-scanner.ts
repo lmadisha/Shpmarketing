@@ -61,7 +61,6 @@ export function startCameraSerialScan(
     stopped = true;
     controls?.stop();
     controls = null;
-    reader.reset();
     stopVideoTracks(videoElement);
   };
 
@@ -111,7 +110,6 @@ export async function decodeSerialFromImageFile(file: File) {
   } catch (error) {
     throw new Error(getScannerErrorMessage(error));
   } finally {
-    reader.reset();
     URL.revokeObjectURL(fileUrl);
   }
 }

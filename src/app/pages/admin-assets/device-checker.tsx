@@ -6,6 +6,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
@@ -33,8 +34,36 @@ type DeviceCheckSuccess = {
 
 type ScannerMode = "camera" | "upload";
 
+type BluetoothDeviceRequest = {
+  name?: string | null;
+};
+
+type BluetoothNavigator = Navigator & {
+  bluetooth?: {
+    requestDevice: (options: { filters: Array<{ namePrefix: string }> }) => Promise<BluetoothDeviceRequest>;
+  };
+};
+
+function parsePenguinMacAddress(deviceName: string | null | undefined): string | null {
+  const name = String(deviceName || "").trim();
+  if (!name.startsWith("Penguin+")) {
+    return null;
+  }
+
+  const parsedMac = cleanHex12(name.slice("Penguin+".length));
+  return parsedMac.length === 12 ? parsedMac : null;
+}
+
 export function DeviceCheckerPage() {
   const { adminRequest, withOrganisationFilter, canSubmitDeviceCheck } = useAdminAssets();
+  const bluetoothNavigator = typeof navigator !== "undefined" ? (navigator as BluetoothNavigator) : null;
+  const isSecureContext = typeof window !== "undefined" && window.isSecureContext;
+  const bluetoothSupported = isSecureContext && Boolean(bluetoothNavigator?.bluetooth);
+  const bluetoothUnavailableReason = !isSecureContext
+    ? "Bluetooth scan requires HTTPS or localhost."
+    : !bluetoothNavigator?.bluetooth
+      ? "Bluetooth scan is only supported in Chromium-based browsers."
+      : "";
 
   const [serials, setSerials] = useState<Fridge[]>([]);
   const [serialsLoading, setSerialsLoading] = useState(false);
@@ -53,14 +82,26 @@ export function DeviceCheckerPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerMode, setScannerMode] = useState<ScannerMode>("camera");
   const [scannerError, setScannerError] = useState<string | null>(null);
-  const [scannerInfo, setScannerInfo] = useState<string>("Point your camera at the serial barcode.");
+  const [scannerInfo, setScannerInfo] = useState<string>("Use Start Scan to read the serial barcode from camera.");
   const [scannerMatching, setScannerMatching] = useState(false);
   const [scannerDecodingImage, setScannerDecodingImage] = useState(false);
+  const [cameraScanning, setCameraScanning] = useState(false);
   const [cameraRestartKey, setCameraRestartKey] = useState(0);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const scannerFileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraSessionRef = useRef<CameraScannerSession | null>(null);
   const handleScannedSerialRef = useRef<(value: string) => Promise<void>>(async () => {});
+  const [bluetoothBusy, setBluetoothBusy] = useState(false);
+  const [bluetoothMessage, setBluetoothMessage] = useState<string | null>(null);
+  const [bluetoothConfirm, setBluetoothConfirm] = useState<{
+    open: boolean;
+    deviceName: string;
+    macAddress: string;
+  }>({
+    open: false,
+    deviceName: "",
+    macAddress: "",
+  });
 
   useEffect(() => {
     const requestId = ++serialRequestIdRef.current;
@@ -154,7 +195,7 @@ export function DeviceCheckerPage() {
   handleScannedSerialRef.current = handleScannedSerial;
 
   useEffect(() => {
-    if (!scannerOpen || scannerMode !== "camera") {
+    if (!scannerOpen || scannerMode !== "camera" || !cameraScanning) {
       cameraSessionRef.current?.stop();
       cameraSessionRef.current = null;
       return;
@@ -166,7 +207,7 @@ export function DeviceCheckerPage() {
     }
 
     setScannerError(null);
-    setScannerInfo("Point your camera at the serial barcode.");
+    setScannerInfo("Scanning live camera for barcode...");
     cameraSessionRef.current = startCameraSerialScan(video, {
       onDecode: (value) => {
         void handleScannedSerialRef.current(value);
@@ -180,7 +221,7 @@ export function DeviceCheckerPage() {
       cameraSessionRef.current?.stop();
       cameraSessionRef.current = null;
     };
-  }, [cameraRestartKey, scannerMode, scannerOpen]);
+  }, [cameraRestartKey, cameraScanning, scannerMode, scannerOpen]);
 
   useEffect(() => {
     if (scannerOpen) {
@@ -216,11 +257,24 @@ export function DeviceCheckerPage() {
 
   const resetScannerState = () => {
     setScannerError(null);
-    setScannerInfo("Point your camera at the serial barcode.");
+    setScannerInfo("Use Start Scan to read the serial barcode from camera.");
     setScannerMode("camera");
     setScannerDecodingImage(false);
     setScannerMatching(false);
+    setCameraScanning(false);
     setCameraRestartKey((prev) => prev + 1);
+  };
+
+  const startCameraScan = () => {
+    setScannerError(null);
+    setScannerInfo("Scanning live camera for barcode...");
+    setCameraScanning(true);
+    setCameraRestartKey((prev) => prev + 1);
+  };
+
+  const stopCameraScan = () => {
+    setCameraScanning(false);
+    setScannerInfo("Camera scan stopped. Start scan again or upload an image.");
   };
 
   const submitDeviceCheck = async (event: FormEvent<HTMLFormElement>) => {
@@ -259,6 +313,62 @@ export function DeviceCheckerPage() {
     );
   }
 
+  const requestBluetoothMacAddress = async () => {
+    setError(null);
+    setSuccess(null);
+    setBluetoothMessage(null);
+
+    if (!bluetoothSupported || !bluetoothNavigator?.bluetooth) {
+      setBluetoothMessage(bluetoothUnavailableReason || "Bluetooth is not available in this browser.");
+      return;
+    }
+
+    setBluetoothBusy(true);
+    try {
+      const device = await bluetoothNavigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: "Penguin+" }],
+      });
+
+      const deviceName = String(device.name || "").trim();
+      const parsedMacAddress = parsePenguinMacAddress(deviceName);
+
+      if (!deviceName) {
+        setBluetoothMessage("Selected Bluetooth device has no readable name.");
+        return;
+      }
+
+      if (!parsedMacAddress) {
+        setBluetoothMessage("Selected device name does not contain a valid Penguin+ MAC address.");
+        return;
+      }
+
+      setBluetoothConfirm({
+        open: true,
+        deviceName,
+        macAddress: parsedMacAddress,
+      });
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "Bluetooth device request failed.";
+      if (message.includes("User cancelled") || message.includes("User canceled") || message.includes("cancelled")) {
+        setBluetoothMessage("Bluetooth selection was cancelled.");
+        return;
+      }
+      setBluetoothMessage(message);
+    } finally {
+      setBluetoothBusy(false);
+    }
+  };
+
+  const confirmBluetoothMacAddress = () => {
+    setForm((prev) => ({ ...prev, mac_address: bluetoothConfirm.macAddress }));
+    setBluetoothMessage(`Loaded MAC address from ${bluetoothConfirm.deviceName}.`);
+    setBluetoothConfirm({
+      open: false,
+      deviceName: "",
+      macAddress: "",
+    });
+  };
+
   return (
     <Card className="max-w-2xl">
       <CardHeader>
@@ -279,7 +389,7 @@ export function DeviceCheckerPage() {
                 onClick={() => {
                   setScannerOpen(true);
                   setScannerError(null);
-                  setScannerInfo("Point your camera at the serial barcode.");
+                  setScannerInfo("Use Start Scan to read the serial barcode from camera.");
                 }}
               >
                 <ScanLine className="h-4 w-4" />
@@ -331,16 +441,39 @@ export function DeviceCheckerPage() {
 
           <div className="space-y-1">
             <label className="text-sm font-medium">MAC Address</label>
-            <Input
-              value={form.mac_address}
-              onChange={(event) => {
-                setError(null);
-                setSuccess(null);
-                setForm((prev) => ({ ...prev, mac_address: cleanHex12(event.target.value) }));
-              }}
-              placeholder="MAC Address (12 hex chars)"
-              disabled={submitting}
-            />
+            <div className="flex gap-2">
+              <Input
+                value={form.mac_address}
+                onChange={(event) => {
+                  setError(null);
+                  setSuccess(null);
+                  setBluetoothMessage(null);
+                  setForm((prev) => ({ ...prev, mac_address: cleanHex12(event.target.value) }));
+                }}
+                placeholder="MAC Address (12 hex chars)"
+                disabled={submitting}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void requestBluetoothMacAddress()}
+                disabled={submitting || bluetoothBusy || !bluetoothSupported}
+              >
+                {bluetoothBusy ? "Scanning..." : "Scan via Bluetooth"}
+              </Button>
+            </div>
+            {!bluetoothSupported ? (
+              <p className="text-xs text-muted-foreground">{bluetoothUnavailableReason}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Bluetooth scan only matches devices whose name starts with <span className="font-mono">Penguin+</span>.
+              </p>
+            )}
+            {bluetoothMessage ? (
+              <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                {bluetoothMessage}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-1">
@@ -393,7 +526,19 @@ export function DeviceCheckerPage() {
               </DialogDescription>
             </DialogHeader>
 
-            <Tabs value={scannerMode} onValueChange={(value) => setScannerMode(value as ScannerMode)}>
+            <Tabs
+              value={scannerMode}
+              onValueChange={(value) => {
+                setScannerMode(value as ScannerMode);
+                setScannerError(null);
+                if (value !== "camera") {
+                  setCameraScanning(false);
+                  setScannerInfo("Upload a barcode image to detect the serial.");
+                } else {
+                  setScannerInfo("Use Start Scan to read the serial barcode from camera.");
+                }
+              }}
+            >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="camera" disabled={scannerDecodingImage || scannerMatching}>
                   <Camera className="h-4 w-4" />
@@ -406,27 +551,58 @@ export function DeviceCheckerPage() {
               </TabsList>
 
               <TabsContent value="camera" className="space-y-3">
-                <video
-                  ref={cameraVideoRef}
-                  className="h-64 w-full rounded-md border bg-black object-cover"
-                  autoPlay
-                  muted
-                  playsInline
-                />
+                <div className="relative overflow-hidden rounded-md border bg-black">
+                  <video
+                    ref={cameraVideoRef}
+                    className="h-64 w-full object-cover"
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                  <div className="pointer-events-none absolute inset-0">
+                    <div className="absolute inset-4 rounded-xl border border-white/30" />
+                    {cameraScanning ? (
+                      <>
+                        <div className="absolute inset-6 rounded-lg border border-cyan-400/70 animate-pulse shadow-[0_0_0_1px_rgba(34,211,238,0.25),0_0_24px_rgba(34,211,238,0.2)]" />
+                        <div className="absolute left-6 right-6 top-1/2 h-0.5 -translate-y-1/2 bg-gradient-to-r from-transparent via-cyan-300 to-transparent animate-pulse shadow-[0_0_18px_rgba(34,211,238,0.75)]" />
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-cyan-200 backdrop-blur-sm">
+                          Scanning barcode...
+                        </div>
+                      </>
+                    ) : (
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs font-medium text-white/85 backdrop-blur-sm">
+                        Camera ready. Start scan when barcode is in view.
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground">If scanning does not start, restart the camera.</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={scannerDecodingImage || scannerMatching}
-                    onClick={() => {
-                      setScannerError(null);
-                      setCameraRestartKey((prev) => prev + 1);
-                    }}
-                  >
-                    Restart Camera
-                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Position the barcode inside the frame, then start scanning.
+                  </p>
+                  <div className="flex gap-2">
+                    {cameraScanning ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={scannerDecodingImage || scannerMatching}
+                        onClick={stopCameraScan}
+                      >
+                        Stop Scan
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={scannerDecodingImage || scannerMatching}
+                        onClick={startCameraScan}
+                      >
+                        Start Scan
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </TabsContent>
 
@@ -459,6 +635,54 @@ export function DeviceCheckerPage() {
           </DialogContent>
         </Dialog>
       </CardContent>
+
+      <Dialog
+        open={bluetoothConfirm.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBluetoothConfirm({
+              open: false,
+              deviceName: "",
+              macAddress: "",
+            });
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Bluetooth Device</DialogTitle>
+            <DialogDescription>Use the MAC address parsed from the selected Penguin+ device?</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div>
+              <p className="font-medium">Device</p>
+              <p className="text-muted-foreground">{bluetoothConfirm.deviceName}</p>
+            </div>
+            <div>
+              <p className="font-medium">MAC Address</p>
+              <p className="font-mono text-muted-foreground">{bluetoothConfirm.macAddress}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setBluetoothConfirm({
+                  open: false,
+                  deviceName: "",
+                  macAddress: "",
+                })
+              }
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmBluetoothMacAddress}>
+              Use MAC Address
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
