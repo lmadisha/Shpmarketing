@@ -63,7 +63,7 @@ export function MismatchesPage() {
             <SelectContent>
               <SelectItem value="open">Open</SelectItem>
               <SelectItem value="resolve">Resolve</SelectItem>
-              <SelectItem value="cancel">Cancel</SelectItem>
+              {/* <SelectItem value="cancel">Cancel</SelectItem> */}
               <SelectItem value="delete">Delete</SelectItem>
               <SelectItem value="all">All</SelectItem>
             </SelectContent>

@@ -24,7 +24,7 @@ export function GuestRoute() {
   }
 
   if (session) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/admin/assets" replace />;
   }
 
   return <Outlet />;

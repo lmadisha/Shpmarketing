@@ -13,7 +13,7 @@ export function LoginPage() {
 
   const nextPath = useMemo(() => {
     const state = location.state as { from?: { pathname?: string } } | null;
-    return state?.from?.pathname || "/";
+    return state?.from?.pathname || "/admin/assets";
   }, [location.state]);
 
   const [form, setForm] = useState({ username: "", password: "" });
@@ -46,11 +46,11 @@ export function LoginPage() {
             </div>
             <div>
               <p className="text-base font-semibold text-gray-900 leading-none">BevFleet</p>
-              <p className="text-xs text-gray-600 mt-1">Operations Platform</p>
+              <p className="text-xs text-gray-600 mt-1">Application Platform</p>
             </div>
           </div>
           <CardTitle>Welcome back</CardTitle>
-          <CardDescription>Sign in to access BevFleet operations and analytics.</CardDescription>
+          <CardDescription>Sign in to access BevFleet Application.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>

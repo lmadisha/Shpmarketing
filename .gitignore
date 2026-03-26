@@ -1,4 +1,5 @@
 node_modules/
+operations-api/node_modules/
 dist/
 coverage/
 
@@ -19,6 +20,10 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/
+
+# Local agent/worktree artifacts
+.claude/worktrees/
 
 # Test cache
 .vitest/

@@ -27,12 +27,12 @@ type NavigationItem = {
 };
 
 const navigation: NavigationItem[] = [
-  { name: "Overview", href: "/", icon: LayoutDashboard },
+  { name: "Overview", href: "/", icon: LayoutDashboard, hidden: true },
   // { name: "Fleet Ranking", href: "/fleet-ranking", icon: Trophy },
-  { name: "Performance Report", href: "/performance-report", icon: FileBarChart },
+  { name: "Performance Report", href: "/performance-report", icon: FileBarChart, hidden: true },
   // { name: "Maintenance Report", href: "/maintenance-report", icon: Wrench },
   // { name: "Regional Map", href: "/regional-map", icon: Map },
-  { name: "Unit Detail", href: "/unit/MAC001", icon: Server },
+  { name: "Unit Detail", href: "/unit/MAC001", icon: Server, hidden: true },
   { name: "Asset Manager", href: "/admin/assets", icon: Refrigerator },
   { name: "Workspace", href: "/workspace", icon: Users },
   // { name: "Recommendations", href: "/recommendations", icon: MapPin, disabled: true },
@@ -103,6 +103,9 @@ export function Sidebar() {
         </div>
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
+            if (item.hidden) {
+              return null;
+            }
             if (item.href === "/admin/assets" && !canAccessAssetManager) {
               return null;
             }

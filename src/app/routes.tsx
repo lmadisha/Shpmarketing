@@ -36,7 +36,8 @@ export const router = createBrowserRouter([
         path: "/",
         Component: DashboardLayout,
         children: [
-          { index: true, Component: OverviewPage },
+          { index: true, element: <Navigate to="/admin/assets" replace /> },
+          { path: "overview", Component: OverviewPage },
           { path: "fleet-ranking", Component: FleetRankingPage },
           { path: "performance-report", Component: PerformanceReportPage },
           { path: "maintenance-report", Component: MaintenanceReportPage },
