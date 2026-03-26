@@ -69,7 +69,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
       "assets.create",
       "assets.edit",
       "assets.delete",
-      "mismatches.view",
+      "assets.view",
     ],
   },
   Outlet: {
@@ -79,8 +79,8 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     grants: [
       "assets.create",
       "assets.edit",
-      "assets.delete",
-     "mismatches.view",
+      "assets.view",
+      "mismatches.view",
     ],
   },
   Technician: {

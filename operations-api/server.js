@@ -112,7 +112,7 @@ const PERMISSION_POLICY = Object.freeze({
       "assets.create",
       "assets.edit",
       "assets.delete",
-      "mismatches.view",
+      "assets.view",
     ],
   },
   Outlet: {
@@ -120,7 +120,7 @@ const PERMISSION_POLICY = Object.freeze({
     grants: [
       "assets.create",
       "assets.edit",
-      "assets.delete",
+      "assets.view",
       "mismatches.view",
     ],
   },
@@ -446,6 +446,106 @@ app.get("/organisations", async (_req, res) => {
   }
 });
 
+app.post("/organisations", requireAuth, async (req, res) => {
+  if (req.user?.permissions !== "Admin") {
+    return res.status(403).json({ error: "Admin permission required" });
+  }
+
+  try {
+    const name = String(req.body?.name || "").trim();
+    const dominRaw = req.body?.domin;
+    const domin = String(dominRaw == null ? "" : dominRaw).trim().toLowerCase() || null;
+
+    if (!name) {
+      return res.status(400).json({ error: "Organisation name is required" });
+    }
+    if (name.length > 120) {
+      return res.status(400).json({ error: "Organisation name must be 120 characters or fewer" });
+    }
+    if (domin && domin.length > 120) {
+      return res.status(400).json({ error: "Organisation domain must be 120 characters or fewer" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO organisation (name, domin)
+       VALUES ($1, $2)
+       RETURNING id, name, domin, created_at`,
+      [name, domin],
+    );
+
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Organisation name or domain already exists." });
+    }
+    if (error.code === "22001") {
+      return res.status(400).json({ error: "Organisation name or domain is too long." });
+    }
+    if (error.code === "42703") {
+      return res.status(500).json({ error: "Database schema missing organisation.domin. Apply latest schema migration." });
+    }
+    if (error.code === "42P01") {
+      return res.status(500).json({ error: "Database schema missing organisation table. Apply latest schema migration." });
+    }
+    console.error("[organisations:create] failed", {
+      code: error?.code,
+      detail: error?.detail,
+      message: error?.message,
+    });
+    return res.status(500).json({ error: "Server Error" });
+  }
+});
+
+app.delete("/organisations/:id", requireAuth, async (req, res) => {
+  if (req.user?.permissions !== "Admin") {
+    return res.status(403).json({ error: "Admin permission required" });
+  }
+
+  const organisationId = Number(req.params.id);
+  if (!Number.isInteger(organisationId) || organisationId <= 0) {
+    return res.status(400).json({ error: "Invalid organisation id" });
+  }
+
+  const client = await pool.connect();
+  try {
+    const linkCounts = await client.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM users WHERE organisation_id = $1) AS users_count,
+         (SELECT COUNT(*)::int FROM fridges WHERE organisation_id = $1) AS fridges_count`,
+      [organisationId],
+    );
+
+    const usersCount = linkCounts.rows[0]?.users_count ?? 0;
+    const fridgesCount = linkCounts.rows[0]?.fridges_count ?? 0;
+
+    if (usersCount > 0 || fridgesCount > 0) {
+      return res.status(409).json({
+        error: "Cannot delete organisation with linked users or fridges.",
+        users_count: usersCount,
+        fridges_count: fridgesCount,
+      });
+    }
+
+    const result = await client.query(
+      `DELETE FROM organisation
+       WHERE id = $1
+       RETURNING id, name`,
+      [organisationId],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Organisation not found" });
+    }
+
+    return res.json({ deleted: true, organisation: result.rows[0] });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
+  }
+});
+
 app.post("/signup", loginLimiter, async (req, res) => {
   try {
     const { username, password, full_name, permissions, organisation_id } = req.body;
@@ -597,21 +697,42 @@ app.get("/profile", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/users", requireAuth, requirePermission("users.view"), async (_req, res) => {
+app.get("/users", requireAuth, requirePermission("users.view"), async (req, res) => {
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      `SELECT id, username, full_name, permissions, is_active, created_at, organisation_id
-       FROM users
-       ORDER BY created_at DESC`,
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    const result = await client.query(
+      `SELECT u.id,
+              u.username,
+              u.full_name,
+              u.permissions,
+              u.is_active,
+              u.created_at,
+              u.organisation_id,
+              o.name AS organisation_name
+       FROM users u
+       LEFT JOIN organisation o ON o.id = u.organisation_id
+       WHERE ($1::int IS NULL OR u.organisation_id = $1)
+       ORDER BY u.permissions ASC, u.created_at DESC`,
+      [scope.effectiveOrganisationId],
     );
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error?.code === "INVALID_ORGANISATION_FILTER") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
   }
 });
 
 app.post("/users", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  const client = await pool.connect();
   try {
     const { username, password, full_name, permissions, organisation_id } = req.body;
 
@@ -626,13 +747,33 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
 
     const email = String(username).trim().toLowerCase();
     const passwordHash = await bcrypt.hash(String(password), 12);
-    const organisationId = organisation_id == null ? null : Number(organisation_id);
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    let organisationId = organisation_id == null ? null : Number(organisation_id);
 
     if (organisationId != null && (!Number.isInteger(organisationId) || organisationId <= 0)) {
       return res.status(400).json({ error: "Invalid organisation_id" });
     }
 
-    const result = await pool.query(
+    if (!scope.isAdmin) {
+      if (organisationId != null && organisationId !== scope.userOrganisationId) {
+        return res.status(403).json({ error: "You can only create users within your organisation." });
+      }
+      organisationId = scope.userOrganisationId;
+    }
+
+    if (organisationId != null) {
+      const organisationResult = await client.query(
+        `SELECT id
+         FROM organisation
+         WHERE id = $1`,
+        [organisationId],
+      );
+      if (!organisationResult.rows.length) {
+        return res.status(400).json({ error: "Organisation not found" });
+      }
+    }
+
+    const result = await client.query(
       `INSERT INTO users (username, password_hash, full_name, permissions, is_active, organisation_id)
        VALUES ($1, $2, $3, $4, true, $5)
        RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
@@ -644,24 +785,32 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
     if (error.code === "23505") {
       return res.status(409).json({ error: "That email/username already exists" });
     }
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
   }
 });
 
 app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  const client = await pool.connect();
   try {
     const permission = normalizePermission(req.body.permissions);
     if (!permission) {
       return res.status(400).json({ error: "Invalid permissions value" });
     }
 
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    const result = await client.query(
       `UPDATE users
        SET permissions = $1
        WHERE id = $2
+         AND ($3::int IS NULL OR organisation_id = $3)
        RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
-      [permission, req.params.id],
+      [permission, req.params.id, scope.effectiveOrganisationId],
     );
 
     if (!result.rows.length) {
@@ -670,12 +819,18 @@ app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage")
 
     return res.json(result.rows[0]);
   } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
   }
 });
 
 app.put("/users/:id/password", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
     const targetId = Number(req.params.id);
     const isSelf = req.user.id === targetId;
@@ -690,8 +845,22 @@ app.put("/users/:id/password", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
 
+    if (!isSelf) {
+      const scope = await resolveOrganisationScope(client, req.user, null);
+      const targetResult = await client.query(
+        `SELECT id
+         FROM users
+         WHERE id = $1
+           AND ($2::int IS NULL OR organisation_id = $2)`,
+        [targetId, scope.effectiveOrganisationId],
+      );
+      if (!targetResult.rows.length) {
+        return res.status(404).json({ error: "User not found" });
+      }
+    }
+
     const passwordHash = await bcrypt.hash(nextPassword, 12);
-    const result = await pool.query(
+    const result = await client.query(
       `UPDATE users
        SET password_hash = $1
        WHERE id = $2
@@ -705,8 +874,57 @@ app.put("/users/:id/password", requireAuth, async (req, res) => {
 
     return res.json({ message: "Password updated" });
   } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
+  }
+});
+
+app.put("/users/:id/active", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const targetId = Number(req.params.id);
+    const isActive = req.body?.is_active;
+
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ error: "is_active must be a boolean" });
+    }
+
+    if (targetId === req.user.id && isActive === false) {
+      return res.status(400).json({ error: "You cannot deactivate your own account." });
+    }
+
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    const result = await client.query(
+      `UPDATE users
+       SET is_active = $1
+       WHERE id = $2
+         AND ($3::int IS NULL OR organisation_id = $3)
+       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
+      [isActive, targetId, scope.effectiveOrganisationId],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
   }
 });
 

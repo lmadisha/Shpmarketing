@@ -121,13 +121,47 @@ Responses:
 
 ## GET /organisations
 
-Purpose: list organisations for signup selection.
+Purpose: list organisations for signup selection and workspace management UIs.
 
 Auth: none.
 
 Responses:
 
 - 200: array of { id, name, domin }
+- 500: { "error": "Server Error" }
+
+## POST /organisations
+
+Purpose: create a new organisation.
+
+Auth: Bearer + Admin.
+
+Input body:
+
+- name: string (required, unique)
+- domin: string | null (optional, unique when present)
+
+Responses:
+
+- 201: created organisation row `{ id, name, domin, created_at }`
+- 400: missing name
+- 401/403
+- 409: duplicate name/domin
+- 500: { "error": "Server Error" }
+
+## DELETE /organisations/:id
+
+Purpose: delete an organisation when it has no linked users/fridges.
+
+Auth: Bearer + Admin.
+
+Responses:
+
+- 200: `{ deleted: true, organisation: { id, name } }`
+- 400: invalid organisation id
+- 401/403
+- 404: organisation not found
+- 409: linked users/fridges exist (includes `users_count`, `fridges_count`)
 - 500: { "error": "Server Error" }
 
 ## GET /profile
@@ -156,19 +190,29 @@ Responses:
 
 Purpose: list users.
 
-Auth: Bearer + Admin.
+Auth: Bearer + `users.view`.
+
+Query params:
+
+- organisation_id: number | `all` (optional)
+
+Scope behavior:
+
+- Admin: can view all users or filter to one organisation.
+- Non-admin: always restricted to own organisation regardless of query param.
 
 Responses:
 
-- 200: array of users with id, username, full_name, permissions, is_active, created_at, organisation_id
+- 200: array of users with id, username, full_name, permissions, is_active, created_at, organisation_id, organisation_name
+- 400: invalid organisation filter or missing caller organisation assignment
 - 401/403
 - 500
 
 ## POST /users
 
-Purpose: create user (admin action).
+Purpose: create user.
 
-Auth: Bearer + Admin.
+Auth: Bearer + `users.manage`.
 
 Input body:
 
@@ -182,6 +226,7 @@ Responses:
 
 - 200: created user row
 - 400: missing fields or invalid permissions
+- 403: non-admin managers cannot create users outside their own organisation
 - 409: duplicate username/email
 - 401/403
 - 500
@@ -190,7 +235,7 @@ Responses:
 
 Purpose: update user permissions.
 
-Auth: Bearer + Admin.
+Auth: Bearer + `users.manage`.
 
 Input body:
 
