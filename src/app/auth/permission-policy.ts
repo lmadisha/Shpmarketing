@@ -29,6 +29,9 @@ export const PERMISSION_FLAGS = [
 export type PermissionFlag = (typeof PERMISSION_FLAGS)[number];
 export type DataScope = "own_org" | "all_orgs";
 
+const permissionLevelRankEntries = USER_PERMISSION_LEVELS.map((level, index) => [level, index] as const);
+export const PERMISSION_LEVEL_RANK = Object.fromEntries(permissionLevelRankEntries) as Record<PermissionLevel, number>;
+
 type PermissionRolePolicy = {
   description: string;
   // Optional inheritance to avoid repeating shared capabilities.
@@ -50,6 +53,8 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     description: "Can manage asset operations and resolution workflows.",
     dataScope: "own_org",
     grants: [
+      "users.manage",
+      "users.view",
       "assets.create",
       "assets.edit",
       "assets.delete",
@@ -131,4 +136,12 @@ export function getDataScope(level: PermissionLevel): DataScope {
 
 export function canFilterOrganisation(level: PermissionLevel): boolean {
   return Boolean(PERMISSION_POLICY[level].canFilterOrganisation);
+}
+
+export function getPermissionLevelRank(level: PermissionLevel): number {
+  return PERMISSION_LEVEL_RANK[level];
+}
+
+export function canTargetPermissionLevel(actorLevel: PermissionLevel, targetLevel: PermissionLevel): boolean {
+  return getPermissionLevelRank(targetLevel) >= getPermissionLevelRank(actorLevel);
 }

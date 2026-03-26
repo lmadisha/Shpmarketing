@@ -95,6 +95,8 @@ const PERMISSION_POLICY = Object.freeze({
   "Fleet Manager": {
     inherits: [],
     grants: [
+      "users.manage",
+      "users.view",
       "assets.create",
       "assets.edit",
       "assets.delete",
@@ -136,6 +138,35 @@ const PERMISSION_POLICY = Object.freeze({
     grants: [],
   },
 });
+
+const USER_PERMISSION_LEVELS = Object.freeze([
+  "Admin",
+  "Fleet Manager",
+  "Factory",
+  "Outlet",
+  "Technician",
+  "User",
+]);
+
+const PERMISSION_LEVEL_RANK = Object.freeze(
+  USER_PERMISSION_LEVELS.reduce((accumulator, level, index) => {
+    accumulator[level] = index;
+    return accumulator;
+  }, {}),
+);
+
+function getPermissionLevelRank(level) {
+  if (typeof level !== "string") {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Object.prototype.hasOwnProperty.call(PERMISSION_LEVEL_RANK, level)
+    ? PERMISSION_LEVEL_RANK[level]
+    : Number.POSITIVE_INFINITY;
+}
+
+function canTargetRole(actorLevel, targetLevel) {
+  return getPermissionLevelRank(targetLevel) >= getPermissionLevelRank(actorLevel);
+}
 
 function resolvePermissionGrants(level, visited = new Set()) {
   if (!level || visited.has(level)) {
@@ -676,6 +707,8 @@ app.get("/profile", requireAuth, async (req, res) => {
       `SELECT u.id,
               u.username,
               u.full_name,
+              u.first_name,
+              u.last_name,
               u.permissions,
               u.organisation_id,
               o.name AS organisation_name,
@@ -692,6 +725,66 @@ app.get("/profile", requireAuth, async (req, res) => {
 
     return res.json(result.rows[0]);
   } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  }
+});
+
+app.put("/profile", requireAuth, async (req, res) => {
+  try {
+    const username = String(req.body?.username || "").trim().toLowerCase();
+    const firstNameInput = String(req.body?.first_name ?? "").trim();
+    const lastNameInput = String(req.body?.last_name ?? "").trim();
+    const firstName = firstNameInput || null;
+    const lastName = lastNameInput || null;
+    const fullName = [firstName, lastName].filter(Boolean).join(" ") || null;
+
+    if (!username) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+    if (username.length > 50) {
+      return res.status(400).json({ error: "Email must be 50 characters or fewer" });
+    }
+    if (firstNameInput.length > 100) {
+      return res.status(400).json({ error: "First name must be 100 characters or fewer" });
+    }
+    if (lastNameInput.length > 100) {
+      return res.status(400).json({ error: "Last name must be 100 characters or fewer" });
+    }
+
+    const result = await pool.query(
+      `WITH updated_user AS (
+         UPDATE users
+         SET username = $1,
+             first_name = $2,
+             last_name = $3,
+             full_name = $4
+         WHERE id = $5
+         RETURNING id, username, full_name, first_name, last_name, permissions, organisation_id
+       )
+       SELECT u.id,
+              u.username,
+              u.full_name,
+              u.first_name,
+              u.last_name,
+              u.permissions,
+              u.organisation_id,
+              o.name AS organisation_name,
+              o.domin AS organisation_domin
+       FROM updated_user u
+       LEFT JOIN organisation o ON o.id = u.organisation_id`,
+      [username, firstName, lastName, fullName, req.user.id],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "That email/username already exists" });
+    }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
   }
@@ -716,7 +809,8 @@ app.get("/users", requireAuth, requirePermission("users.view"), async (req, res)
        ORDER BY u.permissions ASC, u.created_at DESC`,
       [scope.effectiveOrganisationId],
     );
-    return res.json(result.rows);
+    const filteredRows = result.rows.filter((row) => canTargetRole(req.user.permissions, row.permissions));
+    return res.json(filteredRows);
   } catch (error) {
     if (error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
@@ -743,6 +837,9 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
     const normalizedPermission = normalizePermission(permissions);
     if (!normalizedPermission) {
       return res.status(400).json({ error: "Invalid permissions value" });
+    }
+    if (!canTargetRole(req.user.permissions, normalizedPermission)) {
+      return res.status(403).json({ error: "You cannot assign a higher permission level than your own." });
     }
 
     const email = String(username).trim().toLowerCase();
@@ -798,19 +895,42 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
 app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage"), async (req, res) => {
   const client = await pool.connect();
   try {
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
     const permission = normalizePermission(req.body.permissions);
     if (!permission) {
       return res.status(400).json({ error: "Invalid permissions value" });
     }
+    if (!canTargetRole(req.user.permissions, permission)) {
+      return res.status(403).json({ error: "You cannot assign a higher permission level than your own." });
+    }
 
     const scope = await resolveOrganisationScope(client, req.user, null);
+    const targetResult = await client.query(
+      `SELECT id, permissions
+       FROM users
+       WHERE id = $1
+         AND ($2::int IS NULL OR organisation_id = $2)`,
+      [targetId, scope.effectiveOrganisationId],
+    );
+
+    if (!targetResult.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!canTargetRole(req.user.permissions, targetResult.rows[0].permissions)) {
+      return res.status(403).json({ error: "You cannot modify a user above your permission level." });
+    }
+
     const result = await client.query(
       `UPDATE users
        SET permissions = $1
        WHERE id = $2
-         AND ($3::int IS NULL OR organisation_id = $3)
        RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
-      [permission, req.params.id, scope.effectiveOrganisationId],
+      [permission, targetId],
     );
 
     if (!result.rows.length) {

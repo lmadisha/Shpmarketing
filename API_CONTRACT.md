@@ -177,6 +177,8 @@ Responses:
     "id": 3,
     "username": "user@example.com",
     "full_name": "User Name",
+    "first_name": "User",
+    "last_name": "Name",
     "permissions": "Fleet Manager",
     "organisation_id": 2,
     "organisation_name": "Org Name",
@@ -184,6 +186,32 @@ Responses:
   }
 - 404: profile not found
 - 401
+- 500: { "error": "Server Error" }
+
+## PUT /profile
+
+Purpose: update authenticated user profile details (excluding permissions).
+
+Auth: Bearer.
+
+Input body:
+
+- username: string (required)
+- first_name: string (optional)
+- last_name: string (optional)
+
+Notes:
+
+- `permissions` and `organisation_id` are not editable through this endpoint.
+- `full_name` is derived server-side from `first_name` + `last_name`.
+
+Responses:
+
+- 200: updated profile payload (same shape as `GET /profile`)
+- 400: invalid/missing input
+- 401
+- 404: profile not found
+- 409: duplicate username/email
 - 500: { "error": "Server Error" }
 
 ## GET /users
@@ -200,6 +228,7 @@ Scope behavior:
 
 - Admin: can view all users or filter to one organisation.
 - Non-admin: always restricted to own organisation regardless of query param.
+- For callers with `users.view`, response includes only users at caller level or lower.
 
 Responses:
 
@@ -226,7 +255,7 @@ Responses:
 
 - 200: created user row
 - 400: missing fields or invalid permissions
-- 403: non-admin managers cannot create users outside their own organisation
+- 403: non-admin managers cannot create users outside their own organisation, and callers cannot assign roles above their own level
 - 409: duplicate username/email
 - 401/403
 - 500
@@ -244,7 +273,8 @@ Input body:
 Responses:
 
 - 200: updated user row
-- 400: invalid permissions
+- 400: invalid permissions or invalid user id
+- 403: caller cannot assign roles above own level or modify users above own level
 - 404: user not found
 - 401/403
 - 500

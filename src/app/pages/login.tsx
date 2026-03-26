@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -40,8 +40,17 @@ export function LoginPage() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 py-8">
       <Card className="w-full max-w-md">
         <CardHeader>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="h-10 w-10 rounded-lg bg-blue-600 text-white flex items-center justify-center font-semibold">
+              BF
+            </div>
+            <div>
+              <p className="text-base font-semibold text-gray-900 leading-none">BevFleet</p>
+              <p className="text-xs text-gray-600 mt-1">Operations Platform</p>
+            </div>
+          </div>
           <CardTitle>Welcome back</CardTitle>
-          <CardDescription>Sign in to access SHP Marketing operations and analytics.</CardDescription>
+          <CardDescription>Sign in to access BevFleet operations and analytics.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -74,10 +83,6 @@ export function LoginPage() {
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? "Signing in..." : "Sign in"}
             </Button>
-
-            <p className="text-sm text-gray-600 text-center">
-              No account yet? <Link className="text-blue-600 hover:underline" to="/signup">Create one</Link>
-            </p>
           </form>
         </CardContent>
       </Card>

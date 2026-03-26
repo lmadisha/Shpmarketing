@@ -25,7 +25,7 @@ import {
 import { AccessDeniedCard } from "../components/auth/access-denied-card";
 import { useApiClient } from "../auth/use-api-client";
 import { PermissionLevel, useAuth } from "../auth/auth-context";
-import { hasPermission, USER_PERMISSION_LEVELS } from "../auth/permission-policy";
+import { canTargetPermissionLevel, hasPermission, USER_PERMISSION_LEVELS } from "../auth/permission-policy";
 
 type WorkspaceUser = {
   id: number;
@@ -58,6 +58,13 @@ export function WorkspacePage() {
   const forceOwnOrg = !isAdmin && selfOrgId != null;
   const canViewUsers = permissionLevel ? hasPermission(permissionLevel, "users.view") : false;
   const canManageUsers = permissionLevel ? hasPermission(permissionLevel, "users.manage") : false;
+  const visiblePermissionLevels = useMemo(
+    () =>
+      permissionLevel
+        ? USER_PERMISSION_LEVELS.filter((level) => canTargetPermissionLevel(permissionLevel, level))
+        : [],
+    [permissionLevel],
+  );
 
   const [users, setUsers] = useState<WorkspaceUser[]>([]);
   const [organisations, setOrganisations] = useState<OrganisationOption[]>([]);
@@ -141,7 +148,10 @@ export function WorkspacePage() {
           ? `/users?organisation_id=${encodeURIComponent(organisationFilter)}`
           : "/users";
       const data = await request<WorkspaceUser[]>(usersPath);
-      setUsers(Array.isArray(data) ? data : []);
+      const roleFilteredUsers = (Array.isArray(data) ? data : []).filter((user) =>
+        permissionLevel ? canTargetPermissionLevel(permissionLevel, user.permissions) : false,
+      );
+      setUsers(roleFilteredUsers);
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Could not load users.";
       setError(message);
@@ -188,6 +198,15 @@ export function WorkspacePage() {
       setOrganisationFilter("all");
     }
   }, [isAdmin, organisationFilter, organisations]);
+
+  useEffect(() => {
+    if (permissionFilter === "all") {
+      return;
+    }
+    if (!permissionLevel || !canTargetPermissionLevel(permissionLevel, permissionFilter)) {
+      setPermissionFilter("all");
+    }
+  }, [permissionFilter, permissionLevel]);
 
   const submitCreateOrganisation = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -281,10 +300,10 @@ export function WorkspacePage() {
 
   const visiblePermissionGroups = useMemo(() => {
     if (permissionFilter === "all") {
-      return USER_PERMISSION_LEVELS;
+      return visiblePermissionLevels;
     }
     return [permissionFilter];
-  }, [permissionFilter]);
+  }, [permissionFilter, visiblePermissionLevels]);
 
   const groupedUsers = useMemo(() => {
     return visiblePermissionGroups.map((level) => ({
@@ -459,7 +478,7 @@ export function WorkspacePage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All permissions</SelectItem>
-                {USER_PERMISSION_LEVELS.map((level) => (
+                {visiblePermissionLevels.map((level) => (
                   <SelectItem key={level} value={level}>
                     {level}
                   </SelectItem>
@@ -736,7 +755,7 @@ export function WorkspacePage() {
                   <SelectValue placeholder="Select permission" />
                 </SelectTrigger>
                 <SelectContent>
-                  {USER_PERMISSION_LEVELS.map((level) => (
+                  {visiblePermissionLevels.map((level) => (
                     <SelectItem key={level} value={level}>
                       {level}
                     </SelectItem>
@@ -848,7 +867,7 @@ export function WorkspacePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {USER_PERMISSION_LEVELS.map((level) => (
+                {visiblePermissionLevels.map((level) => (
                   <SelectItem key={level} value={level}>
                     {level}
                   </SelectItem>
