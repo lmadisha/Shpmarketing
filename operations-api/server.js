@@ -73,11 +73,156 @@ function requireAuth(req, res, next) {
   }
 }
 
-function requireAdmin(req, res, next) {
-  if (!req.user || req.user.permissions !== "Admin") {
-    return res.status(403).json({ error: "Admin permission required" });
+const PERMISSION_FLAGS = Object.freeze([
+  "users.manage",
+  "users.view",
+  "assets.create",
+  "assets.edit",
+  "assets.delete",
+  "assets.view",
+  "mismatches.resolve",
+  "mismatches.delete",
+  "mismatches.view",
+  "history.view",
+  "device_checker.submit",
+]);
+
+const PERMISSION_POLICY = Object.freeze({
+  Admin: {
+    inherits: [],
+    grants: [...PERMISSION_FLAGS],
+  },
+  "Fleet Manager": {
+    inherits: [],
+    grants: [
+      "users.manage",
+      "users.view",
+      "assets.create",
+      "assets.edit",
+      "assets.delete",
+      "assets.view",
+      "mismatches.resolve",
+      "mismatches.delete",
+      "mismatches.view",
+      "history.view",
+      "device_checker.submit",
+    ],
+  },
+  Factory: {
+    inherits: [],
+    grants: [
+      "assets.create",
+      "assets.edit",
+      "assets.delete",
+      "assets.view",
+    ],
+  },
+  Outlet: {
+    inherits: [],
+    grants: [
+      "assets.create",
+      "assets.edit",
+      "assets.view",
+      "mismatches.view",
+    ],
+  },
+  Technician: {
+    inherits: [],
+    grants: [
+      "mismatches.view",
+      "device_checker.submit",
+    ],
+  },
+  User: {
+    inherits: [],
+    grants: [],
+  },
+});
+
+const USER_PERMISSION_LEVELS = Object.freeze([
+  "Admin",
+  "Fleet Manager",
+  "Factory",
+  "Outlet",
+  "Technician",
+  "User",
+]);
+
+const PERMISSION_LEVEL_RANK = Object.freeze(
+  USER_PERMISSION_LEVELS.reduce((accumulator, level, index) => {
+    accumulator[level] = index;
+    return accumulator;
+  }, {}),
+);
+
+function getPermissionLevelRank(level) {
+  if (typeof level !== "string") {
+    return Number.POSITIVE_INFINITY;
   }
-  return next();
+  return Object.prototype.hasOwnProperty.call(PERMISSION_LEVEL_RANK, level)
+    ? PERMISSION_LEVEL_RANK[level]
+    : Number.POSITIVE_INFINITY;
+}
+
+function canTargetRole(actorLevel, targetLevel) {
+  return getPermissionLevelRank(targetLevel) >= getPermissionLevelRank(actorLevel);
+}
+
+function resolvePermissionGrants(level, visited = new Set()) {
+  if (!level || visited.has(level)) {
+    return new Set();
+  }
+
+  const policy = PERMISSION_POLICY[level];
+  if (!policy) {
+    return new Set();
+  }
+
+  visited.add(level);
+  const grants = new Set(policy.grants || []);
+
+  for (const inheritedLevel of policy.inherits || []) {
+    const inheritedGrants = resolvePermissionGrants(inheritedLevel, visited);
+    inheritedGrants.forEach((grant) => grants.add(grant));
+  }
+
+  return grants;
+}
+
+function hasUserPermission(user, flag) {
+  if (!user || !flag || !PERMISSION_FLAGS.includes(flag)) {
+    return false;
+  }
+  return resolvePermissionGrants(user.permissions).has(flag);
+}
+
+function requirePermission(flag) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Missing user context" });
+    }
+
+    if (!hasUserPermission(req.user, flag)) {
+      return res.status(403).json({ error: `Permission required: ${flag}` });
+    }
+
+    return next();
+  };
+}
+
+function requireAnyPermission(flags) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Missing user context" });
+    }
+
+    const permitted = (flags || []).some((flag) => hasUserPermission(req.user, flag));
+    if (!permitted) {
+      return res.status(403).json({ error: `Any of these permissions required: ${(flags || []).join(", ")}` });
+    }
+
+    return next();
+  };
 }
 
 function requireMobileKey(req, res, next) {
@@ -90,11 +235,14 @@ function requireMobileKey(req, res, next) {
 
 function normalizePermission(value) {
   const permission = String(value || "").trim().toLowerCase();
+  const compactPermission = permission.replace(/[\s_-]+/g, "");
 
-  if (permission === "admin") return "Admin";
-  if (permission === "fleet manager" || permission === "intermediate") return "Fleet Manager";
-  if (permission === "technician") return "Technician";
-  if (permission === "users" || permission === "user" || permission === "basic") return "User";
+  if (compactPermission === "admin") return "Admin";
+  if (compactPermission === "fleetmanager" || compactPermission === "intermediate") return "Fleet Manager";
+  if (compactPermission === "factory" || compactPermission === "factorymanager") return "Factory";
+  if (compactPermission === "outlet" || compactPermission === "outletmanager") return "Outlet";
+  if (compactPermission === "technician") return "Technician";
+  if (compactPermission === "users" || compactPermission === "user" || compactPermission === "basic") return "User";
 
   return null;
 }
@@ -112,6 +260,42 @@ async function getUserOrganisationId(client, userId) {
   }
 
   return result.rows[0].organisation_id ?? null;
+}
+
+function parseRequestedOrganisationId(rawValue) {
+  if (rawValue == null) return null;
+  const raw = String(rawValue).trim().toLowerCase();
+  if (!raw || raw === "all") {
+    return null;
+  }
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    const error = new Error("Invalid organisation_id filter.");
+    error.code = "INVALID_ORGANISATION_FILTER";
+    throw error;
+  }
+
+  return value;
+}
+
+async function resolveOrganisationScope(client, user, requestedOrganisationIdRaw) {
+  const requestedOrganisationId = parseRequestedOrganisationId(requestedOrganisationIdRaw);
+  const isAdmin = user?.permissions === "Admin";
+  const userOrganisationId = await getUserOrganisationId(client, user.id);
+
+  if (!isAdmin && !userOrganisationId) {
+    const error = new Error("User organisation is not configured.");
+    error.code = "USER_ORGANISATION_REQUIRED";
+    throw error;
+  }
+
+  return {
+    isAdmin,
+    userOrganisationId,
+    requestedOrganisationId,
+    effectiveOrganisationId: isAdmin ? requestedOrganisationId : userOrganisationId,
+  };
 }
 
 function logAssetAction(action, details = "") {
@@ -293,6 +477,106 @@ app.get("/organisations", async (_req, res) => {
   }
 });
 
+app.post("/organisations", requireAuth, async (req, res) => {
+  if (req.user?.permissions !== "Admin") {
+    return res.status(403).json({ error: "Admin permission required" });
+  }
+
+  try {
+    const name = String(req.body?.name || "").trim();
+    const dominRaw = req.body?.domin;
+    const domin = String(dominRaw == null ? "" : dominRaw).trim().toLowerCase() || null;
+
+    if (!name) {
+      return res.status(400).json({ error: "Organisation name is required" });
+    }
+    if (name.length > 120) {
+      return res.status(400).json({ error: "Organisation name must be 120 characters or fewer" });
+    }
+    if (domin && domin.length > 120) {
+      return res.status(400).json({ error: "Organisation domain must be 120 characters or fewer" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO organisation (name, domin)
+       VALUES ($1, $2)
+       RETURNING id, name, domin, created_at`,
+      [name, domin],
+    );
+
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Organisation name or domain already exists." });
+    }
+    if (error.code === "22001") {
+      return res.status(400).json({ error: "Organisation name or domain is too long." });
+    }
+    if (error.code === "42703") {
+      return res.status(500).json({ error: "Database schema missing organisation.domin. Apply latest schema migration." });
+    }
+    if (error.code === "42P01") {
+      return res.status(500).json({ error: "Database schema missing organisation table. Apply latest schema migration." });
+    }
+    console.error("[organisations:create] failed", {
+      code: error?.code,
+      detail: error?.detail,
+      message: error?.message,
+    });
+    return res.status(500).json({ error: "Server Error" });
+  }
+});
+
+app.delete("/organisations/:id", requireAuth, async (req, res) => {
+  if (req.user?.permissions !== "Admin") {
+    return res.status(403).json({ error: "Admin permission required" });
+  }
+
+  const organisationId = Number(req.params.id);
+  if (!Number.isInteger(organisationId) || organisationId <= 0) {
+    return res.status(400).json({ error: "Invalid organisation id" });
+  }
+
+  const client = await pool.connect();
+  try {
+    const linkCounts = await client.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM users WHERE organisation_id = $1) AS users_count,
+         (SELECT COUNT(*)::int FROM fridges WHERE organisation_id = $1) AS fridges_count`,
+      [organisationId],
+    );
+
+    const usersCount = linkCounts.rows[0]?.users_count ?? 0;
+    const fridgesCount = linkCounts.rows[0]?.fridges_count ?? 0;
+
+    if (usersCount > 0 || fridgesCount > 0) {
+      return res.status(409).json({
+        error: "Cannot delete organisation with linked users or fridges.",
+        users_count: usersCount,
+        fridges_count: fridgesCount,
+      });
+    }
+
+    const result = await client.query(
+      `DELETE FROM organisation
+       WHERE id = $1
+       RETURNING id, name`,
+      [organisationId],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Organisation not found" });
+    }
+
+    return res.json({ deleted: true, organisation: result.rows[0] });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
+  }
+});
+
 app.post("/signup", loginLimiter, async (req, res) => {
   try {
     const { username, password, full_name, permissions, organisation_id } = req.body;
@@ -423,6 +707,8 @@ app.get("/profile", requireAuth, async (req, res) => {
       `SELECT u.id,
               u.username,
               u.full_name,
+              u.first_name,
+              u.last_name,
               u.permissions,
               u.organisation_id,
               o.name AS organisation_name,
@@ -444,47 +730,55 @@ app.get("/profile", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/users", requireAuth, requireAdmin, async (_req, res) => {
+app.put("/profile", requireAuth, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, username, full_name, permissions, is_active, created_at, organisation_id
-       FROM users
-       ORDER BY created_at DESC`,
-    );
-    return res.json(result.rows);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Server Error" });
-  }
-});
+    const username = String(req.body?.username || "").trim().toLowerCase();
+    const firstNameInput = String(req.body?.first_name ?? "").trim();
+    const lastNameInput = String(req.body?.last_name ?? "").trim();
+    const firstName = firstNameInput || null;
+    const lastName = lastNameInput || null;
+    const fullName = [firstName, lastName].filter(Boolean).join(" ") || null;
 
-app.post("/users", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { username, password, full_name, permissions, organisation_id } = req.body;
-
-    if (!username || !password || !full_name || !permissions) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!username) {
+      return res.status(400).json({ error: "Email is required" });
     }
-
-    const normalizedPermission = normalizePermission(permissions);
-    if (!normalizedPermission) {
-      return res.status(400).json({ error: "Invalid permissions value" });
+    if (username.length > 50) {
+      return res.status(400).json({ error: "Email must be 50 characters or fewer" });
     }
-
-    const email = String(username).trim().toLowerCase();
-    const passwordHash = await bcrypt.hash(String(password), 12);
-    const organisationId = organisation_id == null ? null : Number(organisation_id);
-
-    if (organisationId != null && (!Number.isInteger(organisationId) || organisationId <= 0)) {
-      return res.status(400).json({ error: "Invalid organisation_id" });
+    if (firstNameInput.length > 100) {
+      return res.status(400).json({ error: "First name must be 100 characters or fewer" });
+    }
+    if (lastNameInput.length > 100) {
+      return res.status(400).json({ error: "Last name must be 100 characters or fewer" });
     }
 
     const result = await pool.query(
-      `INSERT INTO users (username, password_hash, full_name, permissions, is_active, organisation_id)
-       VALUES ($1, $2, $3, $4, true, $5)
-       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
-      [email, passwordHash, String(full_name).trim(), normalizedPermission, organisationId],
+      `WITH updated_user AS (
+         UPDATE users
+         SET username = $1,
+             first_name = $2,
+             last_name = $3,
+             full_name = $4
+         WHERE id = $5
+         RETURNING id, username, full_name, first_name, last_name, permissions, organisation_id
+       )
+       SELECT u.id,
+              u.username,
+              u.full_name,
+              u.first_name,
+              u.last_name,
+              u.permissions,
+              u.organisation_id,
+              o.name AS organisation_name,
+              o.domin AS organisation_domin
+       FROM updated_user u
+       LEFT JOIN organisation o ON o.id = u.organisation_id`,
+      [username, firstName, lastName, fullName, req.user.id],
     );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
 
     return res.json(result.rows[0]);
   } catch (error) {
@@ -496,19 +790,147 @@ app.post("/users", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.put("/users/:id/permissions", requireAuth, requireAdmin, async (req, res) => {
+app.get("/users", requireAuth, requirePermission("users.view"), async (req, res) => {
+  const client = await pool.connect();
   try {
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    const result = await client.query(
+      `SELECT u.id,
+              u.username,
+              u.full_name,
+              u.permissions,
+              u.is_active,
+              u.created_at,
+              u.organisation_id,
+              o.name AS organisation_name
+       FROM users u
+       LEFT JOIN organisation o ON o.id = u.organisation_id
+       WHERE ($1::int IS NULL OR u.organisation_id = $1)
+       ORDER BY u.permissions ASC, u.created_at DESC`,
+      [scope.effectiveOrganisationId],
+    );
+    const filteredRows = result.rows.filter((row) => canTargetRole(req.user.permissions, row.permissions));
+    return res.json(filteredRows);
+  } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error?.code === "INVALID_ORGANISATION_FILTER") {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/users", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { username, password, full_name, permissions, organisation_id } = req.body;
+
+    if (!username || !password || !full_name || !permissions) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const normalizedPermission = normalizePermission(permissions);
+    if (!normalizedPermission) {
+      return res.status(400).json({ error: "Invalid permissions value" });
+    }
+    if (!canTargetRole(req.user.permissions, normalizedPermission)) {
+      return res.status(403).json({ error: "You cannot assign a higher permission level than your own." });
+    }
+
+    const email = String(username).trim().toLowerCase();
+    const passwordHash = await bcrypt.hash(String(password), 12);
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    let organisationId = organisation_id == null ? null : Number(organisation_id);
+
+    if (organisationId != null && (!Number.isInteger(organisationId) || organisationId <= 0)) {
+      return res.status(400).json({ error: "Invalid organisation_id" });
+    }
+
+    if (!scope.isAdmin) {
+      if (organisationId != null && organisationId !== scope.userOrganisationId) {
+        return res.status(403).json({ error: "You can only create users within your organisation." });
+      }
+      organisationId = scope.userOrganisationId;
+    }
+
+    if (organisationId != null) {
+      const organisationResult = await client.query(
+        `SELECT id
+         FROM organisation
+         WHERE id = $1`,
+        [organisationId],
+      );
+      if (!organisationResult.rows.length) {
+        return res.status(400).json({ error: "Organisation not found" });
+      }
+    }
+
+    const result = await client.query(
+      `INSERT INTO users (username, password_hash, full_name, permissions, is_active, organisation_id)
+       VALUES ($1, $2, $3, $4, true, $5)
+       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
+      [email, passwordHash, String(full_name).trim(), normalizedPermission, organisationId],
+    );
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "That email/username already exists" });
+    }
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
+  }
+});
+
+app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
     const permission = normalizePermission(req.body.permissions);
     if (!permission) {
       return res.status(400).json({ error: "Invalid permissions value" });
     }
+    if (!canTargetRole(req.user.permissions, permission)) {
+      return res.status(403).json({ error: "You cannot assign a higher permission level than your own." });
+    }
 
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    const targetResult = await client.query(
+      `SELECT id, permissions
+       FROM users
+       WHERE id = $1
+         AND ($2::int IS NULL OR organisation_id = $2)`,
+      [targetId, scope.effectiveOrganisationId],
+    );
+
+    if (!targetResult.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!canTargetRole(req.user.permissions, targetResult.rows[0].permissions)) {
+      return res.status(403).json({ error: "You cannot modify a user above your permission level." });
+    }
+
+    const result = await client.query(
       `UPDATE users
        SET permissions = $1
        WHERE id = $2
        RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
-      [permission, req.params.id],
+      [permission, targetId],
     );
 
     if (!result.rows.length) {
@@ -517,18 +939,24 @@ app.put("/users/:id/permissions", requireAuth, requireAdmin, async (req, res) =>
 
     return res.json(result.rows[0]);
   } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
   }
 });
 
 app.put("/users/:id/password", requireAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
     const targetId = Number(req.params.id);
     const isSelf = req.user.id === targetId;
-    const isAdmin = req.user.permissions === "Admin";
+    const canManageUsers = hasUserPermission(req.user, "users.manage");
 
-    if (!isSelf && !isAdmin) {
+    if (!isSelf && !canManageUsers) {
       return res.status(403).json({ error: "Not allowed" });
     }
 
@@ -537,8 +965,22 @@ app.put("/users/:id/password", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
 
+    if (!isSelf) {
+      const scope = await resolveOrganisationScope(client, req.user, null);
+      const targetResult = await client.query(
+        `SELECT id
+         FROM users
+         WHERE id = $1
+           AND ($2::int IS NULL OR organisation_id = $2)`,
+        [targetId, scope.effectiveOrganisationId],
+      );
+      if (!targetResult.rows.length) {
+        return res.status(404).json({ error: "User not found" });
+      }
+    }
+
     const passwordHash = await bcrypt.hash(nextPassword, 12);
-    const result = await pool.query(
+    const result = await client.query(
       `UPDATE users
        SET password_hash = $1
        WHERE id = $2
@@ -552,12 +994,61 @@ app.put("/users/:id/password", requireAuth, async (req, res) => {
 
     return res.json({ message: "Password updated" });
   } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
   }
 });
 
-app.post("/newDevice", requireAuth, async (req, res) => {
+app.put("/users/:id/active", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const targetId = Number(req.params.id);
+    const isActive = req.body?.is_active;
+
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ error: "is_active must be a boolean" });
+    }
+
+    if (targetId === req.user.id && isActive === false) {
+      return res.status(400).json({ error: "You cannot deactivate your own account." });
+    }
+
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    const result = await client.query(
+      `UPDATE users
+       SET is_active = $1
+       WHERE id = $2
+         AND ($3::int IS NULL OR organisation_id = $3)
+       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
+      [isActive, targetId, scope.effectiveOrganisationId],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (req, res) => {
   const client = await pool.connect();
   try {
     const { mac_address, fridge_serial_number, c_number } = req.body;
@@ -591,7 +1082,7 @@ app.post("/newDevice", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/newDevice/bulk", requireAuth, (req, res) => {
+app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (req, res) => {
   upload.single("file")(req, res, async (uploadError) => {
     if (uploadError) {
       return res.status(400).json({ error: uploadError.message || "Invalid upload." });
@@ -760,7 +1251,7 @@ app.post("/newDevice/bulk", requireAuth, (req, res) => {
   });
 });
 
-app.post("/newDevice/bulk/preview", requireAuth, (req, res) => {
+app.post("/newDevice/bulk/preview", requireAuth, requirePermission("assets.create"), (req, res) => {
   upload.single("file")(req, res, async (uploadError) => {
     if (uploadError) {
       return res.status(400).json({ error: uploadError.message || "Invalid upload." });
@@ -803,40 +1294,76 @@ app.post("/newDevice/bulk/preview", requireAuth, (req, res) => {
   });
 });
 
-app.get("/getFridges", requireAuth, async (_req, res) => {
+app.get(
+  "/getFridges",
+  requireAuth,
+  requireAnyPermission(["assets.view", "device_checker.submit"]),
+  async (req, res) => {
+  const client = await pool.connect();
   try {
-    logAssetAction("list-fridges:start");
-    const result = await pool.query("SELECT * FROM fridges ORDER BY fridge_serial_number ASC");
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction(
+      "list-fridges:start",
+      `orgFilter=${scope.effectiveOrganisationId ?? "all"} byUser=${req.user?.id || "unknown"}`,
+    );
+
+    const result = await client.query(
+      `SELECT *
+       FROM fridges
+       WHERE ($1::int IS NULL OR organisation_id = $1)
+       ORDER BY fridge_serial_number ASC`,
+      [scope.effectiveOrganisationId],
+    );
     logAssetAction("list-fridges:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "list-fridges", error);
+  } finally {
+    client.release();
   }
 });
 
-app.get("/searchFridges", requireAuth, async (req, res) => {
+app.get(
+  "/searchFridges",
+  requireAuth,
+  requireAnyPermission(["assets.view", "device_checker.submit"]),
+  async (req, res) => {
+  const client = await pool.connect();
   try {
     const searchTerm = String(req.query.searchTerm || "");
-    logAssetAction("search-fridges:start", `term=${searchTerm}`);
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction("search-fridges:start", `term=${searchTerm} orgFilter=${scope.effectiveOrganisationId ?? "all"}`);
     const formattedSearch = `%${searchTerm}%`;
 
-    const result = await pool.query(
-      `SELECT * FROM fridges
-       WHERE iot_mac_address ILIKE $1
-          OR fridge_serial_number ILIKE $1
-          OR c_number ILIKE $1
+    const result = await client.query(
+      `SELECT *
+       FROM fridges
+       WHERE ($1::int IS NULL OR organisation_id = $1)
+         AND (
+           iot_mac_address ILIKE $2
+           OR fridge_serial_number ILIKE $2
+           OR c_number ILIKE $2
+         )
        ORDER BY fridge_serial_number ASC`,
-      [formattedSearch],
+      [scope.effectiveOrganisationId, formattedSearch],
     );
 
     logAssetAction("search-fridges:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "search-fridges", error);
+  } finally {
+    client.release();
   }
 });
 
-app.put("/updateDevice/:serialNumber", requireAuth, async (req, res) => {
+app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.edit"), async (req, res) => {
   const client = await pool.connect();
   try {
     logAssetAction(
@@ -847,14 +1374,16 @@ app.put("/updateDevice/:serialNumber", requireAuth, async (req, res) => {
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
       String(req.user.id),
     ]);
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const result = await client.query(
       `UPDATE fridges
        SET iot_mac_address = COALESCE($1, iot_mac_address),
            c_number = COALESCE($2, c_number)
        WHERE fridge_serial_number = $3
+         AND ($4::int IS NULL OR organisation_id = $4)
        RETURNING *`,
-      [req.body.mac_address, req.body.c_number, req.params.serialNumber],
+      [req.body.mac_address, req.body.c_number, req.params.serialNumber, scope.effectiveOrganisationId],
     );
 
     await client.query("COMMIT");
@@ -867,13 +1396,16 @@ app.put("/updateDevice/:serialNumber", requireAuth, async (req, res) => {
     return res.json(result.rows[0]);
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "update-device", error);
   } finally {
     client.release();
   }
 });
 
-app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
+app.delete("/deleteDevice/:serialNumber", requireAuth, requirePermission("assets.delete"), async (req, res) => {
   const client = await pool.connect();
   try {
     logAssetAction(
@@ -884,12 +1416,14 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
       String(req.user.id),
     ]);
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const result = await client.query(
       `DELETE FROM fridges
        WHERE fridge_serial_number = $1
+         AND ($2::int IS NULL OR organisation_id = $2)
        RETURNING *`,
-      [req.params.serialNumber],
+      [req.params.serialNumber, scope.effectiveOrganisationId],
     );
 
     await client.query("COMMIT");
@@ -902,45 +1436,70 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, async (req, res) => {
     return res.json({ message: "Fridge deleted successfully", device: result.rows[0] });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "delete-device", error);
   } finally {
     client.release();
   }
 });
 
-app.get("/auditLog/:serialNumber", requireAuth, async (req, res) => {
+app.get("/auditLog/:serialNumber", requireAuth, requirePermission("history.view"), async (req, res) => {
+  const client = await pool.connect();
   try {
-    logAssetAction("device-history:start", `serial=${req.params.serialNumber || "unknown"}`);
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction(
+      "device-history:start",
+      `serial=${req.params.serialNumber || "unknown"} orgFilter=${scope.effectiveOrganisationId ?? "all"}`,
+    );
+    const result = await client.query(
       `SELECT fal.*,
               u.username AS changed_by_username
        FROM fridge_audit_log fal
        LEFT JOIN users u ON u.id = fal.changed_by
+       LEFT JOIN fridges f ON f.fridge_serial_number = fal.fridge_serial_number
        WHERE UPPER(fal.fridge_serial_number) = UPPER($1)
+         AND ($2::int IS NULL OR f.organisation_id = $2)
        ORDER BY fal.changed_at DESC`,
-      [req.params.serialNumber],
+      [req.params.serialNumber, scope.effectiveOrganisationId],
     );
     logAssetAction("device-history:success", `serial=${req.params.serialNumber || "unknown"} count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "device-history", error);
+  } finally {
+    client.release();
   }
 });
 
-app.get("/auditLog", requireAuth, async (_req, res) => {
+app.get("/auditLog", requireAuth, requirePermission("history.view"), async (req, res) => {
+  const client = await pool.connect();
   try {
-    logAssetAction("audit-history:start");
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction("audit-history:start", `orgFilter=${scope.effectiveOrganisationId ?? "all"}`);
+    const result = await client.query(
       `SELECT fal.*,
               u.username AS changed_by_username
        FROM fridge_audit_log fal
        LEFT JOIN users u ON u.id = fal.changed_by
+       LEFT JOIN fridges f ON f.fridge_serial_number = fal.fridge_serial_number
+       WHERE ($1::int IS NULL OR f.organisation_id = $1)
        ORDER BY fal.changed_at DESC`,
+      [scope.effectiveOrganisationId],
     );
     logAssetAction("audit-history:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "audit-history", error);
+  } finally {
+    client.release();
   }
 });
 
@@ -1036,70 +1595,19 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
   }
 });
 
-app.post("/mismatches/manual", requireAuth, async (req, res) => {
+app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.submit"), async (req, res) => {
   const client = await pool.connect();
   try {
-    const fridge_serial_number = String(req.body?.fridge_serial_number || "").trim();
-    const received_mac = String(req.body?.mac_address || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 12);
-    const received_c_number = String(req.body?.c_number || "").trim().toUpperCase().slice(0, 10);
-
-    logAssetAction("manual-mismatch:start", `serial=${fridge_serial_number} byUser=${req.user?.id || "unknown"}`);
-
-    if (!fridge_serial_number) {
-      return res.status(400).json({ error: "fridge_serial_number is required." });
-    }
-
-    const fridgeRes = await client.query(
-      `SELECT iot_mac_address, c_number FROM fridges WHERE fridge_serial_number = $1`,
-      [fridge_serial_number],
-    );
-
-    if (!fridgeRes.rows.length) {
-      return res.status(404).json({ error: "Fridge not found." });
-    }
-
-    const fridge = fridgeRes.rows[0];
-
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
-
-    const inserted = await client.query(
-      `INSERT INTO fridge_mismatches
-        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status, sender_id)
-       VALUES ($1, $2, $3, $4, $5, 'open', $6)
-       RETURNING *`,
-      [
-        fridge_serial_number,
-        received_mac || null,
-        received_c_number || null,
-        fridge.iot_mac_address || null,
-        fridge.c_number || null,
-        req.user.id,
-      ],
-    );
-
-    await client.query("COMMIT");
-
-    logAssetAction("manual-mismatch:success", `id=${inserted.rows[0].id} serial=${fridge_serial_number}`);
-    return res.status(201).json(inserted.rows[0]);
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    return handleAssetError(res, "manual-mismatch", error);
-  } finally {
-    client.release();
-  }
-});
-
-app.post("/mismatches/manual", requireAuth, async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { fridge_serial_number, mac_address, c_number } = req.body;
-    const serial = String(fridge_serial_number || "").trim();
-    const mac = mac_address ? String(mac_address).trim().toUpperCase() : null;
-    const cNum = c_number ? String(c_number).trim().toUpperCase() : null;
+    const serial = String(req.body?.fridge_serial_number || "").trim();
+    const mac = String(req.body?.mac_address || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 12);
+    const cNum = String(req.body?.c_number || "").trim().toUpperCase().slice(0, 10);
 
     if (!serial) {
       return res.status(400).json({ error: "fridge_serial_number is required" });
+    }
+
+    if (!mac || !cNum) {
+      return res.status(400).json({ error: "mac_address and c_number are required" });
     }
 
     logAssetAction(
@@ -1111,12 +1619,14 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
       String(req.user.id),
     ]);
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const fridgeRes = await client.query(
-      `SELECT iot_mac_address, c_number
+      `SELECT fridge_serial_number, iot_mac_address, c_number, verified
        FROM fridges
-       WHERE fridge_serial_number = $1`,
-      [serial]
+       WHERE fridge_serial_number = $1
+         AND ($2::int IS NULL OR organisation_id = $2)`,
+      [serial, scope.effectiveOrganisationId],
     );
 
     if (!fridgeRes.rows.length) {
@@ -1125,6 +1635,43 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     }
 
     const fridge = fridgeRes.rows[0];
+    const norm = (value) => String(value || "").trim().toUpperCase();
+    const macMatches = norm(fridge.iot_mac_address) === norm(mac);
+    const cMatches = norm(fridge.c_number) === norm(cNum);
+
+    if (macMatches && cMatches) {
+      const updatedFridge = await client.query(
+        `UPDATE fridges
+         SET verified = true,
+             verified_at = NOW()
+         WHERE fridge_serial_number = $1
+         RETURNING *`,
+        [serial],
+      );
+
+      await client.query("COMMIT");
+      logAssetAction("submit-manual-mismatch:verified", `serial=${serial}`);
+
+      return res.status(200).json({
+        ok: true,
+        result: "VERIFIED",
+        fridge_serial_number: serial,
+        fridge: updatedFridge.rows[0],
+      });
+    }
+
+    let updatedFridge = null;
+    if (fridge.verified) {
+      const updated = await client.query(
+        `UPDATE fridges
+         SET verified = false,
+             verified_at = NOW()
+         WHERE fridge_serial_number = $1
+         RETURNING *`,
+        [serial],
+      );
+      updatedFridge = updated.rows[0] || null;
+    }
 
     const mismatchInsert = await client.query(
       `INSERT INTO fridge_mismatches
@@ -1133,8 +1680,8 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
        RETURNING *`,
       [
         serial,
-        mac,
-        cNum,
+        mac || null,
+        cNum || null,
         fridge.iot_mac_address || null,
         fridge.c_number || null,
         req.user.id
@@ -1146,22 +1693,32 @@ app.post("/mismatches/manual", requireAuth, async (req, res) => {
     
     return res.status(200).json({
       ok: true,
+      result: "MISMATCH_CREATED",
       id: mismatchInsert.rows[0].id,
       fridge_serial_number: mismatchInsert.rows[0].fridge_serial_number,
-      mismatch: mismatchInsert.rows[0]
+      mismatch: mismatchInsert.rows[0],
+      fridge: updatedFridge,
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "submit-manual-mismatch", error);
   } finally {
     client.release();
   }
 });
 
-app.get("/mismatches", requireAuth, async (req, res) => {
+app.get("/mismatches", requireAuth, requirePermission("mismatches.view"), async (req, res) => {
+  const client = await pool.connect();
   try {
-    logAssetAction("list-mismatches:start", `status=${String(req.query.status || "open")}`);
-    const status = String(req.query.status || "open").toLowerCase();
+    const rawStatus = String(req.query.status || "open").trim().toLowerCase();
+    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    logAssetAction(
+      "list-mismatches:start",
+      `status=${rawStatus} orgFilter=${scope.effectiveOrganisationId ?? "all"}`,
+    );
     const from = req.query.from || null;
     const to = req.query.to || null;
     const serial = String(req.query.serial || "").trim();
@@ -1170,35 +1727,55 @@ app.get("/mismatches", requireAuth, async (req, res) => {
     const params = [];
     let index = 1;
 
-    if (status !== "all") {
-      filters.push(`status::text = $${index++}`);
-      params.push(status);
+    let statusAliases = [];
+    if (rawStatus === "all") {
+      statusAliases = [];
+    } else if (rawStatus === "open") {
+      statusAliases = ["open"];
+    } else if (rawStatus === "resolve" || rawStatus === "resolved") {
+      statusAliases = ["resolve", "resolved"];
+    } else if (rawStatus === "cancel" || rawStatus === "cancelled" || rawStatus === "canceled") {
+      statusAliases = ["cancel", "cancelled", "canceled"];
+    } else if (rawStatus === "delete" || rawStatus === "deleted") {
+      statusAliases = ["delete", "deleted"];
+    } else {
+      return res.status(400).json({ error: "Invalid status filter" });
+    }
+
+    if (statusAliases.length) {
+      filters.push(`LOWER(fm.status::text) = ANY($${index++}::text[])`);
+      params.push(statusAliases);
     }
 
     if (from) {
-      filters.push(`received_at >= $${index++}::timestamptz`);
+      filters.push(`fm.received_at >= $${index++}::timestamptz`);
       params.push(`${from}T00:00:00Z`);
     }
 
     if (to) {
-      filters.push(`received_at <= $${index++}::timestamptz`);
+      filters.push(`fm.received_at <= $${index++}::timestamptz`);
       params.push(`${to}T23:59:59Z`);
     }
 
     if (serial) {
-      filters.push(`fridge_serial_number ILIKE $${index++}`);
+      filters.push(`fm.fridge_serial_number ILIKE $${index++}`);
       params.push(`%${serial}%`);
     }
 
+    const orgParamIndex = index++;
+    filters.push(`($${orgParamIndex}::int IS NULL OR f.organisation_id = $${orgParamIndex})`);
+    params.push(scope.effectiveOrganisationId);
+
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
-    const result = await pool.query(
-      `SELECT *,
-              db_mac AS expected_mac,
-              db_c_number AS expected_c_number
-       FROM fridge_mismatches
+    const result = await client.query(
+      `SELECT fm.*,
+              fm.db_mac AS expected_mac,
+              fm.db_c_number AS expected_c_number
+       FROM fridge_mismatches fm
+       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
        ${where}
-       ORDER BY received_at DESC
+       ORDER BY fm.received_at DESC
        LIMIT 500`,
       params,
     );
@@ -1206,11 +1783,16 @@ app.get("/mismatches", requireAuth, async (req, res) => {
     logAssetAction("list-mismatches:success", `count=${result.rows.length}`);
     return res.json(result.rows);
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "list-mismatches", error);
+  } finally {
+    client.release();
   }
 });
 
-app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
+app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.resolve"), async (req, res) => {
   const client = await pool.connect();
   try {
     logAssetAction(
@@ -1222,15 +1804,18 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid id" });
     }
 
-    const { applyToFridge = false, setVerified = true, note = "" } = req.body;
+    const { note = "" } = req.body;
 
     await client.query("BEGIN");
+    const scope = await resolveOrganisationScope(client, req.user, null);
 
     const mismatchResult = await client.query(
-      `SELECT *
-       FROM fridge_mismatches
-       WHERE id = $1`,
-      [mismatchId],
+      `SELECT fm.*
+       FROM fridge_mismatches fm
+       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+       WHERE fm.id = $1
+         AND ($2::int IS NULL OR f.organisation_id = $2)`,
+      [mismatchId, scope.effectiveOrganisationId],
     );
 
     if (!mismatchResult.rows.length) {
@@ -1239,29 +1824,23 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
     }
 
     const mismatch = mismatchResult.rows[0];
-    let fridgeUpdated = null;
+    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
 
-    if (applyToFridge) {
-      await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
+    const newMac = mismatch.received_mac ? String(mismatch.received_mac).trim().toUpperCase() : null;
+    const newC = mismatch.received_c_number ? String(mismatch.received_c_number).trim().toUpperCase() : null;
 
-      const newMac = mismatch.received_mac ? String(mismatch.received_mac).trim().toUpperCase() : null;
-      const newC = mismatch.received_c_number
-        ? String(mismatch.received_c_number).trim().toUpperCase()
-        : null;
+    const updateFridge = await client.query(
+      `UPDATE fridges
+       SET iot_mac_address = COALESCE($1, iot_mac_address),
+           c_number = COALESCE($2, c_number),
+           verified = true,
+           verified_at = NOW()
+       WHERE fridge_serial_number = $3
+       RETURNING *`,
+      [newMac, newC, mismatch.fridge_serial_number],
+    );
 
-      const updateFridge = await client.query(
-        `UPDATE fridges
-         SET iot_mac_address = COALESCE($1, iot_mac_address),
-             c_number = COALESCE($2, c_number),
-             verified = CASE WHEN $3::boolean THEN true ELSE verified END,
-             verified_at = CASE WHEN $3::boolean THEN NOW() ELSE verified_at END
-         WHERE fridge_serial_number = $4
-         RETURNING *`,
-        [newMac, newC, Boolean(setVerified), mismatch.fridge_serial_number],
-      );
-
-      fridgeUpdated = updateFridge.rows[0] || null;
-    }
+    const fridgeUpdated = updateFridge.rows[0] || null;
 
     const resolved = await client.query(
       `UPDATE fridge_mismatches
@@ -1285,13 +1864,17 @@ app.put("/mismatches/:id/resolve", requireAuth, async (req, res) => {
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "resolve-mismatch", error);
   } finally {
     client.release();
   }
 });
 
-app.delete("/mismatches/:id", requireAuth, async (req, res) => {
+app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"), async (req, res) => {
+  const client = await pool.connect();
   try {
     logAssetAction(
       "delete-mismatch:start",
@@ -1307,7 +1890,21 @@ app.delete("/mismatches/:id", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "A reason is required to delete a mismatch." });
     }
 
-    const result = await pool.query(
+    const scope = await resolveOrganisationScope(client, req.user, null);
+    const mismatchResult = await client.query(
+      `SELECT fm.id
+       FROM fridge_mismatches fm
+       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+       WHERE fm.id = $1
+         AND ($2::int IS NULL OR f.organisation_id = $2)`,
+      [mismatchId, scope.effectiveOrganisationId],
+    );
+
+    if (!mismatchResult.rows.length) {
+      return res.status(404).json({ error: "Mismatch not found" });
+    }
+
+    const result = await client.query(
       `UPDATE fridge_mismatches
        SET status = 'delete',
            resolved_at = NOW(),
@@ -1325,7 +1922,12 @@ app.delete("/mismatches/:id", requireAuth, async (req, res) => {
     logAssetAction("delete-mismatch:success", `id=${req.params.id || "unknown"}`);
     return res.json({ ok: true, mismatch: result.rows[0] });
   } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "delete-mismatch", error);
+  } finally {
+    client.release();
   }
 });
 

@@ -2,15 +2,11 @@ import { Link, useLocation } from "react-router";
 import { useState } from "react";
 import {
   LayoutDashboard,
-  Trophy,
   FileBarChart,
-  Wrench,
-  MapPin,
-  Map,
   Server,
-  BarChart3,
   Settings,
   Refrigerator,
+  Users,
   Menu,
   X,
   LogOut,
@@ -20,6 +16,7 @@ import {
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
 import { useAuth } from "../../auth/auth-context";
+import { hasPermission } from "../../auth/permission-policy";
 
 type NavigationItem = {
   name: string;
@@ -37,6 +34,7 @@ const navigation: NavigationItem[] = [
   // { name: "Regional Map", href: "/regional-map", icon: Map },
   { name: "Unit Detail", href: "/unit/MAC001", icon: Server },
   { name: "Asset Manager", href: "/admin/assets", icon: Refrigerator },
+  { name: "Workspace", href: "/workspace", icon: Users },
   // { name: "Recommendations", href: "/recommendations", icon: MapPin, disabled: true },
   // { name: "Reports (Grafana)", href: "/reports", icon: BarChart3, disabled: true, hidden: true },
   { name: "Settings", href: "/settings", icon: Settings },
@@ -47,6 +45,17 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { session, logout } = useAuth();
+  const permissionLevel = session?.user.permissions;
+  const canAccessAssetManager = permissionLevel
+    ? ([
+      "assets.create",
+      "assets.view",
+      "mismatches.view",
+      "device_checker.submit",
+      "history.view",
+    ] as const).some((flag) => hasPermission(permissionLevel, flag))
+    : false;
+  const canAccessWorkspace = permissionLevel ? hasPermission(permissionLevel, "users.view") : false;
 
   return (
     <>
@@ -94,6 +103,13 @@ export function Sidebar() {
         </div>
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
+            if (item.href === "/admin/assets" && !canAccessAssetManager) {
+              return null;
+            }
+            if (item.href === "/workspace" && !canAccessWorkspace) {
+              return null;
+            }
+
             const Icon = item.icon;
             const isActive =
               location.pathname === item.href ||

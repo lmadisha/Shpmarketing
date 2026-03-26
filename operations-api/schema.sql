@@ -9,10 +9,13 @@ END $$;
 
 DO $$
 BEGIN
-  CREATE TYPE user_permission_enum AS ENUM ('Admin', 'Fleet Manager', 'Technician', 'User');
+  CREATE TYPE user_permission_enum AS ENUM ('Admin', 'Fleet Manager', 'Factory', 'Outlet', 'Technician', 'User');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
+
+ALTER TYPE user_permission_enum ADD VALUE IF NOT EXISTS 'Factory' AFTER 'Fleet Manager';
+ALTER TYPE user_permission_enum ADD VALUE IF NOT EXISTS 'Outlet' AFTER 'Factory';
 
 CREATE TABLE IF NOT EXISTS organisation (
   id SERIAL PRIMARY KEY,
@@ -83,6 +86,10 @@ BEGIN
           WHEN 'admin' THEN 'Admin'
           WHEN 'fleet manager' THEN 'Fleet Manager'
           WHEN 'intermediate' THEN 'Fleet Manager'
+          WHEN 'factory' THEN 'Factory'
+          WHEN 'factory manager' THEN 'Factory'
+          WHEN 'outlet' THEN 'Outlet'
+          WHEN 'outlet manager' THEN 'Outlet'
           WHEN 'technician' THEN 'Technician'
           WHEN 'basic' THEN 'User'
           WHEN 'user' THEN 'User'

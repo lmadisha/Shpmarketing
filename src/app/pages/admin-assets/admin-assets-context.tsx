@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useApiClient } from "../../auth/use-api-client";
 import { useAuth } from "../../auth/auth-context";
+import { canFilterOrganisation as canFilterOrganisationByRole, hasPermission } from "../../auth/permission-policy";
 import {
   Fridge,
   Mismatch,
   AuditLogRow,
+  OrganisationOption,
   MismatchStatus,
   InventorySortKey,
   MismatchSortKey,
@@ -19,6 +21,23 @@ import { compareValues, summarizeRequestBody, summarizeResponsePayload, cleanHex
 // ─── Context shape ────────────────────────────────────────────────────────────
 
 type AdminAssetsContextValue = {
+  // Organisation scope / filtering
+  isOrganisationFilterEnabled: boolean;
+  organisationFilter: string;
+  setOrganisationFilter: (organisationId: string) => void;
+  organisationOptions: OrganisationOption[];
+  organisationsLoading: boolean;
+  withOrganisationFilter: (path: string) => string;
+  canCreateAssets: boolean;
+  canViewAssets: boolean;
+  canEditAssets: boolean;
+  canDeleteAssets: boolean;
+  canViewMismatches: boolean;
+  canResolveMismatches: boolean;
+  canDeleteMismatches: boolean;
+  canViewHistory: boolean;
+  canSubmitDeviceCheck: boolean;
+
   // Fridges / Inventory
   fridges: Fridge[];
   fridgeLoading: boolean;
@@ -72,12 +91,16 @@ type AdminAssetsContextValue = {
   loadDeviceHistory: (serial: string) => Promise<void>;
 
   // Mismatches
+  mismatchFilters: { status: MismatchStatus; serial: string; from: string; to: string };
+  setMismatchFilters: Dispatch<
+    SetStateAction<{ status: MismatchStatus; serial: string; from: string; to: string }>
+  >;
+  loadMismatches: (
+    filters?: { status: MismatchStatus; serial: string; from: string; to: string },
+  ) => Promise<void>;
   mismatches: Mismatch[];
   mismatchLoading: boolean;
   mismatchError: string;
-  mismatchFilters: { status: MismatchStatus; serial: string; from: string; to: string };
-  setMismatchFilters: (f: { status: MismatchStatus; serial: string; from: string; to: string }) => void;
-  loadMismatches: () => Promise<void>;
   mismatchSort: { key: MismatchSortKey; direction: SortDirection };
   toggleMismatchSort: (key: MismatchSortKey) => void;
   mismatchPage: number;
@@ -91,12 +114,10 @@ type AdminAssetsContextValue = {
   resolveModal: {
     open: boolean;
     row: Mismatch | null;
-    applyToFridge: boolean;
-    setVerified: boolean;
     note: string;
     submitting: boolean;
   };
-  setResolveModal: (v: AdminAssetsContextValue["resolveModal"]) => void;
+  setResolveModal: Dispatch<SetStateAction<AdminAssetsContextValue["resolveModal"]>>;
   openResolveMismatch: (row: Mismatch) => void;
   submitResolveMismatch: () => Promise<void>;
 
@@ -107,7 +128,7 @@ type AdminAssetsContextValue = {
     note: string;
     submitting: boolean;
   };
-  setDeleteMismatchModal: (v: AdminAssetsContextValue["deleteMismatchModal"]) => void;
+  setDeleteMismatchModal: Dispatch<SetStateAction<AdminAssetsContextValue["deleteMismatchModal"]>>;
   openDeleteMismatch: (row: Mismatch) => void;
   submitDeleteMismatch: () => Promise<void>;
 
@@ -135,6 +156,30 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const { request } = useApiClient();
   const { session } = useAuth();
   const actor = session?.user.full_name || session?.user.username || "Unknown";
+  const permissionLevel = session?.user.permissions;
+  const isOrganisationFilterEnabled = permissionLevel
+    ? canFilterOrganisationByRole(permissionLevel)
+    : false;
+  const canCreateAssets = permissionLevel ? hasPermission(permissionLevel, "assets.create") : false;
+  const canViewAssets = permissionLevel ? hasPermission(permissionLevel, "assets.view") : false;
+  const canEditAssets = permissionLevel ? hasPermission(permissionLevel, "assets.edit") : false;
+  const canDeleteAssets = permissionLevel ? hasPermission(permissionLevel, "assets.delete") : false;
+  const canViewMismatches = permissionLevel ? hasPermission(permissionLevel, "mismatches.view") : false;
+  const canResolveMismatches = permissionLevel ? hasPermission(permissionLevel, "mismatches.resolve") : false;
+  const canDeleteMismatches = permissionLevel ? hasPermission(permissionLevel, "mismatches.delete") : false;
+  const canViewHistory = permissionLevel ? hasPermission(permissionLevel, "history.view") : false;
+  const canSubmitDeviceCheck = permissionLevel ? hasPermission(permissionLevel, "device_checker.submit") : false;
+  const [organisationFilter, setOrganisationFilter] = useState("");
+  const [organisationOptions, setOrganisationOptions] = useState<OrganisationOption[]>([]);
+  const [organisationsLoading, setOrganisationsLoading] = useState(false);
+
+  const withOrganisationFilter = (path: string) => {
+    if (!isOrganisationFilterEnabled || !organisationFilter) {
+      return path;
+    }
+    const joiner = path.includes("?") ? "&" : "?";
+    return `${path}${joiner}organisation_id=${encodeURIComponent(organisationFilter)}`;
+  };
 
   // ── API helper ────────────────────────────────────────────────────────────
   async function adminRequest<T>(
@@ -174,16 +219,26 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadFridges = async (query?: string) => {
+    if (!canViewAssets) {
+      setFridges([]);
+      setFridgeError("You do not have permission to view fridge inventory.");
+      return;
+    }
+
     setFridgeLoading(true);
     setFridgeError("");
     try {
       const term = (query ?? "").trim();
       const data = term
-        ? await adminRequest<Fridge[]>("loadFridges.search", `/searchFridges?searchTerm=${encodeURIComponent(term)}`)
-        : await adminRequest<Fridge[]>("loadFridges.list", "/getFridges");
+        ? await adminRequest<Fridge[]>(
+            "loadFridges.search",
+            withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(term)}`),
+          )
+        : await adminRequest<Fridge[]>("loadFridges.list", withOrganisationFilter("/getFridges"));
       setFridges(Array.isArray(data) ? data : []);
-    } catch {
-      setFridgeError("Could not load fridge inventory.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load fridge inventory.";
+      setFridgeError(message);
     } finally {
       setFridgeLoading(false);
     }
@@ -195,10 +250,16 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const [historyError, setHistoryError] = useState("");
 
   const loadAllHistory = async () => {
+    if (!canViewHistory) {
+      setAllHistory([]);
+      setHistoryError("You do not have permission to view history.");
+      return;
+    }
+
     setHistoryLoading(true);
     setHistoryError("");
     try {
-      const data = await adminRequest<AuditLogRow[]>("loadHistory.global", "/auditLog");
+      const data = await adminRequest<AuditLogRow[]>("loadHistory.global", withOrganisationFilter("/auditLog"));
       setAllHistory(Array.isArray(data) ? data : []);
     } catch {
       setHistoryError("Could not load change history.");
@@ -215,6 +276,11 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const [deviceHistoryError, setDeviceHistoryError] = useState("");
 
   const loadDeviceHistory = async (serial: string) => {
+    if (!canViewHistory) {
+      setDeviceHistoryError("You do not have permission to view device history.");
+      return;
+    }
+
     const normalizedSerial = serial.trim().toUpperCase();
     const cachedRows = allHistory.filter(
       (row) => String(row.fridge_serial_number || "").trim().toUpperCase() === normalizedSerial,
@@ -225,7 +291,10 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     setDeviceHistoryError("");
     setDeviceHistoryOpen(true);
     try {
-      const data = await adminRequest<AuditLogRow[]>("loadHistory.device", `/auditLog/${encodeURIComponent(serial)}`);
+      const data = await adminRequest<AuditLogRow[]>(
+        "loadHistory.device",
+        withOrganisationFilter(`/auditLog/${encodeURIComponent(serial)}`),
+      );
       setDeviceHistoryRows(Array.isArray(data) ? data : []);
     } catch {
       if (cachedRows.length) {
@@ -249,15 +318,26 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     to: string;
   }>({ status: "open", serial: "", from: "", to: "" });
 
-  const loadMismatches = async () => {
+  const loadMismatches = async (
+    filters: { status: MismatchStatus; serial: string; from: string; to: string } = mismatchFilters,
+  ) => {
+    if (!canViewMismatches) {
+      setMismatches([]);
+      setMismatchError("You do not have permission to view mismatches.");
+      return;
+    }
+
     setMismatchLoading(true);
     setMismatchError("");
     try {
       const params = new URLSearchParams();
-      if (mismatchFilters.status) params.set("status", mismatchFilters.status);
-      if (mismatchFilters.serial.trim()) params.set("serial", mismatchFilters.serial.trim());
-      if (mismatchFilters.from) params.set("from", mismatchFilters.from);
-      if (mismatchFilters.to) params.set("to", mismatchFilters.to);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.serial.trim()) params.set("serial", filters.serial.trim());
+      if (filters.from) params.set("from", filters.from);
+      if (filters.to) params.set("to", filters.to);
+      if (isOrganisationFilterEnabled && organisationFilter) {
+        params.set("organisation_id", organisationFilter);
+      }
       const data = await adminRequest<Mismatch[]>("loadMismatches", `/mismatches?${params.toString()}`);
       setMismatches(Array.isArray(data) ? data : []);
     } catch {
@@ -271,17 +351,20 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const [resolveModal, setResolveModal] = useState<{
     open: boolean;
     row: Mismatch | null;
-    applyToFridge: boolean;
-    setVerified: boolean;
     note: string;
     submitting: boolean;
-  }>({ open: false, row: null, applyToFridge: false, setVerified: true, note: "", submitting: false });
+  }>({ open: false, row: null, note: "", submitting: false });
 
   const openResolveMismatch = (row: Mismatch) => {
-    setResolveModal({ open: true, row, applyToFridge: false, setVerified: true, note: "", submitting: false });
+    setResolveModal({ open: true, row, note: "", submitting: false });
   };
 
   const submitResolveMismatch = async () => {
+    if (!canResolveMismatches) {
+      setMismatchError("You do not have permission to resolve mismatches.");
+      return;
+    }
+
     if (!resolveModal.row) return;
     setResolveModal((prev) => ({ ...prev, submitting: true }));
     setMismatchError("");
@@ -290,15 +373,19 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          applyToFridge: resolveModal.applyToFridge,
-          setVerified: resolveModal.setVerified,
           note: resolveModal.note,
         }),
       });
-      setResolveModal({ open: false, row: null, applyToFridge: false, setVerified: true, note: "", submitting: false });
-      await loadMismatches();
-      await loadFridges(searchTerm);
-      await loadAllHistory();
+      setResolveModal({ open: false, row: null, note: "", submitting: false });
+      if (canViewMismatches) {
+        await loadMismatches();
+      }
+      if (canViewAssets) {
+        await loadFridges(searchTerm);
+      }
+      if (canViewHistory) {
+        await loadAllHistory();
+      }
     } catch {
       setMismatchError("Could not resolve mismatch.");
       setResolveModal((prev) => ({ ...prev, submitting: false }));
@@ -318,6 +405,11 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   };
 
   const submitDeleteMismatch = async () => {
+    if (!canDeleteMismatches) {
+      setMismatchError("You do not have permission to delete mismatches.");
+      return;
+    }
+
     if (!deleteMismatchModal.row) return;
     if (!deleteMismatchModal.note.trim()) {
       setMismatchError("Delete reason is required.");
@@ -332,7 +424,9 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
         body: JSON.stringify({ note: deleteMismatchModal.note.trim() }),
       });
       setDeleteMismatchModal({ open: false, row: null, note: "", submitting: false });
-      await loadMismatches();
+      if (canViewMismatches) {
+        await loadMismatches();
+      }
     } catch {
       setMismatchError("Could not delete mismatch.");
       setDeleteMismatchModal((prev) => ({ ...prev, submitting: false }));
@@ -346,6 +440,11 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   const [deletingSerial, setDeletingSerial] = useState<string | null>(null);
 
   const startEdit = (row: Fridge) => {
+    if (!canEditAssets) {
+      setFridgeError("You do not have permission to edit devices.");
+      return;
+    }
+
     setEditingSerial(row.fridge_serial_number);
     setEditForm({ mac_address: row.iot_mac_address || "", c_number: row.c_number || "" });
   };
@@ -356,6 +455,11 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   };
 
   const submitEdit = async (serial: string) => {
+    if (!canEditAssets) {
+      setFridgeError("You do not have permission to edit devices.");
+      return;
+    }
+
     const mac = editForm.mac_address ? cleanHex12(editForm.mac_address) : "";
     const cNumber = editForm.c_number ? cleanCNumber(editForm.c_number) : "";
     if (mac && mac.length !== 12) {
@@ -369,8 +473,12 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
         body: JSON.stringify({ mac_address: mac, c_number: cNumber }),
       });
       cancelEdit();
-      await loadFridges(searchTerm);
-      await loadAllHistory();
+      if (canViewAssets) {
+        await loadFridges(searchTerm);
+      }
+      if (canViewHistory) {
+        await loadAllHistory();
+      }
     } catch {
       // error is set on fridgeError
     } finally {
@@ -379,6 +487,11 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   };
 
   const deleteFridge = async (serial: string) => {
+    if (!canDeleteAssets) {
+      setFridgeError("You do not have permission to delete devices.");
+      return;
+    }
+
     setDeletingSerial(serial);
     setFridgeError("");
     try {
@@ -386,8 +499,12 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
-      await loadFridges(searchTerm);
-      await loadAllHistory();
+      if (canViewAssets) {
+        await loadFridges(searchTerm);
+      }
+      if (canViewHistory) {
+        await loadAllHistory();
+      }
     } catch {
       setFridgeError("Could not delete fridge.");
     } finally {
@@ -528,13 +645,75 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
 
   // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
-    void loadFridges();
-    void loadAllHistory();
-    void loadMismatches();
+    let cancelled = false;
+
+    if (!isOrganisationFilterEnabled) {
+      setOrganisationFilter("");
+      setOrganisationOptions([]);
+      setOrganisationsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadOrganisationOptions = async () => {
+      setOrganisationsLoading(true);
+      try {
+        const data = await request<OrganisationOption[]>("/organisations");
+        if (!cancelled) {
+          setOrganisationOptions(Array.isArray(data) ? data : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setOrganisationOptions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setOrganisationsLoading(false);
+        }
+      }
+    };
+
+    void loadOrganisationOptions();
+
+    return () => {
+      cancelled = true;
+    };
+    // request is intentionally excluded; it's recreated by hook and would cause a render loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isOrganisationFilterEnabled]);
+
+  useEffect(() => {
+    if (canViewAssets) {
+      void loadFridges(searchTerm);
+    } else {
+      setFridges([]);
+      setFridgeError("");
+    }
+
+    if (canViewHistory) {
+      void loadAllHistory();
+    } else {
+      setAllHistory([]);
+      setHistoryError("");
+    }
+
+    if (canViewMismatches) {
+      void loadMismatches();
+    } else {
+      setMismatches([]);
+      setMismatchError("");
+    }
+    // searchTerm intentionally excluded: org changes should reuse the latest search snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organisationFilter, isOrganisationFilterEnabled, canViewAssets, canViewHistory, canViewMismatches]);
 
   const value: AdminAssetsContextValue = {
+    isOrganisationFilterEnabled, organisationFilter, setOrganisationFilter,
+    organisationOptions, organisationsLoading, withOrganisationFilter,
+    canCreateAssets, canViewAssets, canEditAssets, canDeleteAssets,
+    canViewMismatches, canResolveMismatches, canDeleteMismatches,
+    canViewHistory, canSubmitDeviceCheck,
     fridges, fridgeLoading, fridgeError, searchTerm, setSearchTerm, loadFridges,
     inventorySort, toggleInventorySort, inventoryPage, setInventoryPage,
     sortedFridgeRows, paginatedFridgeRows, inventoryTotalPages, safeInventoryPage,

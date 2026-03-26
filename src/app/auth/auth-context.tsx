@@ -7,8 +7,7 @@ import {
   useState,
 } from "react";
 import { loggedFetch } from "./logged-fetch";
-
-type PermissionLevel = "Admin" | "Fleet Manager" | "Technician" | "User";
+import type { PermissionLevel } from "./permission-policy";
 
 type AuthUser = {
   id: number;
@@ -149,4 +148,5 @@ export function useAuth() {
   return context;
 }
 
-export type { AuthSession, AuthUser, LoginPayload, PermissionLevel, SignupPayload };
+export type { AuthSession, AuthUser, LoginPayload, SignupPayload };
+export type { PermissionLevel } from "./permission-policy";

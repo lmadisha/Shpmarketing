@@ -5,6 +5,7 @@ import {
 } from "../../components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { ArrowUpDown, ChevronLeft, ChevronRight, Clock3, RefreshCw } from "lucide-react";
+import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
 
 export function HistoryPage() {
@@ -14,7 +15,17 @@ export function HistoryPage() {
     toggleHistorySort,
     historyPage, setHistoryPage,
     paginatedHistory, sortedHistory, historyTotalPages, safeHistoryPage,
+    canViewHistory,
   } = useAdminAssets();
+
+  if (!canViewHistory) {
+    return (
+      <AccessDeniedCard
+        title="History access denied"
+        description="You do not have permission to view change history."
+      />
+    );
+  }
 
   return (
     <Card>

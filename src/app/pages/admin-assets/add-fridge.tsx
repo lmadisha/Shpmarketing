@@ -15,12 +15,21 @@ import {
 } from "../../components/ui/table";
 import { Download, Plus } from "lucide-react";
 import { useAuth } from "../../auth/auth-context";
+import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
 import { cleanHex12, cleanCNumber, downloadCsv } from "./utils";
 
 export function AddFridgePage() {
   const { session } = useAuth();
-  const { loadFridges, loadAllHistory, searchTerm, adminRequest } = useAdminAssets();
+  const {
+    loadFridges,
+    loadAllHistory,
+    searchTerm,
+    adminRequest,
+    canCreateAssets,
+    canViewAssets,
+    canViewHistory,
+  } = useAdminAssets();
   const organisationId = session?.user.organisation_id ?? null;
 
   const [createForm, setCreateForm] = useState({
@@ -81,8 +90,12 @@ export function AddFridgePage() {
       setCreateForm({ fridge_serial_number: "", mac_address: "", c_number: "" });
       setCreateErrors({});
       setCreateResult("Fridge added successfully.");
-      await loadFridges(searchTerm);
-      await loadAllHistory();
+      if (canViewAssets) {
+        await loadFridges(searchTerm);
+      }
+      if (canViewHistory) {
+        await loadAllHistory();
+      }
     } catch {
       setCreateResult("Could not add fridge. Check duplicates and try again.");
     } finally {
@@ -146,8 +159,12 @@ export function AddFridgePage() {
         setSkippedModalOpen(true);
       }
       setBulkErrors(response.errors || []);
-      await loadFridges(searchTerm);
-      await loadAllHistory();
+      if (canViewAssets) {
+        await loadFridges(searchTerm);
+      }
+      if (canViewHistory) {
+        await loadAllHistory();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Bulk upload failed.";
       setBulkMessage(message);
@@ -155,6 +172,15 @@ export function AddFridgePage() {
       setBulkSubmitting(false);
     }
   };
+
+  if (!canCreateAssets) {
+    return (
+      <AccessDeniedCard
+        title="Add Fridge access denied"
+        description="You do not have permission to create fridge records."
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">

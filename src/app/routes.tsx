@@ -10,6 +10,7 @@ import { UnitDetailPage } from "./pages/unit-detail";
 import { RedistributionPage } from "./pages/redistribution";
 import { ReportsPage } from "./pages/reports";
 import { SettingsPage } from "./pages/settings";
+import { WorkspacePage } from "./pages/workspace";
 import { AdminAssetsLayout } from "./pages/admin-assets/layout";
 import { AddFridgePage } from "./pages/admin-assets/add-fridge";
 import { InventoryPage } from "./pages/admin-assets/inventory";
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
           { path: "unit/:unitId", Component: UnitDetailPage },
           { path: "redistribution", Component: RedistributionPage },
           { path: "reports", Component: ReportsPage },
+          { path: "workspace", Component: WorkspacePage },
           { path: "settings", Component: SettingsPage },
           {
             path: "admin/assets",

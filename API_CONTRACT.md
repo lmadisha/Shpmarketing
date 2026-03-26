@@ -25,7 +25,7 @@ This document describes the Operations API used by the Shpmarketing application.
 
 - id: number
 - username: string
-- permissions: Admin | Fleet Manager | Technician | User
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User
 
 ### Common auth-related responses
 
@@ -71,7 +71,7 @@ Input body:
 - username: string (required)
 - password: string (required, min 8)
 - full_name: string (required)
-- permissions: Admin | Fleet Manager | Technician | User (required)
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User (required)
 - organisation_id: number (required)
 
 Responses:
@@ -121,13 +121,47 @@ Responses:
 
 ## GET /organisations
 
-Purpose: list organisations for signup selection.
+Purpose: list organisations for signup selection and workspace management UIs.
 
 Auth: none.
 
 Responses:
 
 - 200: array of { id, name, domin }
+- 500: { "error": "Server Error" }
+
+## POST /organisations
+
+Purpose: create a new organisation.
+
+Auth: Bearer + Admin.
+
+Input body:
+
+- name: string (required, unique)
+- domin: string | null (optional, unique when present)
+
+Responses:
+
+- 201: created organisation row `{ id, name, domin, created_at }`
+- 400: missing name
+- 401/403
+- 409: duplicate name/domin
+- 500: { "error": "Server Error" }
+
+## DELETE /organisations/:id
+
+Purpose: delete an organisation when it has no linked users/fridges.
+
+Auth: Bearer + Admin.
+
+Responses:
+
+- 200: `{ deleted: true, organisation: { id, name } }`
+- 400: invalid organisation id
+- 401/403
+- 404: organisation not found
+- 409: linked users/fridges exist (includes `users_count`, `fridges_count`)
 - 500: { "error": "Server Error" }
 
 ## GET /profile
@@ -143,6 +177,8 @@ Responses:
     "id": 3,
     "username": "user@example.com",
     "full_name": "User Name",
+    "first_name": "User",
+    "last_name": "Name",
     "permissions": "Fleet Manager",
     "organisation_id": 2,
     "organisation_name": "Org Name",
@@ -152,36 +188,74 @@ Responses:
 - 401
 - 500: { "error": "Server Error" }
 
+## PUT /profile
+
+Purpose: update authenticated user profile details (excluding permissions).
+
+Auth: Bearer.
+
+Input body:
+
+- username: string (required)
+- first_name: string (optional)
+- last_name: string (optional)
+
+Notes:
+
+- `permissions` and `organisation_id` are not editable through this endpoint.
+- `full_name` is derived server-side from `first_name` + `last_name`.
+
+Responses:
+
+- 200: updated profile payload (same shape as `GET /profile`)
+- 400: invalid/missing input
+- 401
+- 404: profile not found
+- 409: duplicate username/email
+- 500: { "error": "Server Error" }
+
 ## GET /users
 
 Purpose: list users.
 
-Auth: Bearer + Admin.
+Auth: Bearer + `users.view`.
+
+Query params:
+
+- organisation_id: number | `all` (optional)
+
+Scope behavior:
+
+- Admin: can view all users or filter to one organisation.
+- Non-admin: always restricted to own organisation regardless of query param.
+- For callers with `users.view`, response includes only users at caller level or lower.
 
 Responses:
 
-- 200: array of users with id, username, full_name, permissions, is_active, created_at, organisation_id
+- 200: array of users with id, username, full_name, permissions, is_active, created_at, organisation_id, organisation_name
+- 400: invalid organisation filter or missing caller organisation assignment
 - 401/403
 - 500
 
 ## POST /users
 
-Purpose: create user (admin action).
+Purpose: create user.
 
-Auth: Bearer + Admin.
+Auth: Bearer + `users.manage`.
 
 Input body:
 
 - username: string (required)
 - password: string (required)
 - full_name: string (required)
-- permissions: Admin | Fleet Manager | Technician | User (required)
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User (required)
 - organisation_id: number (optional)
 
 Responses:
 
 - 200: created user row
 - 400: missing fields or invalid permissions
+- 403: non-admin managers cannot create users outside their own organisation, and callers cannot assign roles above their own level
 - 409: duplicate username/email
 - 401/403
 - 500
@@ -190,16 +264,17 @@ Responses:
 
 Purpose: update user permissions.
 
-Auth: Bearer + Admin.
+Auth: Bearer + `users.manage`.
 
 Input body:
 
-- permissions: Admin | Fleet Manager | Technician | User
+- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User
 
 Responses:
 
 - 200: updated user row
-- 400: invalid permissions
+- 400: invalid permissions or invalid user id
+- 403: caller cannot assign roles above own level or modify users above own level
 - 404: user not found
 - 401/403
 - 500
@@ -382,11 +457,21 @@ Purpose: list all fridges.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional, admin-only filter)
+
 Responses:
 
 - 200: array of fridge rows
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "list-fridges failed: ..." }
+
+Notes:
+
+- Non-admin users are always scoped to their own `users.organisation_id`.
+- Admin users can see all organisations by default and may pass `organisation_id` to filter.
 
 ## GET /searchFridges
 
@@ -397,10 +482,12 @@ Auth: Bearer.
 Query params:
 
 - searchTerm: string
+- organisation_id: number | "all" (optional, admin-only filter)
 
 Responses:
 
 - 200: array of fridge rows
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "search-fridges failed: ..." }
 
@@ -419,6 +506,7 @@ Responses:
 
 - 200: updated fridge row
 - 404: no fridge found
+- 400: user organisation not configured (non-admin)
 - 401
 - 500: { "error": "update-device failed: ..." }
 
@@ -432,6 +520,7 @@ Responses:
 
 - 200: { "message": "Fridge deleted successfully", "device": { ... } }
 - 404: fridge not found
+- 400: user organisation not configured (non-admin)
 - 401
 - 500: { "error": "delete-device failed: ..." }
 
@@ -441,9 +530,14 @@ Purpose: device-specific audit history.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional, admin-only filter)
+
 Responses:
 
 - 200: array ordered by changed_at DESC; includes `changed_by_username`
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "device-history failed: ..." }
 
@@ -453,9 +547,14 @@ Purpose: global audit history.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional, admin-only filter)
+
 Responses:
 
 - 200: array ordered by changed_at DESC; includes `changed_by_username`
+- 400: invalid organisation filter or user organisation not configured
 - 401
 - 500: { "error": "audit-history failed: ..." }
 
@@ -488,56 +587,50 @@ Responses:
 
 ## POST /mismatches/manual
 
-Purpose: manually submit a device check mismatch from the admin UI.
+Purpose: submit a manual device check from the admin UI.
 
 Auth: Bearer.
 
 Input body:
 
 - fridge_serial_number: string (required)
-- mac_address: string | null
-- c_number: string | null
+- mac_address: string (required)
+- c_number: string (required)
 
 Responses:
 
-- 201: inserted fridge_mismatches row (includes sender_id)
-- 400: missing fridge_serial_number
-- 404: fridge not found
-- 401
-- 500: { "error": "manual-mismatch failed: ..." }
-
-Notes:
-
-- Inserts with status 'open'.
-- sender_id is set to req.user.id (the authenticated user who submitted).
-- db_mac and db_c_number are populated from the current fridge record at time of submission.
-- Runs in transaction with myapp.current_user_id set for audit trigger.
-
-## POST /mismatches/manual
-
-Purpose: manually submit a device mismatch (e.g. from Device Checker tab).
-
-Auth: Bearer.
-
-Input body:
-
-- fridge_serial_number: string (required)
-- mac_address: string (optional)
-- c_number: string (optional)
-
-Responses:
-
-- 200: 
+- 200 verified:
   {
     "ok": true,
+    "result": "VERIFIED",
+    "fridge_serial_number": "FR123...",
+    "fridge": { ...updated fridge row... }
+  }
+- 200 mismatch created:
+  {
+    "ok": true,
+    "result": "MISMATCH_CREATED",
     "id": 1,
     "fridge_serial_number": "FR123...",
-    "mismatch": { ...inserted mismatch row... }
+    "mismatch": { ...inserted mismatch row... },
+    "fridge": { ...updated fridge row... } | null
   }
-- 400: missing fridge_serial_number
+- 400: missing fridge_serial_number, mac_address, or c_number
 - 404: fridge not found
 - 401
 - 500: { "error": "submit-manual-mismatch failed: ..." }
+
+Notes:
+
+- If submitted MAC and C-number match the fridge row:
+  no mismatch is inserted; fridge is updated with `verified=true` and `verified_at=NOW()`.
+- If submitted values do not match:
+  inserts a mismatch row with status `open`, `db_mac`, `db_c_number`, and `sender_id`.
+- On mismatch, if the fridge was previously verified:
+  fridge is updated with `verified=false` and `verified_at=NOW()`.
+- Runs in transaction with `myapp.current_user_id` set for audit trigger context.
+- sender_id is set to req.user.id (the authenticated user who submitted).
+- Non-admin users can only submit against fridges in their own organisation.
 
 ## GET /mismatches
 
@@ -547,27 +640,27 @@ Auth: Bearer.
 
 Query params:
 
-- status: open | resolved | deleted | all (default open)
+- status: open | resolve | cancel | delete | all (default open)
 - from: YYYY-MM-DD (optional)
 - to: YYYY-MM-DD (optional)
 - serial: string (optional, partial match)
+- organisation_id: number | "all" (optional, admin-only filter)
 
 Responses:
 
 - 200: array ordered by received_at DESC, max 500 rows
+- 400: invalid status or organisation filter
 - 401
 - 500: { "error": "list-mismatches failed: ..." }
 
 ## PUT /mismatches/:id/resolve
 
-Purpose: resolve mismatch, optionally apply received values to fridge.
+Purpose: resolve mismatch and automatically apply received values to fridge.
 
 Auth: Bearer.
 
 Input body:
 
-- applyToFridge: boolean (default false)
-- setVerified: boolean (default true)
 - note: string (optional)
 
 Responses:
@@ -582,6 +675,12 @@ Responses:
 - 404: mismatch not found
 - 401
 - 500: { "error": "resolve-mismatch failed: ..." }
+
+Notes:
+
+- On resolve, server updates fridge `iot_mac_address` and `c_number` from mismatch `received_mac` and `received_c_number` (when present).
+- On resolve, server always sets fridge `verified = true` and `verified_at = NOW()`.
+- Non-admin users can only resolve mismatches that belong to their own organisation.
 
 ## DELETE /mismatches/:id
 
@@ -601,6 +700,10 @@ Responses:
 - 401
 - 500: { "error": "delete-mismatch failed: ..." }
 
+Notes:
+
+- Non-admin users can only delete mismatches that belong to their own organisation.
+
 ## Fallback Route
 
 Any unknown route returns:
@@ -611,7 +714,7 @@ Any unknown route returns:
 
 - fridges.fridge_serial_number is a primary key in database schema.
 - fridges.iot_mac_address is unique (including partial unique index for non-empty values).
-- users.permissions is an enum: Admin | Fleet Manager | Technician | User.
+- users.permissions is an enum: Admin | Fleet Manager | Factory | Outlet | Technician | User.
 - organisation has optional `domin` column (unique when provided).
 - Fridge change auditing is trigger-based via fridge_audit_log.
 - fridge_mismatches.sender_id references users(id) and records the admin user who manually submitted the mismatch via POST /mismatches/manual.
