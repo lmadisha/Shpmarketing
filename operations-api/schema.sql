@@ -18,6 +18,19 @@ CREATE TABLE organisation (
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE organisation_asset_validation_rules (
+  organisation_id INTEGER PRIMARY KEY REFERENCES organisation(id) ON DELETE CASCADE,
+  serial_min_length INTEGER NOT NULL CHECK (serial_min_length > 0 AND serial_min_length <= 32),
+  serial_max_length INTEGER NOT NULL CHECK (serial_max_length > 0 AND serial_max_length <= 32),
+  mac_min_length INTEGER NOT NULL CHECK (mac_min_length > 0 AND mac_min_length <= 64),
+  mac_max_length INTEGER NOT NULL CHECK (mac_max_length > 0 AND mac_max_length <= 64),
+  c_number_min_length INTEGER NOT NULL CHECK (c_number_min_length > 0 AND c_number_min_length <= 32),
+  c_number_max_length INTEGER NOT NULL CHECK (c_number_max_length > 0 AND c_number_max_length <= 32),
+  CHECK (serial_min_length <= serial_max_length),
+  CHECK (mac_min_length <= mac_max_length),
+  CHECK (c_number_min_length <= c_number_max_length)
+);
+
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
@@ -32,9 +45,9 @@ CREATE TABLE users (
 );
 
 CREATE TABLE fridges (
-  fridge_serial_number VARCHAR(12) PRIMARY KEY,
-  iot_mac_address VARCHAR(12) UNIQUE,
-  c_number VARCHAR(10),
+  fridge_serial_number VARCHAR(32) PRIMARY KEY,
+  iot_mac_address VARCHAR(64) UNIQUE,
+  c_number VARCHAR(32),
   verified BOOLEAN DEFAULT false,
   verified_at TIMESTAMPTZ,
   organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL
