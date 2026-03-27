@@ -42,15 +42,15 @@ export function LoginPage() {
         <CardHeader>
           <div className="flex items-center gap-3 mb-3">
             <div className="h-10 w-10 rounded-lg bg-blue-600 text-white flex items-center justify-center font-semibold">
-              BF
+              FL
             </div>
             <div>
-              <p className="text-base font-semibold text-gray-900 leading-none">BevFleet</p>
+              <p className="text-base font-semibold text-gray-900 leading-none">Frostlink</p>
               <p className="text-xs text-gray-600 mt-1">Application Platform</p>
             </div>
           </div>
           <CardTitle>Welcome back</CardTitle>
-          <CardDescription>Sign in to access BevFleet Application.</CardDescription>
+          <CardDescription>Sign in to access Frostlink.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>

@@ -17,7 +17,7 @@ import { Download, Plus } from "lucide-react";
 import { useAuth } from "../../auth/auth-context";
 import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
-import { cleanHex12, cleanCNumber, downloadCsv } from "./utils";
+import { cleanHex12, cleanCNumber, downloadExcel } from "./utils";
 
 export function AddFridgePage() {
   const { session } = useAuth();
@@ -266,7 +266,14 @@ export function AddFridgePage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => downloadCsv("fridge_bulk_template.csv", ["fridge_serial_number", "mac_address", "c_number"], [["A1B2C3D4E5F6", "001122AABBCC", "C10001"]])}
+              onClick={() =>
+                downloadExcel(
+                  "fridge_bulk_template.xls",
+                  "Template",
+                  ["fridge_serial_number", "mac_address", "c_number"],
+                  [["A1B2C3D4E5F6", "001122AABBCC", "C10001"]],
+                )
+              }
             >
               <Download className="h-4 w-4" />
               Download Template

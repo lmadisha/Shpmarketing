@@ -1,10 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Settings as SettingsIcon, Bell, User, Palette, Database } from "lucide-react";
+import { Settings as SettingsIcon, User, Database } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Switch } from "../components/ui/switch";
 import { Separator } from "../components/ui/separator";
 import { useApiClient } from "../auth/use-api-client";
 import { useAuth } from "../auth/auth-context";
@@ -24,6 +23,7 @@ type ProfileDetails = {
 export function SettingsPage() {
   const { request } = useApiClient();
   const { session, setSession } = useAuth();
+  const canViewTotalUnits = session?.user.permissions === "Admin" || session?.user.permissions === "Fleet Manager";
   const [profile, setProfile] = useState<ProfileDetails | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -306,106 +306,6 @@ export function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Notification Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5" />
-                Notification Preferences
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="email-notifications">Email Notifications</Label>
-                  <p className="text-sm text-gray-600">
-                    Receive email alerts for critical events
-                  </p>
-                </div>
-                <Switch id="email-notifications" defaultChecked />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="tier-changes">Tier Change Alerts</Label>
-                  <p className="text-sm text-gray-600">
-                    Get notified when units change tiers
-                  </p>
-                </div>
-                <Switch id="tier-changes" defaultChecked />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="temp-alerts">Temperature Alerts</Label>
-                  <p className="text-sm text-gray-600">
-                    Alert for temperature compliance issues
-                  </p>
-                </div>
-                <Switch id="temp-alerts" defaultChecked />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="voltage-alerts">Voltage Risk Alerts</Label>
-                  <p className="text-sm text-gray-600">
-                    Alert for voltage anomalies
-                  </p>
-                </div>
-                <Switch id="voltage-alerts" defaultChecked />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="weekly-summary">Weekly Summary Report</Label>
-                  <p className="text-sm text-gray-600">
-                    Receive weekly performance summaries
-                  </p>
-                </div>
-                <Switch id="weekly-summary" defaultChecked />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Dashboard Preferences */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Palette className="w-5 h-5" />
-                Dashboard Preferences
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="dark-mode">Dark Mode</Label>
-                  <p className="text-sm text-gray-600">
-                    Use dark theme for the dashboard
-                  </p>
-                </div>
-                <Switch id="dark-mode" />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="compact-view">Compact View</Label>
-                  <p className="text-sm text-gray-600">
-                    Show more data in less space
-                  </p>
-                </div>
-                <Switch id="compact-view" />
-              </div>
-              <Separator />
-              <div>
-                <Label htmlFor="default-date-range">Default Date Range</Label>
-                <Input
-                  id="default-date-range"
-                  defaultValue="Last 30 days"
-                  className="mt-1.5"
-                />
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Side Panel */}
@@ -427,33 +327,20 @@ export function SettingsPage() {
                 <p className="text-sm text-gray-600">Last Data Sync</p>
                 <p className="font-medium">2 minutes ago</p>
               </div>
-              <Separator />
-              <div>
-                <p className="text-sm text-gray-600">Total Units</p>
-                <p className="font-medium">624 active</p>
-              </div>
+              {canViewTotalUnits ? (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-gray-600">Total Units</p>
+                    <p className="font-medium">624 active</p>
+                  </div>
+                </>
+              ) : null}
               <Separator />
               <div>
                 <p className="text-sm text-gray-600">Data Retention</p>
                 <p className="font-medium">90 days</p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button variant="outline" className="w-full">
-                Export All Data
-              </Button>
-              <Button variant="outline" className="w-full">
-                Generate Report
-              </Button>
-              <Button variant="outline" className="w-full">
-                View Audit Log
-              </Button>
             </CardContent>
           </Card>
         </div>

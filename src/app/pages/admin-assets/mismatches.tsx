@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, RefreshCw, Search } from "lucide-react";
 import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
-import { downloadCsv } from "./utils";
+import { downloadExcel } from "./utils";
 import { Mismatch, MismatchSortKey, MismatchStatus } from "./types";
 
 export function MismatchesPage() {
@@ -19,7 +19,7 @@ export function MismatchesPage() {
     mismatchSort, toggleMismatchSort,
     mismatchPage, setMismatchPage,
     paginatedMismatches, sortedMismatches, mismatchTotalPages, safeMismatchPage,
-    mismatchCsvRows,
+    mismatchExportRows,
     openResolveMismatch, openDeleteMismatch,
     canViewMismatches, canResolveMismatches, canDeleteMismatches,
   } = useAdminAssets();
@@ -122,14 +122,15 @@ export function MismatchesPage() {
           <Button
             variant="outline"
             onClick={() =>
-              downloadCsv(
-                `mismatches_${new Date().toISOString().slice(0, 10)}_status_${mismatchFilters.status}.csv`,
+              downloadExcel(
+                `mismatches_${new Date().toISOString().slice(0, 10)}_status_${mismatchFilters.status}.xls`,
+                "Mismatches",
                 ["Received At", "Serial", "Received MAC", "Expected MAC", "Received C-Number", "Expected C-Number", "Status", "Resolved At", "Resolved By", "Note"],
-                mismatchCsvRows,
+                mismatchExportRows,
               )
             }
           >
-            <Download className="h-4 w-4" /> Download CSV
+            <Download className="h-4 w-4" /> Download Excel
           </Button>
         </div>
 

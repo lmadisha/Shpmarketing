@@ -6,18 +6,53 @@ export function cleanCNumber(value: string) {
   return (value || "").trim().toUpperCase().slice(0, 10);
 }
 
-export function toCsvValue(value: unknown) {
-  const raw = value == null ? "" : String(value);
-  const escaped = raw.replace(/"/g, '""');
-  return `"${escaped}"`;
+function escapeSpreadsheetValue(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
-export function downloadCsv(filename: string, headers: string[], rows: Array<Array<unknown>>) {
-  const lines = [
-    headers.map(toCsvValue).join(","),
-    ...rows.map((row) => row.map(toCsvValue).join(",")),
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+function sanitizeWorksheetName(sheetName: string) {
+  const sanitized = sheetName.replace(/:|\\|\/|\?|\*|\[|\]/g, "").trim();
+  return (sanitized || "Sheet1").slice(0, 31);
+}
+
+function toSpreadsheetRow(values: Array<unknown>, styleId?: string) {
+  return `<Row>${values.map((value) => {
+    const styleAttribute = styleId ? ` ss:StyleID="${styleId}"` : "";
+    return `<Cell${styleAttribute}><Data ss:Type="String">${escapeSpreadsheetValue(value)}</Data></Cell>`;
+  }).join("")}</Row>`;
+}
+
+export function downloadExcel(
+  filename: string,
+  sheetName: string,
+  headers: string[],
+  rows: Array<Array<unknown>>,
+) {
+  const safeSheetName = sanitizeWorksheetName(sheetName);
+  const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="Header">
+   <Font ss:Bold="1"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="${escapeSpreadsheetValue(safeSheetName)}">
+  <Table>
+   ${toSpreadsheetRow(headers, "Header")}
+   ${rows.map((row) => toSpreadsheetRow(row)).join("\n   ")}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

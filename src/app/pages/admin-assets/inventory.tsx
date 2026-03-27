@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { ArrowUpDown, ChevronLeft, ChevronRight, Clock3, Download, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
-import { downloadCsv, cleanHex12, cleanCNumber } from "./utils";
+import { downloadExcel, cleanHex12, cleanCNumber } from "./utils";
 import { Fridge } from "./types";
 
 export function InventoryPage() {
@@ -18,7 +18,7 @@ export function InventoryPage() {
     toggleInventorySort,
     inventoryPage, setInventoryPage,
     paginatedFridgeRows, sortedFridgeRows, inventoryTotalPages, safeInventoryPage,
-    inventoryCsvRows,
+    inventoryExportRows,
     editingSerial, editForm, setEditForm, savingEdit, deletingSerial,
     startEdit, cancelEdit, submitEdit, deleteFridge,
     loadDeviceHistory, deviceHistoryLoading, deviceHistorySerial,
@@ -63,15 +63,16 @@ export function InventoryPage() {
           <Button
             variant="outline"
             onClick={() =>
-              downloadCsv(
-                `fridges_${new Date().toISOString().slice(0, 10)}.csv`,
+              downloadExcel(
+                `fridges_${new Date().toISOString().slice(0, 10)}.xls`,
+                "Inventory",
                 ["Serial Number", "MAC Address", "C-Number", "Verified"],
-                inventoryCsvRows,
+                inventoryExportRows,
               )
             }
           >
             <Download className="h-4 w-4" />
-            Download CSV
+            Download Excel
           </Button>
         </div>
 

@@ -4,9 +4,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../../components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Clock3, RefreshCw } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, Clock3, Download, RefreshCw } from "lucide-react";
 import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
+import { downloadExcel } from "./utils";
 
 export function HistoryPage() {
   const {
@@ -15,6 +16,7 @@ export function HistoryPage() {
     toggleHistorySort,
     historyPage, setHistoryPage,
     paginatedHistory, sortedHistory, historyTotalPages, safeHistoryPage,
+    historyExportRows,
     canViewHistory,
   } = useAdminAssets();
 
@@ -37,7 +39,20 @@ export function HistoryPage() {
         <CardDescription>Most recent device changes first.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              downloadExcel(
+                `history_${new Date().toISOString().slice(0, 10)}.xls`,
+                "History",
+                ["Changed At", "Action", "Serial", "Old MAC", "New MAC", "Old C-Number", "New C-Number", "User"],
+                historyExportRows,
+              )
+            }
+          >
+            <Download className="h-4 w-4" /> Download Excel
+          </Button>
           <Button variant="outline" disabled={historyLoading} onClick={() => void loadAllHistory()}>
             <RefreshCw className="h-4 w-4" /> Refresh
           </Button>

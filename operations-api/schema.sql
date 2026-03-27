@@ -1,30 +1,24 @@
--- Operations database schema migrated from artic application
+-- Operations database schema
 
-DO $$
-BEGIN
-  CREATE TYPE mismatch_action_enum AS ENUM ('open', 'resolve', 'cancel', 'delete');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+CREATE TYPE mismatch_action_enum AS ENUM ('open', 'resolve', 'cancel', 'delete');
 
-DO $$
-BEGIN
-  CREATE TYPE user_permission_enum AS ENUM ('Admin', 'Fleet Manager', 'Factory', 'Outlet', 'Technician', 'User');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+CREATE TYPE user_permission_enum AS ENUM (
+  'Admin',
+  'Fleet Manager',
+  'Factory',
+  'Outlet',
+  'Technician',
+  'User'
+);
 
-ALTER TYPE user_permission_enum ADD VALUE IF NOT EXISTS 'Factory' AFTER 'Fleet Manager';
-ALTER TYPE user_permission_enum ADD VALUE IF NOT EXISTS 'Outlet' AFTER 'Factory';
-
-CREATE TABLE IF NOT EXISTS organisation (
+CREATE TABLE organisation (
   id SERIAL PRIMARY KEY,
   name VARCHAR(120) UNIQUE NOT NULL,
   domin VARCHAR(120) UNIQUE,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
@@ -37,7 +31,7 @@ CREATE TABLE IF NOT EXISTS users (
   organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS fridges (
+CREATE TABLE fridges (
   fridge_serial_number VARCHAR(12) PRIMARY KEY,
   iot_mac_address VARCHAR(12) UNIQUE,
   c_number VARCHAR(10),
@@ -46,7 +40,7 @@ CREATE TABLE IF NOT EXISTS fridges (
   organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS fridge_mismatches (
+CREATE TABLE fridge_mismatches (
   id BIGSERIAL PRIMARY KEY,
   received_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   fridge_serial_number VARCHAR(32) NOT NULL,
@@ -57,91 +51,11 @@ CREATE TABLE IF NOT EXISTS fridge_mismatches (
   status mismatch_action_enum DEFAULT 'open' NOT NULL,
   resolved_at TIMESTAMPTZ,
   resolved_by INTEGER REFERENCES users(id),
-  resolution_note TEXT
+  resolution_note TEXT,
+  sender_id INTEGER REFERENCES users(id)
 );
 
-ALTER TABLE IF EXISTS public.users
-  ADD COLUMN IF NOT EXISTS organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL;
-
-ALTER TABLE IF EXISTS public.organisation
-  ADD COLUMN IF NOT EXISTS domin VARCHAR(120);
-
-ALTER TABLE IF EXISTS public.fridges
-  ADD COLUMN IF NOT EXISTS organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL;
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'users'
-      AND column_name = 'permissions'
-      AND udt_name <> 'user_permission_enum'
-  ) THEN
-    ALTER TABLE public.users
-      ALTER COLUMN permissions TYPE user_permission_enum
-      USING (
-        CASE LOWER(TRIM(permissions::text))
-          WHEN 'admin' THEN 'Admin'
-          WHEN 'fleet manager' THEN 'Fleet Manager'
-          WHEN 'intermediate' THEN 'Fleet Manager'
-          WHEN 'factory' THEN 'Factory'
-          WHEN 'factory manager' THEN 'Factory'
-          WHEN 'outlet' THEN 'Outlet'
-          WHEN 'outlet manager' THEN 'Outlet'
-          WHEN 'technician' THEN 'Technician'
-          WHEN 'basic' THEN 'User'
-          WHEN 'user' THEN 'User'
-          WHEN 'users' THEN 'User'
-          ELSE 'User'
-        END
-      )::user_permission_enum;
-  END IF;
-END $$;
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'fridge_mismatches'
-      AND column_name = 'status'
-      AND udt_name <> 'mismatch_action_enum'
-  ) THEN
-    ALTER TABLE public.fridge_mismatches
-      ALTER COLUMN status DROP DEFAULT,
-      ALTER COLUMN status TYPE mismatch_action_enum
-      USING (
-        CASE LOWER(status::text)
-          WHEN 'resolved' THEN 'resolve'
-          WHEN 'deleted' THEN 'delete'
-          WHEN 'cancelled' THEN 'cancel'
-          WHEN 'canceled' THEN 'cancel'
-          ELSE LOWER(status::text)
-        END
-      )::mismatch_action_enum,
-      ALTER COLUMN status SET DEFAULT 'open'::mismatch_action_enum;
-  ELSE
-    ALTER TABLE public.fridge_mismatches
-      ALTER COLUMN status SET DEFAULT 'open'::mismatch_action_enum;
-  END IF;
-END $$;
-
-ALTER TABLE IF EXISTS public.fridge_mismatches
-  ADD COLUMN IF NOT EXISTS sender_id INTEGER REFERENCES users(id);
-
-CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_received_at ON fridge_mismatches (received_at DESC);
-CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_serial ON fridge_mismatches (fridge_serial_number);
-CREATE INDEX IF NOT EXISTS idx_fridge_mismatches_status ON fridge_mismatches (status);
-CREATE INDEX IF NOT EXISTS idx_users_organisation_id ON users (organisation_id);
-CREATE INDEX IF NOT EXISTS idx_fridges_organisation_id ON fridges (organisation_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_organisation_domin_unique
-ON organisation ((LOWER(domin)))
-WHERE domin IS NOT NULL;
-
-CREATE TABLE IF NOT EXISTS fridge_audit_log (
+CREATE TABLE fridge_audit_log (
   log_id SERIAL PRIMARY KEY,
   fridge_serial_number VARCHAR(32),
   source_table TEXT DEFAULT 'fridges' NOT NULL,
@@ -156,33 +70,20 @@ CREATE TABLE IF NOT EXISTS fridge_audit_log (
   changed_by INTEGER REFERENCES users(id)
 );
 
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ALTER COLUMN fridge_serial_number TYPE VARCHAR(32);
-
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ALTER COLUMN old_mac TYPE VARCHAR(64);
-
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ALTER COLUMN new_mac TYPE VARCHAR(64);
-
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ALTER COLUMN old_c_num TYPE VARCHAR(32);
-
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ALTER COLUMN new_c_num TYPE VARCHAR(32);
-
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ADD COLUMN IF NOT EXISTS source_table TEXT DEFAULT 'fridges' NOT NULL;
-
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ADD COLUMN IF NOT EXISTS mismatch_id BIGINT;
-
-ALTER TABLE IF EXISTS public.fridge_audit_log
-  ADD COLUMN IF NOT EXISTS metadata JSONB;
-
-CREATE INDEX IF NOT EXISTS idx_fridge_audit_log_serial ON fridge_audit_log (fridge_serial_number);
-CREATE INDEX IF NOT EXISTS idx_fridge_audit_log_source_table ON fridge_audit_log (source_table);
-CREATE INDEX IF NOT EXISTS idx_fridge_audit_log_mismatch_id ON fridge_audit_log (mismatch_id);
+CREATE INDEX idx_fridge_mismatches_received_at ON fridge_mismatches (received_at DESC);
+CREATE INDEX idx_fridge_mismatches_serial ON fridge_mismatches (fridge_serial_number);
+CREATE INDEX idx_fridge_mismatches_status ON fridge_mismatches (status);
+CREATE INDEX idx_users_organisation_id ON users (organisation_id);
+CREATE INDEX idx_fridges_organisation_id ON fridges (organisation_id);
+CREATE UNIQUE INDEX idx_organisation_domin_unique
+ON organisation ((LOWER(domin)))
+WHERE domin IS NOT NULL;
+CREATE INDEX idx_fridge_audit_log_serial ON fridge_audit_log (fridge_serial_number);
+CREATE INDEX idx_fridge_audit_log_source_table ON fridge_audit_log (source_table);
+CREATE INDEX idx_fridge_audit_log_mismatch_id ON fridge_audit_log (mismatch_id);
+CREATE UNIQUE INDEX iot_mac_address_unique_non_null_non_empty
+ON fridges (iot_mac_address)
+WHERE iot_mac_address IS NOT NULL AND iot_mac_address <> '';
 
 CREATE OR REPLACE FUNCTION log_fridge_changes()
 RETURNS TRIGGER AS $$
@@ -192,14 +93,60 @@ BEGIN
   current_user_id_text := current_setting('myapp.current_user_id', true);
 
   IF (TG_OP = 'UPDATE') THEN
-    INSERT INTO fridge_audit_log (fridge_serial_number, source_table, action_type, old_mac, new_mac, old_c_num, new_c_num, changed_by)
-    VALUES (OLD.fridge_serial_number, 'fridges', 'UPDATE', OLD.iot_mac_address, NEW.iot_mac_address, OLD.c_number, NEW.c_number, NULLIF(current_user_id_text, '')::integer);
+    INSERT INTO fridge_audit_log (
+      fridge_serial_number,
+      source_table,
+      action_type,
+      old_mac,
+      new_mac,
+      old_c_num,
+      new_c_num,
+      changed_by
+    )
+    VALUES (
+      OLD.fridge_serial_number,
+      'fridges',
+      'UPDATE',
+      OLD.iot_mac_address,
+      NEW.iot_mac_address,
+      OLD.c_number,
+      NEW.c_number,
+      NULLIF(current_user_id_text, '')::integer
+    );
   ELSIF (TG_OP = 'INSERT') THEN
-    INSERT INTO fridge_audit_log (fridge_serial_number, source_table, action_type, new_mac, new_c_num, changed_by)
-    VALUES (NEW.fridge_serial_number, 'fridges', 'INSERT', NEW.iot_mac_address, NEW.c_number, NULLIF(current_user_id_text, '')::integer);
+    INSERT INTO fridge_audit_log (
+      fridge_serial_number,
+      source_table,
+      action_type,
+      new_mac,
+      new_c_num,
+      changed_by
+    )
+    VALUES (
+      NEW.fridge_serial_number,
+      'fridges',
+      'INSERT',
+      NEW.iot_mac_address,
+      NEW.c_number,
+      NULLIF(current_user_id_text, '')::integer
+    );
   ELSIF (TG_OP = 'DELETE') THEN
-    INSERT INTO fridge_audit_log (fridge_serial_number, source_table, action_type, old_mac, old_c_num, changed_by)
-    VALUES (OLD.fridge_serial_number, 'fridges', 'DELETE', OLD.iot_mac_address, OLD.c_number, NULLIF(current_user_id_text, '')::integer);
+    INSERT INTO fridge_audit_log (
+      fridge_serial_number,
+      source_table,
+      action_type,
+      old_mac,
+      old_c_num,
+      changed_by
+    )
+    VALUES (
+      OLD.fridge_serial_number,
+      'fridges',
+      'DELETE',
+      OLD.iot_mac_address,
+      OLD.c_number,
+      NULLIF(current_user_id_text, '')::integer
+    );
   END IF;
 
   RETURN NULL;
@@ -310,18 +257,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_fridge_audit ON fridges;
 CREATE TRIGGER trg_fridge_audit
 AFTER INSERT OR UPDATE OR DELETE ON fridges
 FOR EACH ROW
 EXECUTE FUNCTION log_fridge_changes();
 
-DROP TRIGGER IF EXISTS trg_fridge_mismatch_audit ON fridge_mismatches;
 CREATE TRIGGER trg_fridge_mismatch_audit
 AFTER INSERT OR UPDATE OR DELETE ON fridge_mismatches
 FOR EACH ROW
 EXECUTE FUNCTION log_fridge_mismatch_changes();
-
-CREATE UNIQUE INDEX IF NOT EXISTS iot_mac_address_unique_non_null_non_empty
-ON public.fridges (iot_mac_address)
-WHERE iot_mac_address IS NOT NULL AND iot_mac_address <> '';

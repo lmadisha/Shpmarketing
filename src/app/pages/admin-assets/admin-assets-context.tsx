@@ -132,9 +132,10 @@ type AdminAssetsContextValue = {
   openDeleteMismatch: (row: Mismatch) => void;
   submitDeleteMismatch: () => Promise<void>;
 
-  // CSV rows
-  inventoryCsvRows: Array<Array<unknown>>;
-  mismatchCsvRows: Array<Array<unknown>>;
+  // Export rows
+  inventoryExportRows: Array<Array<unknown>>;
+  mismatchExportRows: Array<Array<unknown>>;
+  historyExportRows: Array<Array<unknown>>;
 
   // Generic admin API helper
   adminRequest: <T>(action: string, path: string, options?: AdminApiRequestOptions) => Promise<T>;
@@ -618,8 +619,8 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   useEffect(() => { setMismatchPage(1); }, [mismatches.length]);
   useEffect(() => { setHistoryPage(1); }, [allHistory.length]);
 
-  // CSV rows
-  const inventoryCsvRows = useMemo(() => {
+  // Export rows
+  const inventoryExportRows = useMemo(() => {
     return sortedFridgeRows.map((row) => [
       row.fridge_serial_number,
       row.iot_mac_address || "",
@@ -628,7 +629,7 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     ]);
   }, [sortedFridgeRows]);
 
-  const mismatchCsvRows = useMemo(() => {
+  const mismatchExportRows = useMemo(() => {
     return sortedMismatches.map((row) => [
       row.received_at,
       row.fridge_serial_number,
@@ -642,6 +643,19 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
       row.resolution_note || "",
     ]);
   }, [sortedMismatches]);
+
+  const historyExportRows = useMemo(() => {
+    return sortedHistory.map((entry) => [
+      entry.changed_at,
+      entry.action_type,
+      entry.fridge_serial_number,
+      entry.old_mac || "",
+      entry.new_mac || "",
+      entry.old_c_num || "",
+      entry.new_c_num || "",
+      entry.changed_by_username ?? "system",
+    ]);
+  }, [sortedHistory]);
 
   // ── Initial load ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -729,7 +743,7 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     sortedMismatches, paginatedMismatches, mismatchTotalPages, safeMismatchPage,
     resolveModal, setResolveModal, openResolveMismatch, submitResolveMismatch,
     deleteMismatchModal, setDeleteMismatchModal, openDeleteMismatch, submitDeleteMismatch,
-    inventoryCsvRows, mismatchCsvRows,
+    inventoryExportRows, mismatchExportRows, historyExportRows,
     adminRequest,
   };
 
