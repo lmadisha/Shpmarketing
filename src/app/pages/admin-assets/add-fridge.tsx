@@ -19,6 +19,18 @@ import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
 import { cleanHex12, cleanCNumber, downloadExcel } from "./utils";
 
+type BulkSkippedRow = {
+  rowNumber: number;
+  reason: string;
+  message: string;
+  serial?: string;
+  upload_mac_address?: string | null;
+  upload_c_number?: string | null;
+  db_serial?: string | null;
+  db_mac_address?: string | null;
+  db_c_number?: string | null;
+};
+
 export function AddFridgePage() {
   const { session } = useAuth();
   const {
@@ -46,7 +58,7 @@ export function AddFridgePage() {
   const [bulkPreviewLoading, setBulkPreviewLoading] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkErrors, setBulkErrors] = useState<Array<{ rowNumber: number; reason: string; message: string; serial?: string }>>([]);
-  const [bulkSkippedRows, setBulkSkippedRows] = useState<Array<{ rowNumber: number; reason: string; message: string; serial?: string }>>([]);
+  const [bulkSkippedRows, setBulkSkippedRows] = useState<BulkSkippedRow[]>([]);
   const [skippedModalOpen, setSkippedModalOpen] = useState(false);
   const [bulkPreviewRows, setBulkPreviewRows] = useState<Array<{ rowNumber: number; fridge_serial_number: string; mac_address: string | null; c_number: string | null }>>([]);
   const [bulkPreviewSummary, setBulkPreviewSummary] = useState<{ totalRows: number; previewRows: number; excludedRows: number } | null>(null);
@@ -148,7 +160,7 @@ export function AddFridgePage() {
       }
       const response = await adminRequest<{
         summary: { totalRows: number; excludedRows?: number; validRows: number; insertedRows: number; skippedRows?: number; failedRows: number };
-        skippedRows?: Array<{ rowNumber: number; reason: string; message: string; serial?: string }>;
+        skippedRows?: BulkSkippedRow[];
         errors?: Array<{ rowNumber: number; reason: string; message: string; serial?: string }>;
       }>("bulkUpload", "/newDevice/bulk", { method: "POST", body: formData });
       const summary = response.summary;
@@ -171,6 +183,39 @@ export function AddFridgePage() {
     } finally {
       setBulkSubmitting(false);
     }
+  };
+
+  const downloadSkippedRowsReport = () => {
+    if (!bulkSkippedRows.length) {
+      return;
+    }
+
+    downloadExcel(
+      `fridge_bulk_skipped_rows_${new Date().toISOString().slice(0, 10)}.xls`,
+      "Skipped Rows",
+      [
+        "Upload Row",
+        "Upload Serial",
+        "Upload MAC Address",
+        "Upload C-Number",
+        "Database Serial",
+        "Database MAC Address",
+        "Database C-Number",
+        "Reason",
+        "Message",
+      ],
+      bulkSkippedRows.map((row) => [
+        row.rowNumber,
+        row.serial || "",
+        row.upload_mac_address || "",
+        row.upload_c_number || "",
+        row.db_serial || "",
+        row.db_mac_address || "",
+        row.db_c_number || "",
+        row.reason,
+        row.message,
+      ]),
+    );
   };
 
   if (!canCreateAssets) {
@@ -342,11 +387,11 @@ export function AddFridgePage() {
       </Card>
 
       <Dialog open={skippedModalOpen} onOpenChange={setSkippedModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-6xl">
           <DialogHeader>
-            <DialogTitle>Skipped Rows</DialogTitle>
+            <DialogTitle>Skipped Rows Report</DialogTitle>
             <DialogDescription>
-              These rows were skipped because they already exist in the database.
+              These rows already exist in the database. Review the uploaded values against the database values, then download the report if needed.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[420px] overflow-auto rounded-md border">
@@ -354,7 +399,12 @@ export function AddFridgePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Row</TableHead>
-                  <TableHead>Serial</TableHead>
+                  <TableHead>Upload Serial</TableHead>
+                  <TableHead>Upload MAC</TableHead>
+                  <TableHead>Upload C-Number</TableHead>
+                  <TableHead>DB Serial</TableHead>
+                  <TableHead>DB MAC</TableHead>
+                  <TableHead>DB C-Number</TableHead>
                   <TableHead>Reason</TableHead>
                 </TableRow>
               </TableHeader>
@@ -363,6 +413,11 @@ export function AddFridgePage() {
                   <TableRow key={`${item.rowNumber}-${item.serial || ""}-${index}`}>
                     <TableCell>{item.rowNumber}</TableCell>
                     <TableCell>{item.serial || "-"}</TableCell>
+                    <TableCell>{item.upload_mac_address || "-"}</TableCell>
+                    <TableCell>{item.upload_c_number || "-"}</TableCell>
+                    <TableCell>{item.db_serial || "-"}</TableCell>
+                    <TableCell>{item.db_mac_address || "-"}</TableCell>
+                    <TableCell>{item.db_c_number || "-"}</TableCell>
                     <TableCell>{item.message}</TableCell>
                   </TableRow>
                 ))}
@@ -370,6 +425,10 @@ export function AddFridgePage() {
             </Table>
           </div>
           <DialogFooter>
+            <Button type="button" variant="outline" onClick={downloadSkippedRowsReport}>
+              <Download className="h-4 w-4" />
+              Download Report
+            </Button>
             <Button type="button" variant="outline" onClick={() => setSkippedModalOpen(false)}>
               Close
             </Button>

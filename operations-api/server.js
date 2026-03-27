@@ -454,6 +454,20 @@ function buildBulkRows(parsedRows) {
   return { preparedRows, excludedRows };
 }
 
+function buildSkippedDuplicateReportRow(row, existingRow, message) {
+  return {
+    rowNumber: row.rowNumber,
+    serial: row.fridge_serial_number,
+    reason: "DUPLICATE_IN_DB",
+    message,
+    upload_mac_address: row.mac_address || null,
+    upload_c_number: row.c_number || null,
+    db_serial: existingRow?.fridge_serial_number || null,
+    db_mac_address: existingRow?.iot_mac_address || null,
+    db_c_number: existingRow?.c_number || null,
+  };
+}
+
 app.get("/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
@@ -1172,7 +1186,7 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
         );
 
         const existing = await client.query(
-          `SELECT fridge_serial_number, iot_mac_address
+          `SELECT fridge_serial_number, iot_mac_address, c_number
            FROM fridges
            WHERE fridge_serial_number = $1
               OR ($2::text IS NOT NULL AND iot_mac_address = $2)
@@ -1184,16 +1198,15 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
           const existingRow = existing.rows[0];
           const isSerialMatch = existingRow.fridge_serial_number === row.fridge_serial_number;
           const isMacMatch = row.mac_address && existingRow.iot_mac_address === row.mac_address;
-          skippedRows.push({
-            rowNumber: row.rowNumber,
-            serial: row.fridge_serial_number,
-            reason: "DUPLICATE_IN_DB",
-            message: isSerialMatch
+          skippedRows.push(buildSkippedDuplicateReportRow(
+            row,
+            existingRow,
+            isSerialMatch
               ? "Serial number already exists in database."
               : isMacMatch
                 ? "MAC address already exists in database."
                 : "Row already exists in database.",
-          });
+          ));
           continue;
         }
 
@@ -1208,12 +1221,19 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
           if (result.rows.length) {
             inserted.push(result.rows[0]);
           } else {
-            skippedRows.push({
-              rowNumber: row.rowNumber,
-              serial: row.fridge_serial_number,
-              reason: "DUPLICATE_IN_DB",
-              message: "Row skipped because it already exists in database.",
-            });
+            const existingAfterConflict = await client.query(
+              `SELECT fridge_serial_number, iot_mac_address, c_number
+               FROM fridges
+               WHERE fridge_serial_number = $1
+                  OR ($2::text IS NOT NULL AND iot_mac_address = $2)
+               LIMIT 1`,
+              [row.fridge_serial_number, row.mac_address],
+            );
+            skippedRows.push(buildSkippedDuplicateReportRow(
+              row,
+              existingAfterConflict.rows[0],
+              "Row skipped because it already exists in database.",
+            ));
           }
         } catch (rowError) {
           errors.push({
