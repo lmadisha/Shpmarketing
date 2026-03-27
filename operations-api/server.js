@@ -7,6 +7,13 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const XLSX = require("xlsx");
 const pool = require("./db");
+const {
+  DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES,
+  normalizeHexIdentifier,
+  normalizeCNumber,
+  validateAssetIdentifiers,
+  validateOrganisationAssetValidationPayload,
+} = require("./asset-validation");
 
 const app = express();
 
@@ -298,6 +305,132 @@ async function resolveOrganisationScope(client, user, requestedOrganisationIdRaw
   };
 }
 
+function canManageOrganisationAssetValidation(user) {
+  return user?.permissions === "Admin" || user?.permissions === "Fleet Manager";
+}
+
+function requireOrganisationAssetValidationEditor(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: "Missing user context" });
+  }
+
+  if (!canManageOrganisationAssetValidation(req.user)) {
+    return res.status(403).json({ error: "Only Admin and Fleet Manager can manage organisation asset validation rules." });
+  }
+
+  return next();
+}
+
+async function ensureOrganisationAssetValidationRules(client, organisationId) {
+  await client.query(
+    `INSERT INTO organisation_asset_validation_rules (
+       organisation_id,
+       serial_min_length,
+       serial_max_length,
+       mac_min_length,
+       mac_max_length,
+       c_number_min_length,
+       c_number_max_length
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (organisation_id) DO NOTHING`,
+    [
+      organisationId,
+      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.serial_min_length,
+      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.serial_max_length,
+      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.mac_min_length,
+      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.mac_max_length,
+      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.c_number_min_length,
+      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.c_number_max_length,
+    ],
+  );
+}
+
+async function getOrganisationAssetValidationRules(client, organisationId) {
+  if (!organisationId) {
+    const error = new Error("Organisation is not configured.");
+    error.code = "USER_ORGANISATION_REQUIRED";
+    throw error;
+  }
+
+  await ensureOrganisationAssetValidationRules(client, organisationId);
+
+  const result = await client.query(
+    `SELECT organisation_id,
+            serial_min_length,
+            serial_max_length,
+            mac_min_length,
+            mac_max_length,
+            c_number_min_length,
+            c_number_max_length
+     FROM organisation_asset_validation_rules
+     WHERE organisation_id = $1`,
+    [organisationId],
+  );
+
+  if (!result.rows.length) {
+    const error = new Error("Organisation asset validation rules not found.");
+    error.code = "ORGANISATION_ASSET_VALIDATION_RULES_NOT_FOUND";
+    throw error;
+  }
+
+  return result.rows[0];
+}
+
+async function resolveOrganisationAssetValidationScope(client, user, requestedOrganisationIdRaw) {
+  const requestedOrganisationId = parseRequestedOrganisationId(requestedOrganisationIdRaw);
+  const userOrganisationId = await getUserOrganisationId(client, user.id);
+
+  if (user?.permissions === "Admin") {
+    const targetOrganisationId = requestedOrganisationId ?? userOrganisationId;
+    if (!targetOrganisationId) {
+      const error = new Error("organisation_id is required for this admin account.");
+      error.code = "ORGANISATION_ID_REQUIRED";
+      throw error;
+    }
+
+    const organisationResult = await client.query(
+      `SELECT id
+       FROM organisation
+       WHERE id = $1`,
+      [targetOrganisationId],
+    );
+    if (!organisationResult.rows.length) {
+      const error = new Error("Organisation not found.");
+      error.code = "ORGANISATION_NOT_FOUND";
+      throw error;
+    }
+
+    return targetOrganisationId;
+  }
+
+  if (!userOrganisationId) {
+    const error = new Error("User organisation is not configured.");
+    error.code = "USER_ORGANISATION_REQUIRED";
+    throw error;
+  }
+
+  if (requestedOrganisationId && requestedOrganisationId !== userOrganisationId) {
+    const error = new Error("You can only manage asset validation rules for your organisation.");
+    error.code = "FORBIDDEN_ORGANISATION_SCOPE";
+    throw error;
+  }
+
+  return userOrganisationId;
+}
+
+function formatValidationErrors(errors) {
+  return Object.entries(errors).map(([field, message]) => ({ field, message }));
+}
+
+function buildValidationErrorResponse(errors) {
+  const fieldErrors = formatValidationErrors(errors);
+  return {
+    error: fieldErrors[0]?.message || "Validation failed.",
+    fieldErrors,
+  };
+}
+
 function logAssetAction(action, details = "") {
   const suffix = details ? ` ${details}` : "";
   console.log(`[asset-manager] ${action}${suffix}`);
@@ -309,17 +442,6 @@ function handleAssetError(res, action, error) {
   const detail = error?.detail ? ` detail=${error.detail}` : "";
   console.error(`[asset-manager] ${action} failed: ${message}${code}${detail}`);
   return res.status(500).json({ error: `${action} failed: ${message}` });
-}
-
-function cleanHex12(value) {
-  return String(value || "")
-    .replace(/[^a-fA-F0-9]/g, "")
-    .toUpperCase()
-    .slice(0, 12);
-}
-
-function cleanCNumber(value) {
-  return String(value || "").trim().toUpperCase().slice(0, 10);
 }
 
 function pickColumn(row, keys) {
@@ -349,20 +471,17 @@ function normalizeRowKeys(row) {
 }
 
 function sanitizeBulkSerial(value) {
-  return String(value || "").trim().slice(0, 12);
+  return normalizeHexIdentifier(value);
 }
 
 function sanitizeBulkMac(value) {
-  const cleaned = String(value || "")
-    .replace(/[^a-fA-F0-9]/g, "")
-    .toUpperCase();
-  return cleaned ? cleaned.slice(0, 12) : null;
+  const cleaned = normalizeHexIdentifier(value);
+  return cleaned || null;
 }
 
 function sanitizeBulkCNumber(value) {
-  const cleaned = String(value || "").trim().toUpperCase();
-  if (!cleaned) return null;
-  return cleaned.length <= 10 ? cleaned : null;
+  const cleaned = normalizeCNumber(value);
+  return cleaned || null;
 }
 
 function getRequestDurationMs(startedAt) {
@@ -511,14 +630,26 @@ app.post("/organisations", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Organisation domain must be 120 characters or fewer" });
     }
 
-    const result = await pool.query(
-      `INSERT INTO organisation (name, domin)
-       VALUES ($1, $2)
-       RETURNING id, name, domin, created_at`,
-      [name, domin],
-    );
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `INSERT INTO organisation (name, domin)
+         VALUES ($1, $2)
+         RETURNING id, name, domin, created_at`,
+        [name, domin],
+      );
 
-    return res.status(201).json(result.rows[0]);
+      await ensureOrganisationAssetValidationRules(client, result.rows[0].id);
+      await client.query("COMMIT");
+
+      return res.status(201).json(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ error: "Organisation name or domain already exists." });
@@ -804,6 +935,107 @@ app.put("/profile", requireAuth, async (req, res) => {
   }
 });
 
+app.get(
+  "/organisation-asset-validation",
+  requireAuth,
+  requireOrganisationAssetValidationEditor,
+  async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const organisationId = await resolveOrganisationAssetValidationScope(
+        client,
+        req.user,
+        req.query.organisation_id,
+      );
+      const rules = await getOrganisationAssetValidationRules(client, organisationId);
+      return res.json(rules);
+    } catch (error) {
+      if (
+        error?.code === "USER_ORGANISATION_REQUIRED" ||
+        error?.code === "INVALID_ORGANISATION_FILTER" ||
+        error?.code === "ORGANISATION_ID_REQUIRED" ||
+        error?.code === "ORGANISATION_NOT_FOUND"
+      ) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error?.code === "FORBIDDEN_ORGANISATION_SCOPE") {
+        return res.status(403).json({ error: error.message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Server Error" });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+app.put(
+  "/organisation-asset-validation",
+  requireAuth,
+  requireOrganisationAssetValidationEditor,
+  async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const organisationId = await resolveOrganisationAssetValidationScope(
+        client,
+        req.user,
+        req.body?.organisation_id ?? req.query.organisation_id,
+      );
+      const { values, errors, isValid } = validateOrganisationAssetValidationPayload(req.body || {});
+      if (!isValid) {
+        return res.status(400).json(buildValidationErrorResponse(errors));
+      }
+
+      await ensureOrganisationAssetValidationRules(client, organisationId);
+
+      const result = await client.query(
+        `UPDATE organisation_asset_validation_rules
+         SET serial_min_length = $1,
+             serial_max_length = $2,
+             mac_min_length = $3,
+             mac_max_length = $4,
+             c_number_min_length = $5,
+             c_number_max_length = $6
+         WHERE organisation_id = $7
+         RETURNING organisation_id,
+                   serial_min_length,
+                   serial_max_length,
+                   mac_min_length,
+                   mac_max_length,
+                   c_number_min_length,
+                   c_number_max_length`,
+        [
+          values.serial_min_length,
+          values.serial_max_length,
+          values.mac_min_length,
+          values.mac_max_length,
+          values.c_number_min_length,
+          values.c_number_max_length,
+          organisationId,
+        ],
+      );
+
+      return res.json(result.rows[0]);
+    } catch (error) {
+      if (
+        error?.code === "USER_ORGANISATION_REQUIRED" ||
+        error?.code === "INVALID_ORGANISATION_FILTER" ||
+        error?.code === "ORGANISATION_ID_REQUIRED" ||
+        error?.code === "ORGANISATION_NOT_FOUND"
+      ) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error?.code === "FORBIDDEN_ORGANISATION_SCOPE") {
+        return res.status(403).json({ error: error.message });
+      }
+      console.error(error);
+      return res.status(500).json({ error: "Server Error" });
+    } finally {
+      client.release();
+    }
+  },
+);
+
 app.get("/users", requireAuth, requirePermission("users.view"), async (req, res) => {
   const client = await pool.connect();
   try {
@@ -1065,7 +1297,9 @@ app.put("/users/:id/active", requireAuth, requirePermission("users.manage"), asy
 app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (req, res) => {
   const client = await pool.connect();
   try {
-    const { mac_address, fridge_serial_number, c_number } = req.body;
+    const fridge_serial_number = normalizeHexIdentifier(req.body?.fridge_serial_number);
+    const mac_address = normalizeHexIdentifier(req.body?.mac_address);
+    const c_number = normalizeCNumber(req.body?.c_number);
     logAssetAction("create-device:start", `serial=${fridge_serial_number || "unknown"} byUser=${req.user?.id || "unknown"}`);
 
     await client.query("BEGIN");
@@ -1078,11 +1312,26 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
       return res.status(400).json({ error: "User organisation is not configured." });
     }
 
+    const rules = await getOrganisationAssetValidationRules(client, organisationId);
+    const validationErrors = validateAssetIdentifiers(
+      {
+        fridge_serial_number,
+        mac_address,
+        c_number,
+      },
+      rules,
+      { requireSerial: true },
+    );
+    if (Object.keys(validationErrors).length) {
+      await client.query("ROLLBACK");
+      return res.status(400).json(buildValidationErrorResponse(validationErrors));
+    }
+
     const result = await client.query(
       `INSERT INTO fridges (iot_mac_address, fridge_serial_number, c_number, organisation_id)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [mac_address, fridge_serial_number, c_number, organisationId],
+      [mac_address || "", fridge_serial_number, c_number || "", organisationId],
     );
 
     await client.query("COMMIT");
@@ -1178,12 +1427,35 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
       if (!organisationId) {
         return res.status(400).json({ error: "User organisation is not configured." });
       }
+      const rules = await getOrganisationAssetValidationRules(client, organisationId);
 
       console.info(`[bulk-upload] rows-to-process=${validRows.length}`);
       for (const row of validRows) {
         console.info(
           `[bulk-upload] row rowNumber=${row.rowNumber} serial_number=${row.fridge_serial_number} mac_address=${row.mac_address || ""} c_number=${row.c_number || ""}`,
         );
+
+        const validationErrors = validateAssetIdentifiers(
+          {
+            fridge_serial_number: row.fridge_serial_number,
+            mac_address: row.mac_address || "",
+            c_number: row.c_number || "",
+          },
+          rules,
+          { requireSerial: true },
+        );
+        if (Object.keys(validationErrors).length) {
+          const fieldErrorMessages = formatValidationErrors(validationErrors)
+            .map((item) => item.message)
+            .join(" ");
+          errors.push({
+            rowNumber: row.rowNumber,
+            serial: row.fridge_serial_number,
+            reason: "INVALID_LENGTH",
+            message: fieldErrorMessages,
+          });
+          continue;
+        }
 
         const existing = await client.query(
           `SELECT fridge_serial_number, iot_mac_address, c_number
@@ -1396,21 +1668,49 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
     ]);
     const scope = await resolveOrganisationScope(client, req.user, null);
 
+    const fridgeResult = await client.query(
+      `SELECT fridge_serial_number, iot_mac_address, c_number, organisation_id
+       FROM fridges
+       WHERE fridge_serial_number = $1
+         AND ($2::int IS NULL OR organisation_id = $2)`,
+      [req.params.serialNumber, scope.effectiveOrganisationId],
+    );
+    if (!fridgeResult.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "No fridge found with that serial number" });
+    }
+
+    const fridge = fridgeResult.rows[0];
+    const nextMac = Object.prototype.hasOwnProperty.call(req.body || {}, "mac_address")
+      ? normalizeHexIdentifier(req.body?.mac_address)
+      : String(fridge.iot_mac_address || "");
+    const nextCNumber = Object.prototype.hasOwnProperty.call(req.body || {}, "c_number")
+      ? normalizeCNumber(req.body?.c_number)
+      : String(fridge.c_number || "");
+    const rules = await getOrganisationAssetValidationRules(client, fridge.organisation_id);
+    const validationErrors = validateAssetIdentifiers(
+      {
+        mac_address: nextMac,
+        c_number: nextCNumber,
+      },
+      rules,
+    );
+    if (Object.keys(validationErrors).length) {
+      await client.query("ROLLBACK");
+      return res.status(400).json(buildValidationErrorResponse(validationErrors));
+    }
+
     const result = await client.query(
       `UPDATE fridges
-       SET iot_mac_address = COALESCE($1, iot_mac_address),
-           c_number = COALESCE($2, c_number)
+       SET iot_mac_address = $1,
+           c_number = $2
        WHERE fridge_serial_number = $3
          AND ($4::int IS NULL OR organisation_id = $4)
        RETURNING *`,
-      [req.body.mac_address, req.body.c_number, req.params.serialNumber, scope.effectiveOrganisationId],
+      [nextMac || "", nextCNumber || "", req.params.serialNumber, scope.effectiveOrganisationId],
     );
 
     await client.query("COMMIT");
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: "No fridge found with that serial number" });
-    }
 
     logAssetAction("update-device:success", `serial=${req.params.serialNumber}`);
     return res.json(result.rows[0]);
@@ -1619,8 +1919,8 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
   const client = await pool.connect();
   try {
     const serial = String(req.body?.fridge_serial_number || "").trim();
-    const mac = String(req.body?.mac_address || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 12);
-    const cNum = String(req.body?.c_number || "").trim().toUpperCase().slice(0, 10);
+    const mac = normalizeHexIdentifier(req.body?.mac_address);
+    const cNum = normalizeCNumber(req.body?.c_number);
 
     if (!serial) {
       return res.status(400).json({ error: "fridge_serial_number is required" });
@@ -1830,7 +2130,7 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
     const scope = await resolveOrganisationScope(client, req.user, null);
 
     const mismatchResult = await client.query(
-      `SELECT fm.*
+      `SELECT fm.*, f.organisation_id
        FROM fridge_mismatches fm
        LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
        WHERE fm.id = $1
@@ -1846,13 +2146,25 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
     const mismatch = mismatchResult.rows[0];
     await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
 
-    const newMac = mismatch.received_mac ? String(mismatch.received_mac).trim().toUpperCase() : null;
-    const newC = mismatch.received_c_number ? String(mismatch.received_c_number).trim().toUpperCase() : null;
+    const newMac = mismatch.received_mac ? normalizeHexIdentifier(mismatch.received_mac) : "";
+    const newC = mismatch.received_c_number ? normalizeCNumber(mismatch.received_c_number) : "";
+    const rules = await getOrganisationAssetValidationRules(client, mismatch.organisation_id);
+    const validationErrors = validateAssetIdentifiers(
+      {
+        mac_address: newMac,
+        c_number: newC,
+      },
+      rules,
+    );
+    if (Object.keys(validationErrors).length) {
+      await client.query("ROLLBACK");
+      return res.status(400).json(buildValidationErrorResponse(validationErrors));
+    }
 
     const updateFridge = await client.query(
       `UPDATE fridges
-       SET iot_mac_address = COALESCE($1, iot_mac_address),
-           c_number = COALESCE($2, c_number),
+       SET iot_mac_address = COALESCE(NULLIF($1, ''), iot_mac_address),
+           c_number = COALESCE(NULLIF($2, ''), c_number),
            verified = true,
            verified_at = NOW()
        WHERE fridge_serial_number = $3
