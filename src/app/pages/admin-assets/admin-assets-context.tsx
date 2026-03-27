@@ -3,6 +3,10 @@ import { useApiClient } from "../../auth/use-api-client";
 import { useAuth } from "../../auth/auth-context";
 import { canFilterOrganisation as canFilterOrganisationByRole, hasPermission } from "../../auth/permission-policy";
 import {
+  type OrganisationAssetValidationRules,
+  validateAssetIdentifiers,
+} from "../../lib/organisation-asset-validation";
+import {
   Fridge,
   Mismatch,
   AuditLogRow,
@@ -16,7 +20,7 @@ import {
   PAGE_SIZE,
   ADMIN_ASSETS_LOG_PREFIX,
 } from "./types";
-import { compareValues, summarizeRequestBody, summarizeResponsePayload, cleanHex12, cleanCNumber } from "./utils";
+import { compareValues, summarizeRequestBody, summarizeResponsePayload, normalizeHexIdentifier, normalizeCNumber } from "./utils";
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
@@ -59,6 +63,7 @@ type AdminAssetsContextValue = {
   // Edit / delete
   editingSerial: string | null;
   editForm: { mac_address: string; c_number: string };
+  editFormErrors: { mac_address?: string; c_number?: string };
   setEditForm: (f: { mac_address: string; c_number: string }) => void;
   savingEdit: boolean;
   deletingSerial: string | null;
@@ -137,6 +142,10 @@ type AdminAssetsContextValue = {
   mismatchExportRows: Array<Array<unknown>>;
   historyExportRows: Array<Array<unknown>>;
 
+  actorOrganisationValidationRules: OrganisationAssetValidationRules | null;
+  actorOrganisationValidationLoading: boolean;
+  getOrganisationValidationRules: (organisationId?: number | null) => Promise<OrganisationAssetValidationRules>;
+
   // Generic admin API helper
   adminRequest: <T>(action: string, path: string, options?: AdminApiRequestOptions) => Promise<T>;
 };
@@ -180,6 +189,30 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     }
     const joiner = path.includes("?") ? "&" : "?";
     return `${path}${joiner}organisation_id=${encodeURIComponent(organisationFilter)}`;
+  };
+
+  const [organisationValidationRulesById, setOrganisationValidationRulesById] = useState<
+    Record<number, OrganisationAssetValidationRules>
+  >({});
+  const [actorOrganisationValidationRules, setActorOrganisationValidationRules] = useState<OrganisationAssetValidationRules | null>(null);
+  const [actorOrganisationValidationLoading, setActorOrganisationValidationLoading] = useState(false);
+
+  const getOrganisationValidationRules = async (organisationId?: number | null) => {
+    const cacheKey = organisationId ?? null;
+    if (cacheKey != null && organisationValidationRulesById[cacheKey]) {
+      return organisationValidationRulesById[cacheKey];
+    }
+
+    const params = new URLSearchParams();
+    if (organisationId) {
+      params.set("organisation_id", String(organisationId));
+    }
+    const path = params.toString()
+      ? `/organisation-asset-validation?${params.toString()}`
+      : "/organisation-asset-validation";
+    const rules = await adminRequest<OrganisationAssetValidationRules>("loadOrganisationValidationRules", path);
+    setOrganisationValidationRulesById((prev) => ({ ...prev, [rules.organisation_id]: rules }));
+    return rules;
   };
 
   // ── API helper ────────────────────────────────────────────────────────────
@@ -436,9 +469,15 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
 
   // ── Edit / delete ─────────────────────────────────────────────────────────
   const [editingSerial, setEditingSerial] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ mac_address: "", c_number: "" });
+  const [editForm, setEditFormState] = useState({ mac_address: "", c_number: "" });
+  const [editFormErrors, setEditFormErrors] = useState<{ mac_address?: string; c_number?: string }>({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingSerial, setDeletingSerial] = useState<string | null>(null);
+
+  const setEditForm = (form: { mac_address: string; c_number: string }) => {
+    setEditFormErrors({});
+    setEditFormState(form);
+  };
 
   const startEdit = (row: Fridge) => {
     if (!canEditAssets) {
@@ -448,11 +487,13 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
 
     setEditingSerial(row.fridge_serial_number);
     setEditForm({ mac_address: row.iot_mac_address || "", c_number: row.c_number || "" });
+    setEditFormErrors({});
   };
 
   const cancelEdit = () => {
     setEditingSerial(null);
     setEditForm({ mac_address: "", c_number: "" });
+    setEditFormErrors({});
   };
 
   const submitEdit = async (serial: string) => {
@@ -461,11 +502,37 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
       return;
     }
 
-    const mac = editForm.mac_address ? cleanHex12(editForm.mac_address) : "";
-    const cNumber = editForm.c_number ? cleanCNumber(editForm.c_number) : "";
-    if (mac && mac.length !== 12) {
+    const row = fridges.find((item) => item.fridge_serial_number === serial);
+    const mac = editForm.mac_address ? normalizeHexIdentifier(editForm.mac_address) : "";
+    const cNumber = editForm.c_number ? normalizeCNumber(editForm.c_number) : "";
+    if (!row?.organisation_id) {
+      setFridgeError("Could not validate device values because the fridge organisation is not configured.");
       return;
     }
+
+    let rules: OrganisationAssetValidationRules;
+    try {
+      rules = await getOrganisationValidationRules(row.organisation_id);
+    } catch (error) {
+      setFridgeError(error instanceof Error ? error.message : "Could not load organisation validation rules.");
+      return;
+    }
+    const validationErrors = validateAssetIdentifiers(
+      {
+        mac_address: mac,
+        c_number: cNumber,
+      },
+      rules,
+    );
+    if (Object.keys(validationErrors).length) {
+      setEditFormErrors({
+        mac_address: validationErrors.mac_address,
+        c_number: validationErrors.c_number,
+      });
+      return;
+    }
+
+    setEditFormErrors({});
     setSavingEdit(true);
     try {
       await adminRequest<Fridge>("updateFridge", `/updateDevice/${encodeURIComponent(serial)}`, {
@@ -698,6 +765,45 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
   }, [isOrganisationFilterEnabled]);
 
   useEffect(() => {
+    let cancelled = false;
+    const organisationId = session?.user.organisation_id ?? null;
+
+    if (!organisationId || (!canCreateAssets && !canEditAssets)) {
+      setActorOrganisationValidationRules(null);
+      setActorOrganisationValidationLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadActorOrganisationValidationRules = async () => {
+      setActorOrganisationValidationLoading(true);
+      try {
+        const rules = await getOrganisationValidationRules(organisationId);
+        if (!cancelled) {
+          setActorOrganisationValidationRules(rules);
+        }
+      } catch {
+        if (!cancelled) {
+          setActorOrganisationValidationRules(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setActorOrganisationValidationLoading(false);
+        }
+      }
+    };
+
+    void loadActorOrganisationValidationRules();
+
+    return () => {
+      cancelled = true;
+    };
+    // getOrganisationValidationRules intentionally excluded to keep load conditions stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user.organisation_id, canCreateAssets, canEditAssets]);
+
+  useEffect(() => {
     if (canViewAssets) {
       void loadFridges(searchTerm);
     } else {
@@ -731,7 +837,7 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     fridges, fridgeLoading, fridgeError, searchTerm, setSearchTerm, loadFridges,
     inventorySort, toggleInventorySort, inventoryPage, setInventoryPage,
     sortedFridgeRows, paginatedFridgeRows, inventoryTotalPages, safeInventoryPage,
-    editingSerial, editForm, setEditForm, savingEdit, deletingSerial,
+    editingSerial, editForm, editFormErrors, setEditForm, savingEdit, deletingSerial,
     startEdit, cancelEdit, submitEdit, deleteFridge,
     allHistory, historyLoading, historyError, loadAllHistory,
     historySort, toggleHistorySort, historyPage, setHistoryPage,
@@ -744,6 +850,7 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
     resolveModal, setResolveModal, openResolveMismatch, submitResolveMismatch,
     deleteMismatchModal, setDeleteMismatchModal, openDeleteMismatch, submitDeleteMismatch,
     inventoryExportRows, mismatchExportRows, historyExportRows,
+    actorOrganisationValidationRules, actorOrganisationValidationLoading, getOrganisationValidationRules,
     adminRequest,
   };
 

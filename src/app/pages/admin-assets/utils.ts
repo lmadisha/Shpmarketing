@@ -1,10 +1,14 @@
-export function cleanHex12(value: string) {
-  return (value || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase().slice(0, 12);
+export function normalizeHexIdentifier(value: string) {
+  return (value || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
 }
 
-export function cleanCNumber(value: string) {
-  return (value || "").trim().toUpperCase().slice(0, 10);
+export function normalizeCNumber(value: string) {
+  return (value || "").trim().toUpperCase();
 }
+
+// Legacy aliases kept to avoid rewriting unused pages that still import these names.
+export const cleanHex12 = normalizeHexIdentifier;
+export const cleanCNumber = normalizeCNumber;
 
 function escapeSpreadsheetValue(value: unknown) {
   return String(value ?? "")

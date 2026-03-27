@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { ArrowUpDown, ChevronLeft, ChevronRight, Clock3, Download, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
-import { downloadExcel, cleanHex12, cleanCNumber } from "./utils";
+import { downloadExcel, normalizeHexIdentifier, normalizeCNumber } from "./utils";
 import { Fridge } from "./types";
 
 export function InventoryPage() {
@@ -19,7 +19,7 @@ export function InventoryPage() {
     inventoryPage, setInventoryPage,
     paginatedFridgeRows, sortedFridgeRows, inventoryTotalPages, safeInventoryPage,
     inventoryExportRows,
-    editingSerial, editForm, setEditForm, savingEdit, deletingSerial,
+    editingSerial, editForm, editFormErrors, setEditForm, savingEdit, deletingSerial,
     startEdit, cancelEdit, submitEdit, deleteFridge,
     loadDeviceHistory, deviceHistoryLoading, deviceHistorySerial,
     canViewAssets, canEditAssets, canDeleteAssets, canViewHistory,
@@ -114,23 +114,25 @@ export function InventoryPage() {
                     {isEditing ? (
                       <Input
                         value={editForm.mac_address}
-                        onChange={(e) => setEditForm({ ...editForm, mac_address: cleanHex12(e.target.value) })}
+                        onChange={(e) => setEditForm({ ...editForm, mac_address: normalizeHexIdentifier(e.target.value) })}
                         placeholder="MAC"
                       />
                     ) : (
                       row.iot_mac_address || "-"
                     )}
+                    {isEditing && editFormErrors.mac_address ? <p className="text-xs text-red-600 mt-1">{editFormErrors.mac_address}</p> : null}
                   </TableCell>
                   <TableCell>
                     {isEditing ? (
                       <Input
                         value={editForm.c_number}
-                        onChange={(e) => setEditForm({ ...editForm, c_number: cleanCNumber(e.target.value) })}
+                        onChange={(e) => setEditForm({ ...editForm, c_number: normalizeCNumber(e.target.value) })}
                         placeholder="C-number"
                       />
                     ) : (
                       row.c_number || "-"
                     )}
+                    {isEditing && editFormErrors.c_number ? <p className="text-xs text-red-600 mt-1">{editFormErrors.c_number}</p> : null}
                   </TableCell>
                   <TableCell>
                     <Badge variant={row.verified ? "default" : "outline"}>
