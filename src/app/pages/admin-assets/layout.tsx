@@ -25,8 +25,8 @@ import { cn } from "../../components/ui/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 
 const subNavItems = [
-  { label: "Add Fridge", to: "/admin/assets/add", permissionKey: "canCreateAssets" as const },
   { label: "Inventory", to: "/admin/assets/inventory", permissionKey: "canViewAssets" as const },
+  { label: "Add Fridge", to: "/admin/assets/add", permissionKey: "canCreateAssets" as const },
   { label: "Mismatches", to: "/admin/assets/mismatches", permissionKey: "canViewMismatches" as const },
   { label: "Device Checker", to: "/admin/assets/device-checker", permissionKey: "canSubmitDeviceCheck" as const },
   { label: "History", to: "/admin/assets/history", permissionKey: "canViewHistory" as const },
