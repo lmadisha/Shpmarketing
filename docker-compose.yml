@@ -1,0 +1,43 @@
+services:
+  frontend:
+    image: node:20-bookworm
+    working_dir: /workspace
+    command: >
+      sh -c "npm ci && npm run dev:frontend -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_OPERATIONS_API_BASE: ${VITE_OPERATIONS_API_BASE:-http://localhost:5001}
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - .:/workspace
+      - frontend_node_modules:/workspace/node_modules
+    depends_on:
+      - operations-api
+
+  operations-api:
+    image: node:20-bookworm
+    working_dir: /workspace/operations-api
+    command: >
+      sh -c "npm ci && npm run dev"
+    ports:
+      - "${OPS_API_PORT:-5001}:5001"
+    environment:
+      PORT: 5001
+      OPS_DB_USER: ${OPS_DB_USER:-postgres}
+      OPS_DB_PASSWORD: ${OPS_DB_PASSWORD:-postgres}
+      OPS_DB_HOST: ${OPS_DB_HOST:-host.docker.internal}
+      OPS_DB_PORT: ${OPS_DB_PORT:-5432}
+      OPS_DB_NAME: ${OPS_DB_NAME:-shpmarketing_operations}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      MOBILE_API_KEY: ${MOBILE_API_KEY:-dev-mobile-api-key}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/workspace
+      - operations_api_node_modules:/workspace/operations-api/node_modules
+
+volumes:
+  frontend_node_modules:
+  operations_api_node_modules:
