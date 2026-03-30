@@ -16,8 +16,9 @@ import {
 import { Download, Plus } from "lucide-react";
 import { useAuth } from "../../auth/auth-context";
 import { AccessDeniedCard } from "../../components/auth/access-denied-card";
+import { validateAssetIdentifiers } from "../../lib/organisation-asset-validation";
 import { useAdminAssets } from "./admin-assets-context";
-import { cleanHex12, cleanCNumber, downloadExcel } from "./utils";
+import { normalizeHexIdentifier, normalizeCNumber, downloadExcel } from "./utils";
 
 type BulkSkippedRow = {
   rowNumber: number;
@@ -41,6 +42,8 @@ export function AddFridgePage() {
     canCreateAssets,
     canViewAssets,
     canViewHistory,
+    actorOrganisationValidationRules,
+    actorOrganisationValidationLoading,
   } = useAdminAssets();
   const organisationId = session?.user.organisation_id ?? null;
 
@@ -65,13 +68,28 @@ export function AddFridgePage() {
 
   const validateCreate = () => {
     const nextErrors: { serial?: string; mac?: string; cNumber?: string } = {};
-    const serial = cleanHex12(createForm.fridge_serial_number);
-    const mac = createForm.mac_address ? cleanHex12(createForm.mac_address) : "";
-    const cNumber = createForm.c_number ? cleanCNumber(createForm.c_number) : "";
+    const serial = normalizeHexIdentifier(createForm.fridge_serial_number);
+    const mac = createForm.mac_address ? normalizeHexIdentifier(createForm.mac_address) : "";
+    const cNumber = createForm.c_number ? normalizeCNumber(createForm.c_number) : "";
 
-    if (serial.length !== 12) nextErrors.serial = "Serial must be exactly 12 hex characters.";
-    if (mac && mac.length !== 12) nextErrors.mac = "MAC must be exactly 12 hex characters when provided.";
-    if (cNumber.length > 10) nextErrors.cNumber = "C-number cannot exceed 10 characters.";
+    if (!actorOrganisationValidationRules) {
+      setCreateErrors({ serial: "Could not load organisation validation rules." });
+      return { isValid: false, serial, mac, cNumber };
+    }
+
+    const validationErrors = validateAssetIdentifiers(
+      {
+        fridge_serial_number: serial,
+        mac_address: mac,
+        c_number: cNumber,
+      },
+      actorOrganisationValidationRules,
+      { requireSerial: true },
+    );
+
+    if (validationErrors.fridge_serial_number) nextErrors.serial = validationErrors.fridge_serial_number;
+    if (validationErrors.mac_address) nextErrors.mac = validationErrors.mac_address;
+    if (validationErrors.c_number) nextErrors.cNumber = validationErrors.c_number;
 
     setCreateErrors(nextErrors);
     return { isValid: Object.keys(nextErrors).length === 0, serial, mac, cNumber };
@@ -79,6 +97,10 @@ export function AddFridgePage() {
 
   const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (actorOrganisationValidationLoading) {
+      setCreateResult("Validation rules are still loading. Please wait.");
+      return;
+    }
     const { isValid, serial, mac, cNumber } = validateCreate();
     if (!isValid) return;
     if (!organisationId) {
@@ -245,9 +267,13 @@ export function AddFridgePage() {
               <div className="space-y-1">
                 <Input
                   value={createForm.fridge_serial_number}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, fridge_serial_number: cleanHex12(e.target.value) }))}
-                  placeholder="Serial (12 hex chars)"
-                  disabled={creating}
+                  onChange={(e) => {
+                    setCreateErrors((prev) => ({ ...prev, serial: undefined }));
+                    setCreateForm((prev) => ({ ...prev, fridge_serial_number: normalizeHexIdentifier(e.target.value) }));
+                  }}
+                  placeholder="Serial"
+                  maxLength={actorOrganisationValidationRules?.serial_max_length}
+                  disabled={creating || actorOrganisationValidationLoading}
                   required
                 />
                 {createErrors.serial ? <p className="text-xs text-red-600">{createErrors.serial}</p> : null}
@@ -255,22 +281,30 @@ export function AddFridgePage() {
               <div className="space-y-1">
                 <Input
                   value={createForm.mac_address}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, mac_address: cleanHex12(e.target.value) }))}
+                  onChange={(e) => {
+                    setCreateErrors((prev) => ({ ...prev, mac: undefined }));
+                    setCreateForm((prev) => ({ ...prev, mac_address: normalizeHexIdentifier(e.target.value) }));
+                  }}
                   placeholder="MAC (optional)"
-                  disabled={creating}
+                  maxLength={actorOrganisationValidationRules?.mac_max_length}
+                  disabled={creating || actorOrganisationValidationLoading}
                 />
                 {createErrors.mac ? <p className="text-xs text-red-600">{createErrors.mac}</p> : null}
               </div>
               <div className="space-y-1">
                 <Input
                   value={createForm.c_number}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, c_number: cleanCNumber(e.target.value) }))}
+                  onChange={(e) => {
+                    setCreateErrors((prev) => ({ ...prev, cNumber: undefined }));
+                    setCreateForm((prev) => ({ ...prev, c_number: normalizeCNumber(e.target.value) }));
+                  }}
                   placeholder="C-Number (optional)"
-                  disabled={creating}
+                  maxLength={actorOrganisationValidationRules?.c_number_max_length}
+                  disabled={creating || actorOrganisationValidationLoading}
                 />
                 {createErrors.cNumber ? <p className="text-xs text-red-600">{createErrors.cNumber}</p> : null}
               </div>
-              <Button type="submit" disabled={creating}>
+              <Button type="submit" disabled={creating || actorOrganisationValidationLoading}>
                 {creating ? "Adding..." : "Add Fridge"}
               </Button>
             </form>
@@ -326,6 +360,9 @@ export function AddFridgePage() {
           </div>
 
           {bulkMessage ? <p className="text-sm text-muted-foreground">{bulkMessage}</p> : null}
+          {actorOrganisationValidationLoading ? (
+            <p className="text-xs text-muted-foreground">Loading organisation validation rules...</p>
+          ) : null}
 
           {bulkErrors.length ? (
             <div className="max-h-40 overflow-auto rounded-md border p-2">

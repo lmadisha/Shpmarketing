@@ -3,6 +3,7 @@ export type Fridge = {
   iot_mac_address: string | null;
   c_number: string | null;
   verified: boolean;
+  organisation_id?: number | null;
 };
 
 export type OrganisationOption = {
