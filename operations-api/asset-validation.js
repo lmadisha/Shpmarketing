@@ -23,6 +23,68 @@ function normalizeCNumber(value) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function hasProvidedValue(value) {
+  if (value == null) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim() !== "";
+  }
+
+  return true;
+}
+
+function parseCoordinate(value, label, min, max) {
+  if (!hasProvidedValue(value)) {
+    return { value: null, error: null };
+  }
+
+  const parsed = typeof value === "number" ? value : Number(String(value).trim());
+  if (!Number.isFinite(parsed)) {
+    return { value: null, error: `${label} must be a valid number.` };
+  }
+
+  if (parsed < min || parsed > max) {
+    return { value: null, error: `${label} must be between ${min} and ${max}.` };
+  }
+
+  return { value: Number(parsed.toFixed(6)), error: null };
+}
+
+function parseLocationCoordinates(payload) {
+  const latitudeProvided = hasProvidedValue(payload?.latitude);
+  const longitudeProvided = hasProvidedValue(payload?.longitude);
+  const latitude = parseCoordinate(payload?.latitude, "Latitude", -90, 90);
+  const longitude = parseCoordinate(payload?.longitude, "Longitude", -180, 180);
+  const errors = {};
+
+  if (latitude.error) {
+    errors.latitude = latitude.error;
+  }
+
+  if (longitude.error) {
+    errors.longitude = longitude.error;
+  }
+
+  if (!errors.latitude && !errors.longitude && latitudeProvided !== longitudeProvided) {
+    if (latitudeProvided) {
+      errors.longitude = "Longitude is required when latitude is provided.";
+    } else {
+      errors.latitude = "Latitude is required when longitude is provided.";
+    }
+  }
+
+  return {
+    values: {
+      latitude: latitude.value,
+      longitude: longitude.value,
+    },
+    errors,
+    isValid: Object.keys(errors).length === 0,
+  };
+}
+
 function buildLengthMessage(label, min, max) {
   return min === max
     ? `${label} must be exactly ${min} characters.`
@@ -161,6 +223,7 @@ module.exports = {
   MAX_ORGANISATION_ASSET_VALIDATION_LENGTHS,
   normalizeHexIdentifier,
   normalizeCNumber,
+  parseLocationCoordinates,
   validateAssetIdentifiers,
   validateOrganisationAssetValidationPayload,
 };

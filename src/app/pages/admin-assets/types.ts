@@ -4,6 +4,8 @@ export type Fridge = {
   c_number: string | null;
   verified: boolean;
   organisation_id?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export type OrganisationOption = {
@@ -28,6 +30,8 @@ export type Mismatch = {
   resolved_at: string | null;
   resolved_by: number | null;
   resolution_note: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export type AuditLogRow = {

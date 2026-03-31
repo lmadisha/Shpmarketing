@@ -11,6 +11,7 @@ const {
   DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES,
   normalizeHexIdentifier,
   normalizeCNumber,
+  parseLocationCoordinates,
   validateAssetIdentifiers,
   validateOrganisationAssetValidationPayload,
 } = require("./asset-validation");
@@ -428,6 +429,39 @@ function buildValidationErrorResponse(errors) {
   return {
     error: fieldErrors[0]?.message || "Validation failed.",
     fieldErrors,
+  };
+}
+
+function parseNullableCoordinate(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function serializeFridgeRow(row) {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+    latitude: parseNullableCoordinate(row.latitude),
+    longitude: parseNullableCoordinate(row.longitude),
+  };
+}
+
+function serializeMismatchRow(row) {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+    latitude: parseNullableCoordinate(row.latitude),
+    longitude: parseNullableCoordinate(row.longitude),
   };
 }
 
@@ -1336,7 +1370,7 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
 
     await client.query("COMMIT");
     logAssetAction("create-device:success", `serial=${fridge_serial_number}`);
-    return res.json(result.rows[0]);
+    return res.json(serializeFridgeRow(result.rows[0]));
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     return handleAssetError(res, "create-device", error);
@@ -1531,7 +1565,7 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
           skippedRows: skippedRows.length,
           failedRows: errors.length,
         },
-        inserted,
+        inserted: inserted.map(serializeFridgeRow),
         skippedRows,
         errors,
       });
@@ -1607,7 +1641,7 @@ app.get(
       [scope.effectiveOrganisationId],
     );
     logAssetAction("list-fridges:success", `count=${result.rows.length}`);
-    return res.json(result.rows);
+    return res.json(result.rows.map(serializeFridgeRow));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
@@ -1644,7 +1678,7 @@ app.get(
     );
 
     logAssetAction("search-fridges:success", `count=${result.rows.length}`);
-    return res.json(result.rows);
+    return res.json(result.rows.map(serializeFridgeRow));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
@@ -1713,7 +1747,7 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
     await client.query("COMMIT");
 
     logAssetAction("update-device:success", `serial=${req.params.serialNumber}`);
-    return res.json(result.rows[0]);
+    return res.json(serializeFridgeRow(result.rows[0]));
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
@@ -1862,7 +1896,7 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
         ok: false,
         result: "MISMATCH_CREATED",
         reason: "NOT_FOUND",
-        mismatch: mismatchInsert.rows[0],
+        mismatch: serializeMismatchRow(mismatchInsert.rows[0]),
       });
     }
 
@@ -1882,7 +1916,7 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
 
       await client.query("COMMIT");
       logAssetAction("mobile-verify:verified", `serial=${fridge_serial_number}`);
-      return res.status(200).json({ ok: true, result: "VERIFIED", fridge: updated.rows[0] });
+      return res.status(200).json({ ok: true, result: "VERIFIED", fridge: serializeFridgeRow(updated.rows[0]) });
     }
 
     const mismatch = await client.query(
@@ -1905,7 +1939,7 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
       ok: false,
       result: "MISMATCH_CREATED",
       reason: "VALUE_MISMATCH",
-      mismatch: mismatch.rows[0],
+      mismatch: serializeMismatchRow(mismatch.rows[0]),
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -1921,6 +1955,7 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
     const serial = String(req.body?.fridge_serial_number || "").trim();
     const mac = normalizeHexIdentifier(req.body?.mac_address);
     const cNum = normalizeCNumber(req.body?.c_number);
+    const parsedLocation = parseLocationCoordinates(req.body);
 
     if (!serial) {
       return res.status(400).json({ error: "fridge_serial_number is required" });
@@ -1929,6 +1964,12 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
     if (!mac || !cNum) {
       return res.status(400).json({ error: "mac_address and c_number are required" });
     }
+
+    if (!parsedLocation.isValid) {
+      return res.status(400).json(buildValidationErrorResponse(parsedLocation.errors));
+    }
+
+    const { latitude, longitude } = parsedLocation.values;
 
     logAssetAction(
       "submit-manual-mismatch:start",
@@ -1963,10 +2004,12 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
       const updatedFridge = await client.query(
         `UPDATE fridges
          SET verified = true,
-             verified_at = NOW()
+             verified_at = NOW(),
+             latitude = COALESCE($2::numeric, latitude),
+             longitude = COALESCE($3::numeric, longitude)
          WHERE fridge_serial_number = $1
          RETURNING *`,
-        [serial],
+        [serial, latitude, longitude],
       );
 
       await client.query("COMMIT");
@@ -1976,7 +2019,7 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
         ok: true,
         result: "VERIFIED",
         fridge_serial_number: serial,
-        fridge: updatedFridge.rows[0],
+        fridge: serializeFridgeRow(updatedFridge.rows[0]),
       });
     }
 
@@ -1995,8 +2038,8 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
 
     const mismatchInsert = await client.query(
       `INSERT INTO fridge_mismatches
-        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status, sender_id)
-       VALUES ($1, $2, $3, $4, $5, 'open', $6)
+        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status, sender_id, latitude, longitude)
+       VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8)
        RETURNING *`,
       [
         serial,
@@ -2004,7 +2047,9 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
         cNum || null,
         fridge.iot_mac_address || null,
         fridge.c_number || null,
-        req.user.id
+        req.user.id,
+        latitude,
+        longitude,
       ]
     );
 
@@ -2016,8 +2061,8 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
       result: "MISMATCH_CREATED",
       id: mismatchInsert.rows[0].id,
       fridge_serial_number: mismatchInsert.rows[0].fridge_serial_number,
-      mismatch: mismatchInsert.rows[0],
-      fridge: updatedFridge,
+      mismatch: serializeMismatchRow(mismatchInsert.rows[0]),
+      fridge: serializeFridgeRow(updatedFridge),
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -2101,7 +2146,7 @@ app.get("/mismatches", requireAuth, requirePermission("mismatches.view"), async 
     );
 
     logAssetAction("list-mismatches:success", `count=${result.rows.length}`);
-    return res.json(result.rows);
+    return res.json(result.rows.map(serializeMismatchRow));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
@@ -2165,11 +2210,13 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
       `UPDATE fridges
        SET iot_mac_address = COALESCE(NULLIF($1, ''), iot_mac_address),
            c_number = COALESCE(NULLIF($2, ''), c_number),
+           latitude = COALESCE($4::numeric, latitude),
+           longitude = COALESCE($5::numeric, longitude),
            verified = true,
            verified_at = NOW()
        WHERE fridge_serial_number = $3
        RETURNING *`,
-      [newMac, newC, mismatch.fridge_serial_number],
+      [newMac, newC, mismatch.fridge_serial_number, mismatch.latitude, mismatch.longitude],
     );
 
     const fridgeUpdated = updateFridge.rows[0] || null;
@@ -2191,8 +2238,8 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
 
     return res.json({
       ok: true,
-      mismatch: resolved.rows[0],
-      fridge: fridgeUpdated,
+      mismatch: serializeMismatchRow(resolved.rows[0]),
+      fridge: serializeFridgeRow(fridgeUpdated),
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -2252,7 +2299,7 @@ app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"
     }
 
     logAssetAction("delete-mismatch:success", `id=${req.params.id || "unknown"}`);
-    return res.json({ ok: true, mismatch: result.rows[0] });
+    return res.json({ ok: true, mismatch: serializeMismatchRow(result.rows[0]) });
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });

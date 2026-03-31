@@ -596,6 +596,8 @@ Input body:
 - fridge_serial_number: string (required)
 - mac_address: string (required)
 - c_number: string (required)
+- latitude: number | null (optional, must be paired with longitude when provided)
+- longitude: number | null (optional, must be paired with latitude when provided)
 
 Responses:
 
@@ -623,14 +625,15 @@ Responses:
 Notes:
 
 - If submitted MAC and C-number match the fridge row:
-  no mismatch is inserted; fridge is updated with `verified=true` and `verified_at=NOW()`.
+  no mismatch is inserted; fridge is updated with `verified=true`, `verified_at=NOW()`, and submitted location when available.
 - If submitted values do not match:
-  inserts a mismatch row with status `open`, `db_mac`, `db_c_number`, and `sender_id`.
+  inserts a mismatch row with status `open`, `db_mac`, `db_c_number`, `sender_id`, and submitted location when available.
 - On mismatch, if the fridge was previously verified:
   fridge is updated with `verified=false` and `verified_at=NOW()`.
 - Runs in transaction with `myapp.current_user_id` set for audit trigger context.
 - sender_id is set to req.user.id (the authenticated user who submitted).
 - Non-admin users can only submit against fridges in their own organisation.
+- If browser geolocation is unavailable, the request may omit `latitude`/`longitude` and still succeed.
 
 ## GET /mismatches
 
@@ -679,6 +682,7 @@ Responses:
 Notes:
 
 - On resolve, server updates fridge `iot_mac_address` and `c_number` from mismatch `received_mac` and `received_c_number` (when present).
+- On resolve, server also copies mismatch `latitude` and `longitude` into the fridge row when the mismatch has location data.
 - On resolve, server always sets fridge `verified = true` and `verified_at = NOW()`.
 - Non-admin users can only resolve mismatches that belong to their own organisation.
 
@@ -718,6 +722,8 @@ Any unknown route returns:
 - organisation has optional `domin` column (unique when provided).
 - Fridge change auditing is trigger-based via fridge_audit_log.
 - fridge_mismatches.sender_id references users(id) and records the admin user who manually submitted the mismatch via POST /mismatches/manual.
+- Fridge payloads now include nullable `latitude` and `longitude` fields.
+- Mismatch payloads now include nullable `latitude` and `longitude` fields.
 
 ## Operational Notes
 

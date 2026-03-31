@@ -50,7 +50,11 @@ CREATE TABLE fridges (
   c_number VARCHAR(32),
   verified BOOLEAN DEFAULT false,
   verified_at TIMESTAMPTZ,
-  organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL
+  organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL,
+  latitude NUMERIC(9, 6),
+  longitude NUMERIC(9, 6),
+  CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
+  CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
 );
 
 CREATE TABLE fridge_mismatches (
@@ -65,7 +69,11 @@ CREATE TABLE fridge_mismatches (
   resolved_at TIMESTAMPTZ,
   resolved_by INTEGER REFERENCES users(id),
   resolution_note TEXT,
-  sender_id INTEGER REFERENCES users(id)
+  sender_id INTEGER REFERENCES users(id),
+  latitude NUMERIC(9, 6),
+  longitude NUMERIC(9, 6),
+  CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
+  CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
 );
 
 CREATE TABLE fridge_audit_log (

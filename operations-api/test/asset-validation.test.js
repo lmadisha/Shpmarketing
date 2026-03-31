@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   normalizeHexIdentifier,
   normalizeCNumber,
+  parseLocationCoordinates,
   validateAssetIdentifiers,
   validateOrganisationAssetValidationPayload,
 } = require("../asset-validation");
@@ -50,4 +51,36 @@ test("validateOrganisationAssetValidationPayload rejects invalid ranges", () => 
 
   assert.equal(result.isValid, false);
   assert.match(result.errors.serial_max_length, /greater than or equal/);
+});
+
+test("parseLocationCoordinates accepts valid latitude and longitude", () => {
+  const result = parseLocationCoordinates({
+    latitude: "-25.7461111",
+    longitude: 28.1880567,
+  });
+
+  assert.equal(result.isValid, true);
+  assert.deepEqual(result.errors, {});
+  assert.equal(result.values.latitude, -25.746111);
+  assert.equal(result.values.longitude, 28.188057);
+});
+
+test("parseLocationCoordinates rejects partial coordinate pairs", () => {
+  const result = parseLocationCoordinates({
+    latitude: "-25.7",
+  });
+
+  assert.equal(result.isValid, false);
+  assert.match(result.errors.longitude, /required when latitude is provided/);
+});
+
+test("parseLocationCoordinates rejects out-of-range coordinates", () => {
+  const result = parseLocationCoordinates({
+    latitude: "-91",
+    longitude: "181",
+  });
+
+  assert.equal(result.isValid, false);
+  assert.match(result.errors.latitude, /between -90 and 90/);
+  assert.match(result.errors.longitude, /between -180 and 180/);
 });

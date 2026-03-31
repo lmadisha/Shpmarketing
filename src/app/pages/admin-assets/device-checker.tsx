@@ -26,6 +26,13 @@ type DeviceCheckForm = {
   c_number: string;
 };
 
+type DeviceCheckLocation = {
+  latitude: number;
+  longitude: number;
+};
+
+type DeviceCheckSubmission = DeviceCheckForm & Partial<DeviceCheckLocation>;
+
 type DeviceCheckSuccess = {
   result: "VERIFIED" | "MISMATCH_CREATED";
   id?: number;
@@ -52,6 +59,32 @@ function parsePenguinMacAddress(deviceName: string | null | undefined): string |
 
   const parsedMac = cleanHex12(name.slice("Penguin+".length));
   return parsedMac.length === 12 ? parsedMac : null;
+}
+
+function roundCoordinate(value: number) {
+  return Number(value.toFixed(6));
+}
+
+function getCurrentDeviceCheckLocation(): Promise<DeviceCheckLocation | null> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        resolve({
+          latitude: roundCoordinate(position.coords.latitude),
+          longitude: roundCoordinate(position.coords.longitude),
+        }),
+      () => resolve(null),
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 60000,
+      },
+    );
+  });
 }
 
 export function DeviceCheckerPage() {
@@ -290,10 +323,12 @@ export function DeviceCheckerPage() {
     }
 
     try {
+      const location = await getCurrentDeviceCheckLocation();
+      const submission: DeviceCheckSubmission = location ? { ...form, ...location } : { ...form };
       const result = await adminRequest<DeviceCheckSuccess>("deviceCheck:submit", "/mismatches/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(submission),
       });
       setSuccess(result);
       setForm({ fridge_serial_number: "", mac_address: "", c_number: "" });
