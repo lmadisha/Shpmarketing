@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Card from '~/components/ui/Card.vue'
 import Input from '~/components/ui/Input.vue'
+import Select from '~/components/ui/Select.vue'
 import Button from '~/components/ui/Button.vue'
 import Label from '~/components/ui/Label.vue'
 import { USER_PERMISSION_LEVELS, type PermissionLevel } from '~/utils/permissionPolicy'
@@ -106,30 +107,24 @@ onMounted(() => {
             </div>
             <div class="space-y-2">
               <Label for="permission">Permission</Label>
-              <select
+              <Select
                 id="permission"
                 v-model="form.permissions"
-                class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-400 focus:outline-none"
-              >
-                <option v-for="permission in USER_PERMISSION_LEVELS" :key="permission" :value="permission">
-                  {{ permission }}
-                </option>
-              </select>
+                :options="USER_PERMISSION_LEVELS.map(p => ({ value: p, label: p }))"
+              />
             </div>
           </div>
           <div class="space-y-2">
             <Label for="organisation">Organisation</Label>
-            <select
+            <Select
               id="organisation"
               v-model="form.organisation_id"
-              class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-400 focus:outline-none"
               :disabled="organisationsLoading"
-            >
-              <option value="">{{ organisationsLoading ? 'Loading organisations...' : 'Select organisation' }}</option>
-              <option v-for="organisation in organisations" :key="organisation.id" :value="String(organisation.id)">
-                {{ organisation.name }}{{ organisation.domin ? ` (${organisation.domin})` : '' }}
-              </option>
-            </select>
+              :options="[
+                { value: '', label: organisationsLoading ? 'Loading organisations...' : 'Select organisation' },
+                ...organisations.map(o => ({ value: String(o.id), label: o.name + (o.domin ? ` (${o.domin})` : '') })),
+              ]"
+            />
           </div>
           <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
           <Button type="submit" class="w-full" :disabled="submitting">

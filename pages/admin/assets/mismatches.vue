@@ -2,6 +2,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, RefreshCw, Search } from 'lucide-vue-next'
 import Card from '~/components/ui/Card.vue'
 import Input from '~/components/ui/Input.vue'
+import Select from '~/components/ui/Select.vue'
 import Button from '~/components/ui/Button.vue'
 import Badge from '~/components/ui/Badge.vue'
 import AccessDeniedCard from '~/components/auth/AccessDeniedCard.vue'
@@ -38,12 +39,15 @@ onMounted(async () => {
     </div>
     <div class="space-y-4 p-5">
       <div class="grid gap-3 md:grid-cols-5">
-        <select v-model="store.mismatchFilters.status" class="flex h-10 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-          <option value="open">Open</option>
-          <option value="resolve">Resolve</option>
-          <option value="delete">Delete</option>
-          <option value="all">All</option>
-        </select>
+        <Select
+          v-model="store.mismatchFilters.status"
+          :options="[
+            { value: 'open', label: 'Open' },
+            { value: 'resolve', label: 'Resolve' },
+            { value: 'delete', label: 'Delete' },
+            { value: 'all', label: 'All' },
+          ]"
+        />
         <Input v-model="store.mismatchFilters.serial" placeholder="Serial contains" />
         <Input v-model="store.mismatchFilters.from" type="date" />
         <Input v-model="store.mismatchFilters.to" type="date" />

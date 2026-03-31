@@ -2,6 +2,7 @@
 import { Camera, ScanLine, Upload } from 'lucide-vue-next'
 import Card from '~/components/ui/Card.vue'
 import Input from '~/components/ui/Input.vue'
+import Select from '~/components/ui/Select.vue'
 import Button from '~/components/ui/Button.vue'
 import ModalDialog from '~/components/ui/ModalDialog.vue'
 import AccessDeniedCard from '~/components/auth/AccessDeniedCard.vue'
@@ -258,13 +259,14 @@ async function submitDeviceCheck() {
             Scan Serial
           </Button>
         </div>
-        <Input v-model="serialQuery" placeholder="Search serial..." />
-        <select v-model="form.fridge_serial_number" class="mt-2 flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-          <option value="">{{ serialsLoading ? 'Loading serials...' : 'Select a serial number' }}</option>
-          <option v-for="fridge in serials" :key="fridge.fridge_serial_number" :value="fridge.fridge_serial_number">
-            {{ fridge.fridge_serial_number }}
-          </option>
-        </select>
+        <Select
+          v-model="form.fridge_serial_number"
+          searchable
+          search-placeholder="Search serial number..."
+          :placeholder="serialsLoading ? 'Loading serials...' : 'Select a serial number'"
+          :options="serials.map(f => ({ value: f.fridge_serial_number, label: f.fridge_serial_number }))"
+          @search="(q) => { serialQuery = q }"
+        />
       </div>
 
       <div class="space-y-1">

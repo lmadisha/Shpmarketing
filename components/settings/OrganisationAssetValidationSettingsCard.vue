@@ -3,6 +3,7 @@ import { Ruler } from 'lucide-vue-next'
 import Card from '~/components/ui/Card.vue'
 import Button from '~/components/ui/Button.vue'
 import Input from '~/components/ui/Input.vue'
+import Select from '~/components/ui/Select.vue'
 import Label from '~/components/ui/Label.vue'
 import { useAuthStore } from '~/stores/auth'
 import {
@@ -200,17 +201,15 @@ watch(
     <div class="space-y-4 p-6">
       <div v-if="isAdmin" class="space-y-2">
         <Label for="asset-validation-organisation">Organisation</Label>
-        <select
+        <Select
           id="asset-validation-organisation"
           v-model="selectedOrganisationId"
-          class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-400 focus:outline-none"
           :disabled="organisationsLoading || rulesSaving"
-        >
-          <option value="">{{ organisationsLoading ? 'Loading organisations...' : 'Select organisation' }}</option>
-          <option v-for="organisation in organisationOptions" :key="organisation.id" :value="String(organisation.id)">
-            {{ organisation.name }}
-          </option>
-        </select>
+          :options="[
+            { value: '', label: organisationsLoading ? 'Loading organisations...' : 'Select organisation' },
+            ...organisationOptions.map(o => ({ value: String(o.id), label: o.name })),
+          ]"
+        />
       </div>
 
       <p v-if="rulesError" class="text-sm text-red-600">{{ rulesError }}</p>

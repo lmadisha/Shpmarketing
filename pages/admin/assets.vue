@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Refrigerator } from 'lucide-vue-next'
 import Button from '~/components/ui/Button.vue'
+import Select from '~/components/ui/Select.vue'
 import Badge from '~/components/ui/Badge.vue'
 import Textarea from '~/components/ui/Textarea.vue'
 import ModalDialog from '~/components/ui/ModalDialog.vue'
@@ -23,6 +24,9 @@ const hasVisibleTab = computed(() => tabs.value.length > 0)
 
 watchEffect(() => {
   if (!hasVisibleTab.value) {
+    return
+  }
+  if (!route.path.startsWith('/admin/assets')) {
     return
   }
   const currentAllowed = tabs.value.some((tab) => route.path === tab.to || route.path.startsWith(`${tab.to}/`))
@@ -65,15 +69,13 @@ onMounted(async () => {
           </div>
 
           <div v-if="store.isOrganisationFilterEnabled" class="min-w-[240px]">
-            <select
+            <Select
               v-model="store.organisationFilter"
-              class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-slate-400 focus:outline-none"
-            >
-              <option value="">{{ store.organisationsLoading ? 'Loading organisations...' : 'All organisations' }}</option>
-              <option v-for="org in store.organisationOptions" :key="org.id" :value="String(org.id)">
-                {{ org.name }}
-              </option>
-            </select>
+              :options="[
+                { value: '', label: store.organisationsLoading ? 'Loading organisations...' : 'All organisations' },
+                ...store.organisationOptions.map(o => ({ value: String(o.id), label: o.name })),
+              ]"
+            />
           </div>
         </div>
 

@@ -2,6 +2,7 @@
 import Card from '~/components/ui/Card.vue'
 import Button from '~/components/ui/Button.vue'
 import Input from '~/components/ui/Input.vue'
+import Select from '~/components/ui/Select.vue'
 import Label from '~/components/ui/Label.vue'
 import Badge from '~/components/ui/Badge.vue'
 import ModalDialog from '~/components/ui/ModalDialog.vue'
@@ -308,21 +309,29 @@ onMounted(() => {
         <div class="space-y-4 p-5">
           <div :class="`grid gap-3 ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-4'}`">
             <Input v-model="searchTerm" placeholder="Search name, email, organisation" />
-            <select v-model="permissionFilter" class="flex h-10 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-              <option value="all">All permissions</option>
-              <option v-for="level in visiblePermissionLevels" :key="level" :value="level">{{ level }}</option>
-            </select>
-            <select v-model="statusFilter" class="flex h-10 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-              <option value="all">All status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            <select v-if="isAdmin" v-model="organisationFilter" class="flex h-10 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-              <option value="all">All organisations</option>
-              <option v-for="organisation in organisations" :key="organisation.id" :value="String(organisation.id)">
-                {{ organisation.name }}
-              </option>
-            </select>
+            <Select
+              v-model="permissionFilter"
+              :options="[
+                { value: 'all', label: 'All permissions' },
+                ...visiblePermissionLevels.map(l => ({ value: l, label: l })),
+              ]"
+            />
+            <Select
+              v-model="statusFilter"
+              :options="[
+                { value: 'all', label: 'All status' },
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' },
+              ]"
+            />
+            <Select
+              v-if="isAdmin"
+              v-model="organisationFilter"
+              :options="[
+                { value: 'all', label: 'All organisations' },
+                ...organisations.map(o => ({ value: String(o.id), label: o.name })),
+              ]"
+            />
             <div class="flex gap-2 justify-end">
               <Button variant="outline" @click="loadUsers" :disabled="loading">Refresh</Button>
               <Button v-if="canManageUsers" @click="createUserOpen = true">Add User</Button>
@@ -443,16 +452,23 @@ onMounted(() => {
         </div>
         <div class="space-y-1">
           <Label for="create-permission">Permission</Label>
-          <select id="create-permission" v-model="createForm.permissions" class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-            <option v-for="level in visiblePermissionLevels" :key="level" :value="level">{{ level }}</option>
-          </select>
+          <Select
+            id="create-permission"
+            v-model="createForm.permissions"
+            :options="visiblePermissionLevels.map(l => ({ value: l, label: l }))"
+          />
         </div>
         <div class="space-y-1">
           <Label for="create-org">Organisation</Label>
-          <select id="create-org" v-model="createForm.organisation_id" class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm" :disabled="forceOwnOrg">
-            <option value="">Select organisation</option>
-            <option v-for="org in organisations" :key="org.id" :value="String(org.id)">{{ org.name }}</option>
-          </select>
+          <Select
+            id="create-org"
+            v-model="createForm.organisation_id"
+            :disabled="forceOwnOrg"
+            :options="[
+              { value: '', label: 'Select organisation' },
+              ...organisations.map(o => ({ value: String(o.id), label: o.name })),
+            ]"
+          />
         </div>
         <p v-if="createError" class="text-sm text-red-600">{{ createError }}</p>
       </div>
@@ -465,9 +481,10 @@ onMounted(() => {
     <ModalDialog :open="Boolean(permissionTarget)" title="Update User Permission" description="Change the assigned role for this user." @close="permissionTarget = null">
       <div class="space-y-3">
         <p class="text-sm text-slate-500">{{ permissionTarget?.username }}</p>
-        <select v-model="nextPermission" class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-          <option v-for="level in visiblePermissionLevels" :key="level" :value="level">{{ level }}</option>
-        </select>
+        <Select
+          v-model="nextPermission"
+          :options="visiblePermissionLevels.map(l => ({ value: l, label: l }))"
+        />
         <p v-if="permissionError" class="text-sm text-red-600">{{ permissionError }}</p>
       </div>
       <template #footer>
