@@ -37,7 +37,14 @@ export type Mismatch = {
 export type AuditLogRow = {
   log_id: number;
   fridge_serial_number: string;
-  action_type: "INSERT" | "UPDATE" | "DELETE";
+  action_type:
+    | "INSERT"
+    | "UPDATE"
+    | "DELETE"
+    | "MISMATCH_INSERT"
+    | "MISMATCH_UPDATE"
+    | "MISMATCH_RESOLVE"
+    | "MISMATCH_DELETE";
   old_mac: string | null;
   new_mac: string | null;
   old_c_num: string | null;
