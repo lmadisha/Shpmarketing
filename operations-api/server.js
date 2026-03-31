@@ -16,6 +16,13 @@ const {
   validateOrganisationAssetValidationPayload,
 } = require("./asset-validation");
 
+// Prisma returns JS enum names (e.g. Fleet_Manager) but the DB and frontend
+// expect the original string value (e.g. "Fleet Manager"). Serialize on the way out.
+function serializePermission(p) {
+  if (!p) return p;
+  return p.replace(/_/g, " ");
+}
+
 // BigInt JSON serialization support
 // Prisma returns BigInt for BIGSERIAL columns; JSON.stringify does not handle BigInt natively.
 const origStringify = JSON.stringify;
@@ -840,7 +847,7 @@ app.post("/signup", loginLimiter, async (req, res) => {
       {
         id: createdUser.id,
         username: createdUser.username,
-        permissions: createdUser.permissions,
+        permissions: serializePermission(createdUser.permissions),
       },
       JWT_SECRET,
       { expiresIn: "12h" },
@@ -852,7 +859,7 @@ app.post("/signup", loginLimiter, async (req, res) => {
         id: createdUser.id,
         username: createdUser.username,
         full_name: createdUser.fullName,
-        permissions: createdUser.permissions,
+        permissions: serializePermission(createdUser.permissions),
         organisation_id: createdUser.organisationId,
       },
     });
@@ -899,7 +906,7 @@ app.post("/login", loginLimiter, async (req, res) => {
       {
         id: user.id,
         username: user.username,
-        permissions: user.permissions,
+        permissions: serializePermission(user.permissions),
       },
       JWT_SECRET,
       { expiresIn: "12h" },
@@ -911,7 +918,7 @@ app.post("/login", loginLimiter, async (req, res) => {
         id: user.id,
         username: user.username,
         full_name: user.fullName,
-        permissions: user.permissions,
+        permissions: serializePermission(user.permissions),
         organisation_id: user.organisationId,
       },
     });
@@ -949,7 +956,7 @@ app.get("/profile", requireAuth, async (req, res) => {
       full_name: user.fullName,
       first_name: user.firstName,
       last_name: user.lastName,
-      permissions: user.permissions,
+      permissions: serializePermission(user.permissions),
       organisation_id: user.organisationId,
       organisation_name: user.organisation?.name ?? null,
       organisation_domin: user.organisation?.domin ?? null,
@@ -1005,7 +1012,7 @@ app.put("/profile", requireAuth, async (req, res) => {
       full_name: updated.fullName,
       first_name: updated.firstName,
       last_name: updated.lastName,
-      permissions: updated.permissions,
+      permissions: serializePermission(updated.permissions),
       organisation_id: updated.organisationId,
       organisation_name: updated.organisation?.name ?? null,
       organisation_domin: updated.organisation?.domin ?? null,
@@ -1136,7 +1143,7 @@ app.get("/users", requireAuth, requirePermission("users.view"), async (req, res)
         id: u.id,
         username: u.username,
         full_name: u.fullName,
-        permissions: u.permissions,
+        permissions: serializePermission(u.permissions),
         is_active: u.isActive,
         created_at: u.createdAt,
         organisation_id: u.organisationId,
@@ -1222,7 +1229,7 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
       id: created.id,
       username: created.username,
       full_name: created.fullName,
-      permissions: created.permissions,
+      permissions: serializePermission(created.permissions),
       is_active: created.isActive,
       created_at: created.createdAt,
       organisation_id: created.organisationId,
@@ -1290,7 +1297,7 @@ app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage")
       id: updated.id,
       username: updated.username,
       full_name: updated.fullName,
-      permissions: updated.permissions,
+      permissions: serializePermission(updated.permissions),
       is_active: updated.isActive,
       created_at: updated.createdAt,
       organisation_id: updated.organisationId,
@@ -1403,7 +1410,7 @@ app.put("/users/:id/active", requireAuth, requirePermission("users.manage"), asy
       id: user.id,
       username: user.username,
       full_name: user.fullName,
-      permissions: user.permissions,
+      permissions: serializePermission(user.permissions),
       is_active: user.isActive,
       created_at: user.createdAt,
       organisation_id: user.organisationId,

@@ -25,9 +25,9 @@ type NavigationItem = {
 };
 
 const navigation: NavigationItem[] = [
-  { name: 'Overview', href: '/overview', icon: LayoutDashboard },
-  { name: 'Performance', href: '/performance-report', icon: FileBarChart },
-  { name: 'Maintenance', href: '/maintenance-report', icon: Server },
+  { name: 'Overview', href: '/overview', icon: LayoutDashboard, hidden: true },
+  { name: 'Performance', href: '/performance-report', icon: FileBarChart, hidden: true },
+  { name: 'Maintenance', href: '/maintenance-report', icon: Server, hidden: true },
   { name: 'Asset Manager', href: '/admin/assets', icon: Refrigerator },
   { name: 'Workspace', href: '/workspace', icon: Users },
   { name: 'Settings', href: '/settings', icon: Settings },
