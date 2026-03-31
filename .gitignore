@@ -1,6 +1,8 @@
 node_modules/
 operations-api/node_modules/
 dist/
+.nuxt/
+.output/
 coverage/
 
 # Environment files
@@ -23,6 +25,7 @@ Thumbs.db
 .idea/
 
 # Local agent/worktree artifacts
+.claude/
 .claude/worktrees/
 
 # Test cache

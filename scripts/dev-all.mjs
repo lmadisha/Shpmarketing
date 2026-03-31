@@ -55,5 +55,5 @@ startProcess(
 startProcess(
   "frontend",
   process.execPath,
-  [path.join(rootDir, "node_modules", "vite", "bin", "vite.js")],
+  [path.join(rootDir, "node_modules", "nuxt", "bin", "nuxt.mjs"), "dev"],
 );

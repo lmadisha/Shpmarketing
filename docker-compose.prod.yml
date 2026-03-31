@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_OPERATIONS_API_BASE: /api
+        NUXT_PUBLIC_OPERATIONS_API_BASE: /api
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     depends_on:
@@ -19,7 +19,7 @@ services:
       OPS_DB_USER: ${OPS_DB_USER:-postgres}
       OPS_DB_PASSWORD: ${OPS_DB_PASSWORD:-postgres}
       OPS_DB_HOST: ${OPS_DB_HOST:-host.docker.internal}
-      OPS_DB_PORT: ${OPS_DB_PORT:-5432}
+      OPS_DB_PORT: ${OPS_DB_PORT:-5433}
       OPS_DB_NAME: ${OPS_DB_NAME:-shpmarketing_operations}
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
       MOBILE_API_KEY: ${MOBILE_API_KEY:-dev-mobile-api-key}

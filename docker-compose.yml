@@ -7,7 +7,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_OPERATIONS_API_BASE: ${VITE_OPERATIONS_API_BASE:-http://localhost:5001}
+      NUXT_PUBLIC_OPERATIONS_API_BASE: ${NUXT_PUBLIC_OPERATIONS_API_BASE:-http://localhost:5001}
       CHOKIDAR_USEPOLLING: "true"
     volumes:
       - .:/workspace
