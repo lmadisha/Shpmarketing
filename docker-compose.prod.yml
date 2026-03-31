@@ -5,8 +5,11 @@ services:
       dockerfile: Dockerfile
       args:
         NUXT_PUBLIC_OPERATIONS_API_BASE: /api
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_PORT:-8080}:3000"
     depends_on:
       - operations-api
 

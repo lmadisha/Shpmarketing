@@ -1,7 +1,7 @@
 
 # Shpmarketing
 
-Frontend dashboard (Vite + React) with a companion operations API (Express + PostgreSQL).
+Frontend dashboard (Nuxt 3 + Vue 3) with a companion operations API (Express + PostgreSQL).
 
 ## Workspace Layout
 
@@ -20,7 +20,7 @@ npm run lint
 npm run test
 ```
 
-`npm run dev` starts both the frontend and `operations-api`. To run only the Vite app, use `npm run dev:frontend`.
+`npm run dev` starts both the frontend and `operations-api`. To run only the Nuxt app, use `npm run dev:frontend`.
 
 ## Operations API Commands
 
@@ -32,25 +32,7 @@ npm run lint
 npm run test
 ```
 
-## Dependency Security and Update Path
-
-Run these regularly in both root and operations-api:
-
-```bash
-npm run deps:outdated
-npm run deps:update
-npm run deps:audit
-```
-
-If audit findings are acceptable to auto-remediate:
-
-```bash
-# operations-api only
-npm run deps:fix
-```
-
 ## Environment
 
 - Root frontend env: .env.example -> .env
 - API env: operations-api/.env.example -> operations-api/.env
-  

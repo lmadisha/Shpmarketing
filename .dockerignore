@@ -8,6 +8,9 @@ Thumbs.db
 node_modules
 operations-api/node_modules
 dist
+.nuxt
+.output
+.claude
 operations-api/dist
 coverage
 operations-api/coverage

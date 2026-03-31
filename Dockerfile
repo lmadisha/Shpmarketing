@@ -7,16 +7,20 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_OPERATIONS_API_BASE=/api
-ENV VITE_OPERATIONS_API_BASE=$VITE_OPERATIONS_API_BASE
+ARG NUXT_PUBLIC_OPERATIONS_API_BASE=/api
+ENV NUXT_PUBLIC_OPERATIONS_API_BASE=$NUXT_PUBLIC_OPERATIONS_API_BASE
 
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM node:20-bookworm-slim
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3000
 
-EXPOSE 80
+COPY --from=build /app/.output ./.output
 
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 3000
+
+CMD ["node", ".output/server/index.mjs"]
