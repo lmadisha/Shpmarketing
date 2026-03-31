@@ -1,112 +1,34 @@
--- Operations database schema
+BEGIN;
 
-CREATE TYPE mismatch_action_enum AS ENUM ('open', 'resolve', 'cancel', 'delete');
+ALTER TABLE fridge_audit_log
+  ADD COLUMN IF NOT EXISTS organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL;
 
-CREATE TYPE user_permission_enum AS ENUM (
-  'Admin',
-  'Fleet Manager',
-  'Factory',
-  'Outlet',
-  'Technician',
-  'User'
-);
+CREATE INDEX IF NOT EXISTS idx_fridge_audit_log_organisation_id
+ON fridge_audit_log (organisation_id);
 
-CREATE TABLE organisation (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(120) UNIQUE NOT NULL,
-  domin VARCHAR(120) UNIQUE,
-  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE organisation_asset_validation_rules (
-  organisation_id INTEGER PRIMARY KEY REFERENCES organisation(id) ON DELETE CASCADE,
-  serial_min_length INTEGER NOT NULL CHECK (serial_min_length > 0 AND serial_min_length <= 32),
-  serial_max_length INTEGER NOT NULL CHECK (serial_max_length > 0 AND serial_max_length <= 32),
-  mac_min_length INTEGER NOT NULL CHECK (mac_min_length > 0 AND mac_min_length <= 64),
-  mac_max_length INTEGER NOT NULL CHECK (mac_max_length > 0 AND mac_max_length <= 64),
-  c_number_min_length INTEGER NOT NULL CHECK (c_number_min_length > 0 AND c_number_min_length <= 32),
-  c_number_max_length INTEGER NOT NULL CHECK (c_number_max_length > 0 AND c_number_max_length <= 32),
-  CHECK (serial_min_length <= serial_max_length),
-  CHECK (mac_min_length <= mac_max_length),
-  CHECK (c_number_min_length <= c_number_max_length)
-);
-
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  username VARCHAR(50) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  full_name VARCHAR(100),
-  first_name VARCHAR(100),
-  last_name VARCHAR(100),
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  permissions user_permission_enum NOT NULL,
-  organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL
-);
-
-CREATE TABLE fridges (
-  fridge_serial_number VARCHAR(32) PRIMARY KEY,
-  iot_mac_address VARCHAR(64) UNIQUE,
-  c_number VARCHAR(32),
-  verified BOOLEAN DEFAULT false,
-  verified_at TIMESTAMPTZ,
-  organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL,
-  latitude NUMERIC(9, 6),
-  longitude NUMERIC(9, 6),
-  CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
-  CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
-);
-
-CREATE TABLE fridge_mismatches (
-  id BIGSERIAL PRIMARY KEY,
-  received_at TIMESTAMPTZ DEFAULT now() NOT NULL,
-  fridge_serial_number VARCHAR(32) NOT NULL,
-  received_mac VARCHAR(64),
-  received_c_number VARCHAR(32),
-  db_mac VARCHAR(64),
-  db_c_number VARCHAR(32),
-  status mismatch_action_enum DEFAULT 'open' NOT NULL,
-  resolved_at TIMESTAMPTZ,
-  resolved_by INTEGER REFERENCES users(id),
-  resolution_note TEXT,
-  sender_id INTEGER REFERENCES users(id),
-  latitude NUMERIC(9, 6),
-  longitude NUMERIC(9, 6),
-  CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
-  CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
-);
-
-CREATE TABLE fridge_audit_log (
-  log_id SERIAL PRIMARY KEY,
-  fridge_serial_number VARCHAR(32),
-  source_table TEXT DEFAULT 'fridges' NOT NULL,
-  action_type TEXT,
-  old_mac VARCHAR(64),
-  new_mac VARCHAR(64),
-  old_c_num VARCHAR(32),
-  new_c_num VARCHAR(32),
-  mismatch_id BIGINT,
-  metadata JSONB,
-  organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL,
-  changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  changed_by INTEGER REFERENCES users(id)
-);
-
-CREATE INDEX idx_fridge_mismatches_received_at ON fridge_mismatches (received_at DESC);
-CREATE INDEX idx_fridge_mismatches_serial ON fridge_mismatches (fridge_serial_number);
-CREATE INDEX idx_fridge_mismatches_status ON fridge_mismatches (status);
-CREATE INDEX idx_users_organisation_id ON users (organisation_id);
-CREATE INDEX idx_fridges_organisation_id ON fridges (organisation_id);
-CREATE UNIQUE INDEX idx_organisation_domin_unique
-ON organisation ((LOWER(domin)))
-WHERE domin IS NOT NULL;
-CREATE INDEX idx_fridge_audit_log_serial ON fridge_audit_log (fridge_serial_number);
-CREATE INDEX idx_fridge_audit_log_source_table ON fridge_audit_log (source_table);
-CREATE INDEX idx_fridge_audit_log_mismatch_id ON fridge_audit_log (mismatch_id);
-CREATE INDEX idx_fridge_audit_log_organisation_id ON fridge_audit_log (organisation_id);
-CREATE UNIQUE INDEX iot_mac_address_unique_non_null_non_empty
-ON fridges (iot_mac_address)
-WHERE iot_mac_address IS NOT NULL AND iot_mac_address <> '';
+UPDATE fridge_audit_log fal
+SET organisation_id = derived.organisation_id
+FROM (
+  SELECT
+    fal_inner.log_id,
+    COALESCE(f.organisation_id, fm_org.organisation_id) AS organisation_id
+  FROM fridge_audit_log fal_inner
+  LEFT JOIN fridges f
+    ON f.fridge_serial_number = fal_inner.fridge_serial_number
+  LEFT JOIN (
+    SELECT DISTINCT ON (fm.id)
+      fm.id,
+      fridges.organisation_id
+    FROM fridge_mismatches fm
+    LEFT JOIN fridges
+      ON fridges.fridge_serial_number = fm.fridge_serial_number
+    ORDER BY fm.id
+  ) fm_org
+    ON fal_inner.mismatch_id = fm_org.id
+) AS derived
+WHERE fal.log_id = derived.log_id
+  AND fal.organisation_id IS NULL
+  AND derived.organisation_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION log_fridge_changes()
 RETURNS TRIGGER AS $$
@@ -299,12 +221,4 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_fridge_audit
-AFTER INSERT OR UPDATE OR DELETE ON fridges
-FOR EACH ROW
-EXECUTE FUNCTION log_fridge_changes();
-
-CREATE TRIGGER trg_fridge_mismatch_audit
-AFTER INSERT OR UPDATE OR DELETE ON fridge_mismatches
-FOR EACH ROW
-EXECUTE FUNCTION log_fridge_mismatch_changes();
+COMMIT;

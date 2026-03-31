@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -5,6 +6,14 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../../components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 import { ArrowUpDown, ChevronLeft, ChevronRight, Clock3, Download, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { AccessDeniedCard } from "../../components/auth/access-denied-card";
 import { useAdminAssets } from "./admin-assets-context";
@@ -12,6 +21,7 @@ import { downloadExcel, normalizeHexIdentifier, normalizeCNumber } from "./utils
 import { Fridge } from "./types";
 
 export function InventoryPage() {
+  const [deleteConfirmSerial, setDeleteConfirmSerial] = useState<string | null>(null);
   const {
     fridgeLoading, fridgeError,
     searchTerm, setSearchTerm, loadFridges,
@@ -167,7 +177,7 @@ export function InventoryPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => void deleteFridge(row.fridge_serial_number)}
+                          onClick={() => setDeleteConfirmSerial(row.fridge_serial_number)}
                           disabled={deletingSerial === row.fridge_serial_number}
                         >
                           <Trash2 className="h-4 w-4" /> Delete
@@ -198,6 +208,40 @@ export function InventoryPage() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
+
+        <Dialog open={Boolean(deleteConfirmSerial)} onOpenChange={(open) => !open && setDeleteConfirmSerial(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Fridge</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete fridge <span className="font-medium text-foreground">{deleteConfirmSerial}</span> from inventory?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteConfirmSerial(null)}
+                disabled={deletingSerial === deleteConfirmSerial}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  if (!deleteConfirmSerial) {
+                    return;
+                  }
+
+                  await deleteFridge(deleteConfirmSerial);
+                  setDeleteConfirmSerial(null);
+                }}
+                disabled={deletingSerial === deleteConfirmSerial}
+              >
+                {deletingSerial === deleteConfirmSerial ? "Deleting..." : "Delete Fridge"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

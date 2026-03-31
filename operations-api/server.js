@@ -1812,9 +1812,8 @@ app.get("/auditLog/:serialNumber", requireAuth, requirePermission("history.view"
               u.username AS changed_by_username
        FROM fridge_audit_log fal
        LEFT JOIN users u ON u.id = fal.changed_by
-       LEFT JOIN fridges f ON f.fridge_serial_number = fal.fridge_serial_number
        WHERE UPPER(fal.fridge_serial_number) = UPPER($1)
-         AND ($2::int IS NULL OR f.organisation_id = $2)
+         AND ($2::int IS NULL OR fal.organisation_id = $2)
        ORDER BY fal.changed_at DESC`,
       [req.params.serialNumber, scope.effectiveOrganisationId],
     );
@@ -1840,8 +1839,7 @@ app.get("/auditLog", requireAuth, requirePermission("history.view"), async (req,
               u.username AS changed_by_username
        FROM fridge_audit_log fal
        LEFT JOIN users u ON u.id = fal.changed_by
-       LEFT JOIN fridges f ON f.fridge_serial_number = fal.fridge_serial_number
-       WHERE ($1::int IS NULL OR f.organisation_id = $1)
+       WHERE ($1::int IS NULL OR fal.organisation_id = $1)
        ORDER BY fal.changed_at DESC`,
       [scope.effectiveOrganisationId],
     );
