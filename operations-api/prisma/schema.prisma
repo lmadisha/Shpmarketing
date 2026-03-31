@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MismatchActionEnum {
+  open
+  resolve
+  cancel
+  delete
+
+  @@map("mismatch_action_enum")
+}
+
+enum UserPermissionEnum {
+  Admin
+  Fleet_Manager @map("Fleet Manager")
+  Factory
+  Outlet
+  Technician
+  User
+
+  @@map("user_permission_enum")
+}
+
+model Organisation {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(120)
+  domin     String?  @unique @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  users                        User[]
+  fridges                      Fridge[]
+  assetValidationRules         OrganisationAssetValidationRules?
+  fridgeAuditLogs              FridgeAuditLog[]
+
+  @@map("organisation")
+}
+
+model OrganisationAssetValidationRules {
+  organisationId    Int @id @map("organisation_id")
+  serialMinLength   Int @map("serial_min_length")
+  serialMaxLength   Int @map("serial_max_length")
+  macMinLength      Int @map("mac_min_length")
+  macMaxLength      Int @map("mac_max_length")
+  cNumberMinLength  Int @map("c_number_min_length")
+  cNumberMaxLength  Int @map("c_number_max_length")
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@map("organisation_asset_validation_rules")
+}
+
+model User {
+  id             Int                 @id @default(autoincrement())
+  username       String              @unique @db.VarChar(50)
+  passwordHash   String              @map("password_hash")
+  fullName       String?             @map("full_name") @db.VarChar(100)
+  firstName      String?             @map("first_name") @db.VarChar(100)
+  lastName       String?             @map("last_name") @db.VarChar(100)
+  isActive       Boolean             @default(true) @map("is_active")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  permissions    UserPermissionEnum
+  organisationId Int?                @map("organisation_id")
+
+  organisation   Organisation?  @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+
+  resolvedMismatches FridgeMismatch[] @relation("ResolvedBy")
+  sentMismatches     FridgeMismatch[] @relation("SentBy")
+  fridgeAuditLogs    FridgeAuditLog[]
+
+  @@map("users")
+}
+
+model Fridge {
+  fridgeSerialNumber String    @id @map("fridge_serial_number") @db.VarChar(32)
+  iotMacAddress      String?   @map("iot_mac_address") @db.VarChar(64)
+  cNumber            String?   @map("c_number") @db.VarChar(32)
+  verified           Boolean   @default(false)
+  verifiedAt         DateTime? @map("verified_at") @db.Timestamptz()
+  organisationId     Int?      @map("organisation_id")
+  latitude           Decimal?  @db.Decimal(9, 6)
+  longitude          Decimal?  @db.Decimal(9, 6)
+
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+
+  @@map("fridges")
+}
+
+model FridgeMismatch {
+  id                  BigInt              @id @default(autoincrement())
+  receivedAt          DateTime            @default(now()) @map("received_at") @db.Timestamptz()
+  fridgeSerialNumber  String              @map("fridge_serial_number") @db.VarChar(32)
+  receivedMac         String?             @map("received_mac") @db.VarChar(64)
+  receivedCNumber     String?             @map("received_c_number") @db.VarChar(32)
+  dbMac               String?             @map("db_mac") @db.VarChar(64)
+  dbCNumber           String?             @map("db_c_number") @db.VarChar(32)
+  status              MismatchActionEnum  @default(open)
+  resolvedAt          DateTime?           @map("resolved_at") @db.Timestamptz()
+  resolvedBy          Int?                @map("resolved_by")
+  resolutionNote      String?             @map("resolution_note")
+  senderId            Int?                @map("sender_id")
+  latitude            Decimal?            @db.Decimal(9, 6)
+  longitude           Decimal?            @db.Decimal(9, 6)
+
+  resolvedByUser User? @relation("ResolvedBy", fields: [resolvedBy], references: [id])
+  senderUser     User? @relation("SentBy", fields: [senderId], references: [id])
+
+  @@map("fridge_mismatches")
+}
+
+model FridgeAuditLog {
+  logId              Int      @id @default(autoincrement()) @map("log_id")
+  fridgeSerialNumber String?  @map("fridge_serial_number") @db.VarChar(32)
+  sourceTable        String   @default("fridges") @map("source_table")
+  actionType         String?  @map("action_type")
+  oldMac             String?  @map("old_mac") @db.VarChar(64)
+  newMac             String?  @map("new_mac") @db.VarChar(64)
+  oldCNum            String?  @map("old_c_num") @db.VarChar(32)
+  newCNum            String?  @map("new_c_num") @db.VarChar(32)
+  mismatchId         BigInt?  @map("mismatch_id")
+  metadata           Json?
+  organisationId     Int?     @map("organisation_id")
+  changedAt          DateTime @default(now()) @map("changed_at") @db.Timestamptz()
+  changedBy          Int?     @map("changed_by")
+
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  changedByUser User?         @relation(fields: [changedBy], references: [id])
+
+  @@map("fridge_audit_log")
+}

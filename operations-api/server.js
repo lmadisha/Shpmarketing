@@ -6,7 +6,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const XLSX = require("xlsx");
-const pool = require("./db");
+const prisma = require("./prisma");
 const {
   DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES,
   normalizeHexIdentifier,
@@ -16,6 +16,11 @@ const {
   validateOrganisationAssetValidationPayload,
 } = require("./asset-validation");
 
+// BigInt JSON serialization support
+// Prisma returns BigInt for BIGSERIAL columns; JSON.stringify does not handle BigInt natively.
+const origStringify = JSON.stringify;
+// Monkey-patch res.json to handle BigInt by converting to string before serializing.
+// We do this via a replacer on Express's json() middleware instead.
 const app = express();
 
 const PORT = Number(process.env.PORT || 5001);
@@ -50,6 +55,18 @@ app.use(
 );
 
 app.use(express.json());
+
+// Override res.json to serialize BigInt values as strings
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = function (body) {
+    const safeBody = JSON.parse(JSON.stringify(body, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value,
+    ));
+    return originalJson(safeBody);
+  };
+  next();
+});
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -255,19 +272,17 @@ function normalizePermission(value) {
   return null;
 }
 
-async function getUserOrganisationId(client, userId) {
-  const result = await client.query(
-    `SELECT organisation_id
-     FROM users
-     WHERE id = $1`,
-    [userId],
-  );
+async function getUserOrganisationId(tx, userId) {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { organisationId: true },
+  });
 
-  if (!result.rows.length) {
+  if (!user) {
     return null;
   }
 
-  return result.rows[0].organisation_id ?? null;
+  return user.organisationId ?? null;
 }
 
 function parseRequestedOrganisationId(rawValue) {
@@ -287,10 +302,10 @@ function parseRequestedOrganisationId(rawValue) {
   return value;
 }
 
-async function resolveOrganisationScope(client, user, requestedOrganisationIdRaw) {
+async function resolveOrganisationScope(tx, user, requestedOrganisationIdRaw) {
   const requestedOrganisationId = parseRequestedOrganisationId(requestedOrganisationIdRaw);
   const isAdmin = user?.permissions === "Admin";
-  const userOrganisationId = await getUserOrganisationId(client, user.id);
+  const userOrganisationId = await getUserOrganisationId(tx, user.id);
 
   if (!isAdmin && !userOrganisationId) {
     const error = new Error("User organisation is not configured.");
@@ -322,65 +337,56 @@ function requireOrganisationAssetValidationEditor(req, res, next) {
   return next();
 }
 
-async function ensureOrganisationAssetValidationRules(client, organisationId) {
-  await client.query(
-    `INSERT INTO organisation_asset_validation_rules (
-       organisation_id,
-       serial_min_length,
-       serial_max_length,
-       mac_min_length,
-       mac_max_length,
-       c_number_min_length,
-       c_number_max_length
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (organisation_id) DO NOTHING`,
-    [
+async function ensureOrganisationAssetValidationRules(tx, organisationId) {
+  await tx.organisationAssetValidationRules.upsert({
+    where: { organisationId },
+    update: {},
+    create: {
       organisationId,
-      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.serial_min_length,
-      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.serial_max_length,
-      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.mac_min_length,
-      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.mac_max_length,
-      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.c_number_min_length,
-      DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.c_number_max_length,
-    ],
-  );
+      serialMinLength: DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.serial_min_length,
+      serialMaxLength: DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.serial_max_length,
+      macMinLength: DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.mac_min_length,
+      macMaxLength: DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.mac_max_length,
+      cNumberMinLength: DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.c_number_min_length,
+      cNumberMaxLength: DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES.c_number_max_length,
+    },
+  });
 }
 
-async function getOrganisationAssetValidationRules(client, organisationId) {
+async function getOrganisationAssetValidationRules(tx, organisationId) {
   if (!organisationId) {
     const error = new Error("Organisation is not configured.");
     error.code = "USER_ORGANISATION_REQUIRED";
     throw error;
   }
 
-  await ensureOrganisationAssetValidationRules(client, organisationId);
+  await ensureOrganisationAssetValidationRules(tx, organisationId);
 
-  const result = await client.query(
-    `SELECT organisation_id,
-            serial_min_length,
-            serial_max_length,
-            mac_min_length,
-            mac_max_length,
-            c_number_min_length,
-            c_number_max_length
-     FROM organisation_asset_validation_rules
-     WHERE organisation_id = $1`,
-    [organisationId],
-  );
+  const rules = await tx.organisationAssetValidationRules.findUnique({
+    where: { organisationId },
+  });
 
-  if (!result.rows.length) {
+  if (!rules) {
     const error = new Error("Organisation asset validation rules not found.");
     error.code = "ORGANISATION_ASSET_VALIDATION_RULES_NOT_FOUND";
     throw error;
   }
 
-  return result.rows[0];
+  // Return in the snake_case shape that the rest of the code expects
+  return {
+    organisation_id: rules.organisationId,
+    serial_min_length: rules.serialMinLength,
+    serial_max_length: rules.serialMaxLength,
+    mac_min_length: rules.macMinLength,
+    mac_max_length: rules.macMaxLength,
+    c_number_min_length: rules.cNumberMinLength,
+    c_number_max_length: rules.cNumberMaxLength,
+  };
 }
 
-async function resolveOrganisationAssetValidationScope(client, user, requestedOrganisationIdRaw) {
+async function resolveOrganisationAssetValidationScope(tx, user, requestedOrganisationIdRaw) {
   const requestedOrganisationId = parseRequestedOrganisationId(requestedOrganisationIdRaw);
-  const userOrganisationId = await getUserOrganisationId(client, user.id);
+  const userOrganisationId = await getUserOrganisationId(tx, user.id);
 
   if (user?.permissions === "Admin") {
     const targetOrganisationId = requestedOrganisationId ?? userOrganisationId;
@@ -390,13 +396,11 @@ async function resolveOrganisationAssetValidationScope(client, user, requestedOr
       throw error;
     }
 
-    const organisationResult = await client.query(
-      `SELECT id
-       FROM organisation
-       WHERE id = $1`,
-      [targetOrganisationId],
-    );
-    if (!organisationResult.rows.length) {
+    const org = await tx.organisation.findUnique({
+      where: { id: targetOrganisationId },
+      select: { id: true },
+    });
+    if (!org) {
       const error = new Error("Organisation not found.");
       error.code = "ORGANISATION_NOT_FOUND";
       throw error;
@@ -462,6 +466,42 @@ function serializeMismatchRow(row) {
     ...row,
     latitude: parseNullableCoordinate(row.latitude),
     longitude: parseNullableCoordinate(row.longitude),
+  };
+}
+
+// Convert a Prisma fridge object to the snake_case shape the API returns
+function fridgePrismaToRow(fridge) {
+  if (!fridge) return fridge;
+  return {
+    fridge_serial_number: fridge.fridgeSerialNumber,
+    iot_mac_address: fridge.iotMacAddress,
+    c_number: fridge.cNumber,
+    verified: fridge.verified,
+    verified_at: fridge.verifiedAt,
+    organisation_id: fridge.organisationId,
+    latitude: fridge.latitude,
+    longitude: fridge.longitude,
+  };
+}
+
+// Convert a Prisma mismatch object to the snake_case shape the API returns
+function mismatchPrismaToRow(mismatch) {
+  if (!mismatch) return mismatch;
+  return {
+    id: mismatch.id,
+    received_at: mismatch.receivedAt,
+    fridge_serial_number: mismatch.fridgeSerialNumber,
+    received_mac: mismatch.receivedMac,
+    received_c_number: mismatch.receivedCNumber,
+    db_mac: mismatch.dbMac,
+    db_c_number: mismatch.dbCNumber,
+    status: mismatch.status,
+    resolved_at: mismatch.resolvedAt,
+    resolved_by: mismatch.resolvedBy,
+    resolution_note: mismatch.resolutionNote,
+    sender_id: mismatch.senderId,
+    latitude: mismatch.latitude,
+    longitude: mismatch.longitude,
   };
 }
 
@@ -615,15 +655,19 @@ function buildSkippedDuplicateReportRow(row, existingRow, message) {
     message,
     upload_mac_address: row.mac_address || null,
     upload_c_number: row.c_number || null,
-    db_serial: existingRow?.fridge_serial_number || null,
-    db_mac_address: existingRow?.iot_mac_address || null,
-    db_c_number: existingRow?.c_number || null,
+    db_serial: existingRow?.fridge_serial_number || existingRow?.fridgeSerialNumber || null,
+    db_mac_address: existingRow?.iot_mac_address || existingRow?.iotMacAddress || null,
+    db_c_number: existingRow?.c_number || existingRow?.cNumber || null,
   };
 }
 
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+
 app.get("/health", async (_req, res) => {
   try {
-    await pool.query("SELECT 1");
+    await prisma.$queryRaw`SELECT 1`;
     res.json({ ok: true, service: "operations-api" });
   } catch (error) {
     res.status(500).json({ ok: false, error: "DB_UNAVAILABLE" });
@@ -632,12 +676,11 @@ app.get("/health", async (_req, res) => {
 
 app.get("/organisations", async (_req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, name, domin
-       FROM organisation
-       ORDER BY name ASC`,
-    );
-    return res.json(result.rows);
+    const organisations = await prisma.organisation.findMany({
+      select: { id: true, name: true, domin: true },
+      orderBy: { name: "asc" },
+    });
+    return res.json(organisations);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
@@ -664,38 +707,32 @@ app.post("/organisations", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Organisation domain must be 120 characters or fewer" });
     }
 
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const result = await client.query(
-        `INSERT INTO organisation (name, domin)
-         VALUES ($1, $2)
-         RETURNING id, name, domin, created_at`,
-        [name, domin],
-      );
+    const created = await prisma.$transaction(async (tx) => {
+      const org = await tx.organisation.create({
+        data: { name, domin },
+        select: { id: true, name: true, domin: true, createdAt: true },
+      });
 
-      await ensureOrganisationAssetValidationRules(client, result.rows[0].id);
-      await client.query("COMMIT");
+      await ensureOrganisationAssetValidationRules(tx, org.id);
 
-      return res.status(201).json(result.rows[0]);
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw error;
-    } finally {
-      client.release();
-    }
+      return org;
+    });
+
+    return res.status(201).json({
+      id: created.id,
+      name: created.name,
+      domin: created.domin,
+      created_at: created.createdAt,
+    });
   } catch (error) {
+    if (error.code === "P2002") {
+      return res.status(409).json({ error: "Organisation name or domain already exists." });
+    }
     if (error.code === "23505") {
       return res.status(409).json({ error: "Organisation name or domain already exists." });
     }
     if (error.code === "22001") {
       return res.status(400).json({ error: "Organisation name or domain is too long." });
-    }
-    if (error.code === "42703") {
-      return res.status(500).json({ error: "Database schema missing organisation.domin. Apply latest schema migration." });
-    }
-    if (error.code === "42P01") {
-      return res.status(500).json({ error: "Database schema missing organisation table. Apply latest schema migration." });
     }
     console.error("[organisations:create] failed", {
       code: error?.code,
@@ -716,17 +753,11 @@ app.delete("/organisations/:id", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Invalid organisation id" });
   }
 
-  const client = await pool.connect();
   try {
-    const linkCounts = await client.query(
-      `SELECT
-         (SELECT COUNT(*)::int FROM users WHERE organisation_id = $1) AS users_count,
-         (SELECT COUNT(*)::int FROM fridges WHERE organisation_id = $1) AS fridges_count`,
-      [organisationId],
-    );
-
-    const usersCount = linkCounts.rows[0]?.users_count ?? 0;
-    const fridgesCount = linkCounts.rows[0]?.fridges_count ?? 0;
+    const [usersCount, fridgesCount] = await Promise.all([
+      prisma.user.count({ where: { organisationId } }),
+      prisma.fridge.count({ where: { organisationId } }),
+    ]);
 
     if (usersCount > 0 || fridgesCount > 0) {
       return res.status(409).json({
@@ -736,23 +767,18 @@ app.delete("/organisations/:id", requireAuth, async (req, res) => {
       });
     }
 
-    const result = await client.query(
-      `DELETE FROM organisation
-       WHERE id = $1
-       RETURNING id, name`,
-      [organisationId],
-    );
+    const deleted = await prisma.organisation.delete({
+      where: { id: organisationId },
+      select: { id: true, name: true },
+    });
 
-    if (!result.rows.length) {
+    return res.json({ deleted: true, organisation: deleted });
+  } catch (error) {
+    if (error.code === "P2025") {
       return res.status(404).json({ error: "Organisation not found" });
     }
-
-    return res.json({ deleted: true, organisation: result.rows[0] });
-  } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
-  } finally {
-    client.release();
   }
 });
 
@@ -781,25 +807,35 @@ app.post("/signup", loginLimiter, async (req, res) => {
       return res.status(400).json({ error: "Invalid organisation_id" });
     }
 
-    const organisationResult = await pool.query(
-      `SELECT id FROM organisation WHERE id = $1`,
-      [organisationId],
-    );
+    const org = await prisma.organisation.findUnique({
+      where: { id: organisationId },
+      select: { id: true },
+    });
 
-    if (!organisationResult.rows.length) {
+    if (!org) {
       return res.status(400).json({ error: "Organisation not found" });
     }
 
     const passwordHash = await bcrypt.hash(String(password), 12);
 
-    const result = await pool.query(
-      `INSERT INTO users (username, password_hash, full_name, permissions, is_active, organisation_id)
-       VALUES ($1, $2, $3, $4, true, $5)
-       RETURNING id, username, full_name, permissions, is_active, organisation_id`,
-      [email, passwordHash, name, normalizedPermission, organisationId],
-    );
+    const createdUser = await prisma.user.create({
+      data: {
+        username: email,
+        passwordHash,
+        fullName: name,
+        permissions: normalizedPermission,
+        isActive: true,
+        organisationId,
+      },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        permissions: true,
+        organisationId: true,
+      },
+    });
 
-    const createdUser = result.rows[0];
     const token = jwt.sign(
       {
         id: createdUser.id,
@@ -815,13 +851,13 @@ app.post("/signup", loginLimiter, async (req, res) => {
       user: {
         id: createdUser.id,
         username: createdUser.username,
-        full_name: createdUser.full_name,
+        full_name: createdUser.fullName,
         permissions: createdUser.permissions,
-        organisation_id: createdUser.organisation_id,
+        organisation_id: createdUser.organisationId,
       },
     });
   } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "P2002" || error.code === "23505") {
       return res.status(409).json({ error: "That email/username already exists" });
     }
     console.error(error);
@@ -833,23 +869,28 @@ app.post("/login", loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    const result = await pool.query(
-      `SELECT id, username, password_hash, is_active, full_name, permissions, organisation_id
-       FROM users
-       WHERE username = $1`,
-      [String(username || "").trim().toLowerCase()],
-    );
+    const user = await prisma.user.findUnique({
+      where: { username: String(username || "").trim().toLowerCase() },
+      select: {
+        id: true,
+        username: true,
+        passwordHash: true,
+        isActive: true,
+        fullName: true,
+        permissions: true,
+        organisationId: true,
+      },
+    });
 
-    if (!result.rows.length) {
+    if (!user) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
-    const user = result.rows[0];
-    if (!user.is_active) {
+    if (!user.isActive) {
       return res.status(403).json({ error: "User is inactive" });
     }
 
-    const passwordMatches = await bcrypt.compare(String(password || ""), user.password_hash);
+    const passwordMatches = await bcrypt.compare(String(password || ""), user.passwordHash);
     if (!passwordMatches) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
@@ -869,9 +910,9 @@ app.post("/login", loginLimiter, async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        full_name: user.full_name,
+        full_name: user.fullName,
         permissions: user.permissions,
-        organisation_id: user.organisation_id,
+        organisation_id: user.organisationId,
       },
     });
   } catch (error) {
@@ -882,27 +923,37 @@ app.post("/login", loginLimiter, async (req, res) => {
 
 app.get("/profile", requireAuth, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT u.id,
-              u.username,
-              u.full_name,
-              u.first_name,
-              u.last_name,
-              u.permissions,
-              u.organisation_id,
-              o.name AS organisation_name,
-              o.domin AS organisation_domin
-       FROM users u
-       LEFT JOIN organisation o ON o.id = u.organisation_id
-       WHERE u.id = $1`,
-      [req.user.id],
-    );
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        firstName: true,
+        lastName: true,
+        permissions: true,
+        organisationId: true,
+        organisation: {
+          select: { name: true, domin: true },
+        },
+      },
+    });
 
-    if (!result.rows.length) {
+    if (!user) {
       return res.status(404).json({ error: "Profile not found" });
     }
 
-    return res.json(result.rows[0]);
+    return res.json({
+      id: user.id,
+      username: user.username,
+      full_name: user.fullName,
+      first_name: user.firstName,
+      last_name: user.lastName,
+      permissions: user.permissions,
+      organisation_id: user.organisationId,
+      organisation_name: user.organisation?.name ?? null,
+      organisation_domin: user.organisation?.domin ?? null,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
@@ -931,37 +982,39 @@ app.put("/profile", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Last name must be 100 characters or fewer" });
     }
 
-    const result = await pool.query(
-      `WITH updated_user AS (
-         UPDATE users
-         SET username = $1,
-             first_name = $2,
-             last_name = $3,
-             full_name = $4
-         WHERE id = $5
-         RETURNING id, username, full_name, first_name, last_name, permissions, organisation_id
-       )
-       SELECT u.id,
-              u.username,
-              u.full_name,
-              u.first_name,
-              u.last_name,
-              u.permissions,
-              u.organisation_id,
-              o.name AS organisation_name,
-              o.domin AS organisation_domin
-       FROM updated_user u
-       LEFT JOIN organisation o ON o.id = u.organisation_id`,
-      [username, firstName, lastName, fullName, req.user.id],
-    );
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { username, firstName, lastName, fullName },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        firstName: true,
+        lastName: true,
+        permissions: true,
+        organisationId: true,
+        organisation: {
+          select: { name: true, domin: true },
+        },
+      },
+    });
 
-    if (!result.rows.length) {
+    return res.json({
+      id: updated.id,
+      username: updated.username,
+      full_name: updated.fullName,
+      first_name: updated.firstName,
+      last_name: updated.lastName,
+      permissions: updated.permissions,
+      organisation_id: updated.organisationId,
+      organisation_name: updated.organisation?.name ?? null,
+      organisation_domin: updated.organisation?.domin ?? null,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
       return res.status(404).json({ error: "Profile not found" });
     }
-
-    return res.json(result.rows[0]);
-  } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "P2002" || error.code === "23505") {
       return res.status(409).json({ error: "That email/username already exists" });
     }
     console.error(error);
@@ -974,14 +1027,13 @@ app.get(
   requireAuth,
   requireOrganisationAssetValidationEditor,
   async (req, res) => {
-    const client = await pool.connect();
     try {
       const organisationId = await resolveOrganisationAssetValidationScope(
-        client,
+        prisma,
         req.user,
         req.query.organisation_id,
       );
-      const rules = await getOrganisationAssetValidationRules(client, organisationId);
+      const rules = await getOrganisationAssetValidationRules(prisma, organisationId);
       return res.json(rules);
     } catch (error) {
       if (
@@ -997,8 +1049,6 @@ app.get(
       }
       console.error(error);
       return res.status(500).json({ error: "Server Error" });
-    } finally {
-      client.release();
     }
   },
 );
@@ -1008,10 +1058,9 @@ app.put(
   requireAuth,
   requireOrganisationAssetValidationEditor,
   async (req, res) => {
-    const client = await pool.connect();
     try {
       const organisationId = await resolveOrganisationAssetValidationScope(
-        client,
+        prisma,
         req.user,
         req.body?.organisation_id ?? req.query.organisation_id,
       );
@@ -1020,36 +1069,29 @@ app.put(
         return res.status(400).json(buildValidationErrorResponse(errors));
       }
 
-      await ensureOrganisationAssetValidationRules(client, organisationId);
+      await ensureOrganisationAssetValidationRules(prisma, organisationId);
 
-      const result = await client.query(
-        `UPDATE organisation_asset_validation_rules
-         SET serial_min_length = $1,
-             serial_max_length = $2,
-             mac_min_length = $3,
-             mac_max_length = $4,
-             c_number_min_length = $5,
-             c_number_max_length = $6
-         WHERE organisation_id = $7
-         RETURNING organisation_id,
-                   serial_min_length,
-                   serial_max_length,
-                   mac_min_length,
-                   mac_max_length,
-                   c_number_min_length,
-                   c_number_max_length`,
-        [
-          values.serial_min_length,
-          values.serial_max_length,
-          values.mac_min_length,
-          values.mac_max_length,
-          values.c_number_min_length,
-          values.c_number_max_length,
-          organisationId,
-        ],
-      );
+      const updated = await prisma.organisationAssetValidationRules.update({
+        where: { organisationId },
+        data: {
+          serialMinLength: values.serial_min_length,
+          serialMaxLength: values.serial_max_length,
+          macMinLength: values.mac_min_length,
+          macMaxLength: values.mac_max_length,
+          cNumberMinLength: values.c_number_min_length,
+          cNumberMaxLength: values.c_number_max_length,
+        },
+      });
 
-      return res.json(result.rows[0]);
+      return res.json({
+        organisation_id: updated.organisationId,
+        serial_min_length: updated.serialMinLength,
+        serial_max_length: updated.serialMaxLength,
+        mac_min_length: updated.macMinLength,
+        mac_max_length: updated.macMaxLength,
+        c_number_min_length: updated.cNumberMinLength,
+        c_number_max_length: updated.cNumberMaxLength,
+      });
     } catch (error) {
       if (
         error?.code === "USER_ORGANISATION_REQUIRED" ||
@@ -1064,33 +1106,44 @@ app.put(
       }
       console.error(error);
       return res.status(500).json({ error: "Server Error" });
-    } finally {
-      client.release();
     }
   },
 );
 
 app.get("/users", requireAuth, requirePermission("users.view"), async (req, res) => {
-  const client = await pool.connect();
   try {
-    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
-    const result = await client.query(
-      `SELECT u.id,
-              u.username,
-              u.full_name,
-              u.permissions,
-              u.is_active,
-              u.created_at,
-              u.organisation_id,
-              o.name AS organisation_name
-       FROM users u
-       LEFT JOIN organisation o ON o.id = u.organisation_id
-       WHERE ($1::int IS NULL OR u.organisation_id = $1)
-       ORDER BY u.permissions ASC, u.created_at DESC`,
-      [scope.effectiveOrganisationId],
-    );
-    const filteredRows = result.rows.filter((row) => canTargetRole(req.user.permissions, row.permissions));
-    return res.json(filteredRows);
+    const scope = await resolveOrganisationScope(prisma, req.user, req.query.organisation_id);
+    const users = await prisma.user.findMany({
+      where: scope.effectiveOrganisationId != null
+        ? { organisationId: scope.effectiveOrganisationId }
+        : {},
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        permissions: true,
+        isActive: true,
+        createdAt: true,
+        organisationId: true,
+        organisation: { select: { name: true } },
+      },
+      orderBy: [{ permissions: "asc" }, { createdAt: "desc" }],
+    });
+
+    const rows = users
+      .filter((u) => canTargetRole(req.user.permissions, u.permissions))
+      .map((u) => ({
+        id: u.id,
+        username: u.username,
+        full_name: u.fullName,
+        permissions: u.permissions,
+        is_active: u.isActive,
+        created_at: u.createdAt,
+        organisation_id: u.organisationId,
+        organisation_name: u.organisation?.name ?? null,
+      }));
+
+    return res.json(rows);
   } catch (error) {
     if (error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
@@ -1100,13 +1153,10 @@ app.get("/users", requireAuth, requirePermission("users.view"), async (req, res)
     }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
-  } finally {
-    client.release();
   }
 });
 
 app.post("/users", requireAuth, requirePermission("users.manage"), async (req, res) => {
-  const client = await pool.connect();
   try {
     const { username, password, full_name, permissions, organisation_id } = req.body;
 
@@ -1124,7 +1174,7 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
 
     const email = String(username).trim().toLowerCase();
     const passwordHash = await bcrypt.hash(String(password), 12);
-    const scope = await resolveOrganisationScope(client, req.user, null);
+    const scope = await resolveOrganisationScope(prisma, req.user, null);
     let organisationId = organisation_id == null ? null : Number(organisation_id);
 
     if (organisationId != null && (!Number.isInteger(organisationId) || organisationId <= 0)) {
@@ -1139,27 +1189,46 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
     }
 
     if (organisationId != null) {
-      const organisationResult = await client.query(
-        `SELECT id
-         FROM organisation
-         WHERE id = $1`,
-        [organisationId],
-      );
-      if (!organisationResult.rows.length) {
+      const org = await prisma.organisation.findUnique({
+        where: { id: organisationId },
+        select: { id: true },
+      });
+      if (!org) {
         return res.status(400).json({ error: "Organisation not found" });
       }
     }
 
-    const result = await client.query(
-      `INSERT INTO users (username, password_hash, full_name, permissions, is_active, organisation_id)
-       VALUES ($1, $2, $3, $4, true, $5)
-       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
-      [email, passwordHash, String(full_name).trim(), normalizedPermission, organisationId],
-    );
+    const created = await prisma.user.create({
+      data: {
+        username: email,
+        passwordHash,
+        fullName: String(full_name).trim(),
+        permissions: normalizedPermission,
+        isActive: true,
+        organisationId,
+      },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        permissions: true,
+        isActive: true,
+        createdAt: true,
+        organisationId: true,
+      },
+    });
 
-    return res.json(result.rows[0]);
+    return res.json({
+      id: created.id,
+      username: created.username,
+      full_name: created.fullName,
+      permissions: created.permissions,
+      is_active: created.isActive,
+      created_at: created.createdAt,
+      organisation_id: created.organisationId,
+    });
   } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "P2002" || error.code === "23505") {
       return res.status(409).json({ error: "That email/username already exists" });
     }
     if (error?.code === "USER_ORGANISATION_REQUIRED") {
@@ -1167,13 +1236,10 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
     }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
-  } finally {
-    client.release();
   }
 });
 
 app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage"), async (req, res) => {
-  const client = await pool.connect();
   try {
     const targetId = Number(req.params.id);
     if (!Number.isInteger(targetId) || targetId <= 0) {
@@ -1188,49 +1254,60 @@ app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage")
       return res.status(403).json({ error: "You cannot assign a higher permission level than your own." });
     }
 
-    const scope = await resolveOrganisationScope(client, req.user, null);
-    const targetResult = await client.query(
-      `SELECT id, permissions
-       FROM users
-       WHERE id = $1
-         AND ($2::int IS NULL OR organisation_id = $2)`,
-      [targetId, scope.effectiveOrganisationId],
-    );
+    const scope = await resolveOrganisationScope(prisma, req.user, null);
 
-    if (!targetResult.rows.length) {
+    const target = await prisma.user.findFirst({
+      where: {
+        id: targetId,
+        ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+      },
+      select: { id: true, permissions: true },
+    });
+
+    if (!target) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (!canTargetRole(req.user.permissions, targetResult.rows[0].permissions)) {
+    if (!canTargetRole(req.user.permissions, target.permissions)) {
       return res.status(403).json({ error: "You cannot modify a user above your permission level." });
     }
 
-    const result = await client.query(
-      `UPDATE users
-       SET permissions = $1
-       WHERE id = $2
-       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
-      [permission, targetId],
-    );
+    const updated = await prisma.user.update({
+      where: { id: targetId },
+      data: { permissions: permission },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        permissions: true,
+        isActive: true,
+        createdAt: true,
+        organisationId: true,
+      },
+    });
 
-    if (!result.rows.length) {
+    return res.json({
+      id: updated.id,
+      username: updated.username,
+      full_name: updated.fullName,
+      permissions: updated.permissions,
+      is_active: updated.isActive,
+      created_at: updated.createdAt,
+      organisation_id: updated.organisationId,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
       return res.status(404).json({ error: "User not found" });
     }
-
-    return res.json(result.rows[0]);
-  } catch (error) {
     if (error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
-  } finally {
-    client.release();
   }
 });
 
 app.put("/users/:id/password", requireAuth, async (req, res) => {
-  const client = await pool.connect();
   try {
     const targetId = Number(req.params.id);
     const isSelf = req.user.id === targetId;
@@ -1246,46 +1323,39 @@ app.put("/users/:id/password", requireAuth, async (req, res) => {
     }
 
     if (!isSelf) {
-      const scope = await resolveOrganisationScope(client, req.user, null);
-      const targetResult = await client.query(
-        `SELECT id
-         FROM users
-         WHERE id = $1
-           AND ($2::int IS NULL OR organisation_id = $2)`,
-        [targetId, scope.effectiveOrganisationId],
-      );
-      if (!targetResult.rows.length) {
+      const scope = await resolveOrganisationScope(prisma, req.user, null);
+      const target = await prisma.user.findFirst({
+        where: {
+          id: targetId,
+          ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+        },
+        select: { id: true },
+      });
+      if (!target) {
         return res.status(404).json({ error: "User not found" });
       }
     }
 
     const passwordHash = await bcrypt.hash(nextPassword, 12);
-    const result = await client.query(
-      `UPDATE users
-       SET password_hash = $1
-       WHERE id = $2
-       RETURNING id`,
-      [passwordHash, targetId],
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    await prisma.user.update({
+      where: { id: targetId },
+      data: { passwordHash },
+    });
 
     return res.json({ message: "Password updated" });
   } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "User not found" });
+    }
     if (error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
-  } finally {
-    client.release();
   }
 });
 
 app.put("/users/:id/active", requireAuth, requirePermission("users.manage"), async (req, res) => {
-  const client = await pool.connect();
   try {
     const targetId = Number(req.params.id);
     const isActive = req.body?.is_active;
@@ -1302,80 +1372,101 @@ app.put("/users/:id/active", requireAuth, requirePermission("users.manage"), asy
       return res.status(400).json({ error: "You cannot deactivate your own account." });
     }
 
-    const scope = await resolveOrganisationScope(client, req.user, null);
-    const result = await client.query(
-      `UPDATE users
-       SET is_active = $1
-       WHERE id = $2
-         AND ($3::int IS NULL OR organisation_id = $3)
-       RETURNING id, username, full_name, permissions, is_active, created_at, organisation_id`,
-      [isActive, targetId, scope.effectiveOrganisationId],
-    );
+    const scope = await resolveOrganisationScope(prisma, req.user, null);
 
-    if (!result.rows.length) {
+    const updated = await prisma.user.updateMany({
+      where: {
+        id: targetId,
+        ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+      },
+      data: { isActive },
+    });
+
+    if (updated.count === 0) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    return res.json(result.rows[0]);
+    const user = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        permissions: true,
+        isActive: true,
+        createdAt: true,
+        organisationId: true,
+      },
+    });
+
+    return res.json({
+      id: user.id,
+      username: user.username,
+      full_name: user.fullName,
+      permissions: user.permissions,
+      is_active: user.isActive,
+      created_at: user.createdAt,
+      organisation_id: user.organisationId,
+    });
   } catch (error) {
     if (error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     console.error(error);
     return res.status(500).json({ error: "Server Error" });
-  } finally {
-    client.release();
   }
 });
 
 app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (req, res) => {
-  const client = await pool.connect();
   try {
     const fridge_serial_number = normalizeHexIdentifier(req.body?.fridge_serial_number);
     const mac_address = normalizeHexIdentifier(req.body?.mac_address);
     const c_number = normalizeCNumber(req.body?.c_number);
     logAssetAction("create-device:start", `serial=${fridge_serial_number || "unknown"} byUser=${req.user?.id || "unknown"}`);
 
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
-      String(req.user.id),
-    ]);
-    const organisationId = await getUserOrganisationId(client, req.user.id);
-    if (!organisationId) {
-      await client.query("ROLLBACK");
-      return res.status(400).json({ error: "User organisation is not configured." });
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-    const rules = await getOrganisationAssetValidationRules(client, organisationId);
-    const validationErrors = validateAssetIdentifiers(
-      {
-        fridge_serial_number,
-        mac_address,
-        c_number,
-      },
-      rules,
-      { requireSerial: true },
-    );
-    if (Object.keys(validationErrors).length) {
-      await client.query("ROLLBACK");
-      return res.status(400).json(buildValidationErrorResponse(validationErrors));
-    }
+      const organisationId = await getUserOrganisationId(tx, req.user.id);
+      if (!organisationId) {
+        const error = new Error("User organisation is not configured.");
+        error.code = "USER_ORGANISATION_REQUIRED";
+        throw error;
+      }
 
-    const result = await client.query(
-      `INSERT INTO fridges (iot_mac_address, fridge_serial_number, c_number, organisation_id)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
-      [mac_address || "", fridge_serial_number, c_number || "", organisationId],
-    );
+      const rules = await getOrganisationAssetValidationRules(tx, organisationId);
+      const validationErrors = validateAssetIdentifiers(
+        { fridge_serial_number, mac_address, c_number },
+        rules,
+        { requireSerial: true },
+      );
+      if (Object.keys(validationErrors).length) {
+        const err = new Error("VALIDATION_ERROR");
+        err.code = "VALIDATION_ERROR";
+        err.validationErrors = validationErrors;
+        throw err;
+      }
 
-    await client.query("COMMIT");
+      return await tx.fridge.create({
+        data: {
+          fridgeSerialNumber: fridge_serial_number,
+          iotMacAddress: mac_address || "",
+          cNumber: c_number || "",
+          organisationId,
+        },
+      });
+    });
+
     logAssetAction("create-device:success", `serial=${fridge_serial_number}`);
-    return res.json(serializeFridgeRow(result.rows[0]));
+    return res.json(serializeFridgeRow(fridgePrismaToRow(result)));
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "VALIDATION_ERROR") {
+      return res.status(400).json(buildValidationErrorResponse(error.validationErrors));
+    }
+    if (error.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
     return handleAssetError(res, "create-device", error);
-  } finally {
-    client.release();
   }
 });
 
@@ -1451,17 +1542,18 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
       });
     }
 
-    const client = await pool.connect();
     const inserted = [];
     const skippedRows = [];
 
     try {
-      await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
-      const organisationId = await getUserOrganisationId(client, req.user.id);
+      // Set the current user config for audit trigger (no transaction wrapping the whole bulk, rows are individual)
+      await prisma.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
+
+      const organisationId = await getUserOrganisationId(prisma, req.user.id);
       if (!organisationId) {
         return res.status(400).json({ error: "User organisation is not configured." });
       }
-      const rules = await getOrganisationAssetValidationRules(client, organisationId);
+      const rules = await getOrganisationAssetValidationRules(prisma, organisationId);
 
       console.info(`[bulk-upload] rows-to-process=${validRows.length}`);
       for (const row of validRows) {
@@ -1491,22 +1583,27 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
           continue;
         }
 
-        const existing = await client.query(
-          `SELECT fridge_serial_number, iot_mac_address, c_number
-           FROM fridges
-           WHERE fridge_serial_number = $1
-              OR ($2::text IS NOT NULL AND iot_mac_address = $2)
-           LIMIT 1`,
-          [row.fridge_serial_number, row.mac_address],
-        );
+        // Check for existing row by serial or mac
+        const existing = await prisma.fridge.findFirst({
+          where: {
+            OR: [
+              { fridgeSerialNumber: row.fridge_serial_number },
+              ...(row.mac_address ? [{ iotMacAddress: row.mac_address }] : []),
+            ],
+          },
+          select: {
+            fridgeSerialNumber: true,
+            iotMacAddress: true,
+            cNumber: true,
+          },
+        });
 
-        if (existing.rows.length) {
-          const existingRow = existing.rows[0];
-          const isSerialMatch = existingRow.fridge_serial_number === row.fridge_serial_number;
-          const isMacMatch = row.mac_address && existingRow.iot_mac_address === row.mac_address;
+        if (existing) {
+          const isSerialMatch = existing.fridgeSerialNumber === row.fridge_serial_number;
+          const isMacMatch = row.mac_address && existing.iotMacAddress === row.mac_address;
           skippedRows.push(buildSkippedDuplicateReportRow(
             row,
-            existingRow,
+            existing,
             isSerialMatch
               ? "Serial number already exists in database."
               : isMacMatch
@@ -1517,37 +1614,40 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
         }
 
         try {
-          const result = await client.query(
-            `INSERT INTO fridges (iot_mac_address, fridge_serial_number, c_number, organisation_id)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT DO NOTHING
-             RETURNING *`,
-            [row.mac_address, row.fridge_serial_number, row.c_number, organisationId],
-          );
-          if (result.rows.length) {
-            inserted.push(result.rows[0]);
-          } else {
-            const existingAfterConflict = await client.query(
-              `SELECT fridge_serial_number, iot_mac_address, c_number
-               FROM fridges
-               WHERE fridge_serial_number = $1
-                  OR ($2::text IS NOT NULL AND iot_mac_address = $2)
-               LIMIT 1`,
-              [row.fridge_serial_number, row.mac_address],
-            );
+          const createdFridge = await prisma.fridge.create({
+            data: {
+              fridgeSerialNumber: row.fridge_serial_number,
+              iotMacAddress: row.mac_address,
+              cNumber: row.c_number,
+              organisationId,
+            },
+          });
+          inserted.push(fridgePrismaToRow(createdFridge));
+        } catch (rowError) {
+          // P2002 = unique constraint violation (conflict)
+          if (rowError.code === "P2002") {
+            const existingAfterConflict = await prisma.fridge.findFirst({
+              where: {
+                OR: [
+                  { fridgeSerialNumber: row.fridge_serial_number },
+                  ...(row.mac_address ? [{ iotMacAddress: row.mac_address }] : []),
+                ],
+              },
+              select: { fridgeSerialNumber: true, iotMacAddress: true, cNumber: true },
+            });
             skippedRows.push(buildSkippedDuplicateReportRow(
               row,
-              existingAfterConflict.rows[0],
+              existingAfterConflict,
               "Row skipped because it already exists in database.",
             ));
+          } else {
+            errors.push({
+              rowNumber: row.rowNumber,
+              serial: row.fridge_serial_number,
+              reason: "INSERT_ERROR",
+              message: rowError.message || "Unexpected insert error.",
+            });
           }
-        } catch (rowError) {
-          errors.push({
-            rowNumber: row.rowNumber,
-            serial: row.fridge_serial_number,
-            reason: "INSERT_ERROR",
-            message: rowError.message || "Unexpected insert error.",
-          });
         }
       }
 
@@ -1571,8 +1671,6 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
       });
     } catch (error) {
       return handleAssetError(res, "bulk-upload", error);
-    } finally {
-      client.release();
     }
   });
 });
@@ -1625,238 +1723,265 @@ app.get(
   requireAuth,
   requireAnyPermission(["assets.view", "device_checker.submit"]),
   async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
-    logAssetAction(
-      "list-fridges:start",
-      `orgFilter=${scope.effectiveOrganisationId ?? "all"} byUser=${req.user?.id || "unknown"}`,
-    );
+    try {
+      const scope = await resolveOrganisationScope(prisma, req.user, req.query.organisation_id);
+      logAssetAction(
+        "list-fridges:start",
+        `orgFilter=${scope.effectiveOrganisationId ?? "all"} byUser=${req.user?.id || "unknown"}`,
+      );
 
-    const result = await client.query(
-      `SELECT *
-       FROM fridges
-       WHERE ($1::int IS NULL OR organisation_id = $1)
-       ORDER BY fridge_serial_number ASC`,
-      [scope.effectiveOrganisationId],
-    );
-    logAssetAction("list-fridges:success", `count=${result.rows.length}`);
-    return res.json(result.rows.map(serializeFridgeRow));
-  } catch (error) {
-    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
-      return res.status(400).json({ error: error.message });
+      const fridges = await prisma.fridge.findMany({
+        where: scope.effectiveOrganisationId != null
+          ? { organisationId: scope.effectiveOrganisationId }
+          : {},
+        orderBy: { fridgeSerialNumber: "asc" },
+      });
+
+      logAssetAction("list-fridges:success", `count=${fridges.length}`);
+      return res.json(fridges.map((f) => serializeFridgeRow(fridgePrismaToRow(f))));
+    } catch (error) {
+      if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+        return res.status(400).json({ error: error.message });
+      }
+      return handleAssetError(res, "list-fridges", error);
     }
-    return handleAssetError(res, "list-fridges", error);
-  } finally {
-    client.release();
-  }
-});
+  },
+);
 
 app.get(
   "/searchFridges",
   requireAuth,
   requireAnyPermission(["assets.view", "device_checker.submit"]),
   async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const searchTerm = String(req.query.searchTerm || "");
-    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
-    logAssetAction("search-fridges:start", `term=${searchTerm} orgFilter=${scope.effectiveOrganisationId ?? "all"}`);
-    const formattedSearch = `%${searchTerm}%`;
+    try {
+      const searchTerm = String(req.query.searchTerm || "");
+      const scope = await resolveOrganisationScope(prisma, req.user, req.query.organisation_id);
+      logAssetAction("search-fridges:start", `term=${searchTerm} orgFilter=${scope.effectiveOrganisationId ?? "all"}`);
 
-    const result = await client.query(
-      `SELECT *
-       FROM fridges
-       WHERE ($1::int IS NULL OR organisation_id = $1)
-         AND (
-           iot_mac_address ILIKE $2
-           OR fridge_serial_number ILIKE $2
-           OR c_number ILIKE $2
-         )
-       ORDER BY fridge_serial_number ASC`,
-      [scope.effectiveOrganisationId, formattedSearch],
-    );
+      const fridges = await prisma.fridge.findMany({
+        where: {
+          ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+          OR: [
+            { iotMacAddress: { contains: searchTerm, mode: "insensitive" } },
+            { fridgeSerialNumber: { contains: searchTerm, mode: "insensitive" } },
+            { cNumber: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
+        orderBy: { fridgeSerialNumber: "asc" },
+      });
 
-    logAssetAction("search-fridges:success", `count=${result.rows.length}`);
-    return res.json(result.rows.map(serializeFridgeRow));
-  } catch (error) {
-    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
-      return res.status(400).json({ error: error.message });
+      logAssetAction("search-fridges:success", `count=${fridges.length}`);
+      return res.json(fridges.map((f) => serializeFridgeRow(fridgePrismaToRow(f))));
+    } catch (error) {
+      if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+        return res.status(400).json({ error: error.message });
+      }
+      return handleAssetError(res, "search-fridges", error);
     }
-    return handleAssetError(res, "search-fridges", error);
-  } finally {
-    client.release();
-  }
-});
+  },
+);
 
 app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.edit"), async (req, res) => {
-  const client = await pool.connect();
   try {
     logAssetAction(
       "update-device:start",
       `serial=${req.params.serialNumber || "unknown"} byUser=${req.user?.id || "unknown"}`,
     );
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
-      String(req.user.id),
-    ]);
-    const scope = await resolveOrganisationScope(client, req.user, null);
 
-    const fridgeResult = await client.query(
-      `SELECT fridge_serial_number, iot_mac_address, c_number, organisation_id
-       FROM fridges
-       WHERE fridge_serial_number = $1
-         AND ($2::int IS NULL OR organisation_id = $2)`,
-      [req.params.serialNumber, scope.effectiveOrganisationId],
-    );
-    if (!fridgeResult.rows.length) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "No fridge found with that serial number" });
-    }
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-    const fridge = fridgeResult.rows[0];
-    const nextMac = Object.prototype.hasOwnProperty.call(req.body || {}, "mac_address")
-      ? normalizeHexIdentifier(req.body?.mac_address)
-      : String(fridge.iot_mac_address || "");
-    const nextCNumber = Object.prototype.hasOwnProperty.call(req.body || {}, "c_number")
-      ? normalizeCNumber(req.body?.c_number)
-      : String(fridge.c_number || "");
-    const rules = await getOrganisationAssetValidationRules(client, fridge.organisation_id);
-    const validationErrors = validateAssetIdentifiers(
-      {
-        mac_address: nextMac,
-        c_number: nextCNumber,
-      },
-      rules,
-    );
-    if (Object.keys(validationErrors).length) {
-      await client.query("ROLLBACK");
-      return res.status(400).json(buildValidationErrorResponse(validationErrors));
-    }
+      const scope = await resolveOrganisationScope(tx, req.user, null);
 
-    const result = await client.query(
-      `UPDATE fridges
-       SET iot_mac_address = $1,
-           c_number = $2
-       WHERE fridge_serial_number = $3
-         AND ($4::int IS NULL OR organisation_id = $4)
-       RETURNING *`,
-      [nextMac || "", nextCNumber || "", req.params.serialNumber, scope.effectiveOrganisationId],
-    );
+      const fridge = await tx.fridge.findFirst({
+        where: {
+          fridgeSerialNumber: req.params.serialNumber,
+          ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+        },
+      });
 
-    await client.query("COMMIT");
+      if (!fridge) {
+        const error = new Error("No fridge found with that serial number");
+        error.code = "NOT_FOUND";
+        throw error;
+      }
+
+      const nextMac = Object.prototype.hasOwnProperty.call(req.body || {}, "mac_address")
+        ? normalizeHexIdentifier(req.body?.mac_address)
+        : String(fridge.iotMacAddress || "");
+      const nextCNumber = Object.prototype.hasOwnProperty.call(req.body || {}, "c_number")
+        ? normalizeCNumber(req.body?.c_number)
+        : String(fridge.cNumber || "");
+
+      const rules = await getOrganisationAssetValidationRules(tx, fridge.organisationId);
+      const validationErrors = validateAssetIdentifiers(
+        { mac_address: nextMac, c_number: nextCNumber },
+        rules,
+      );
+      if (Object.keys(validationErrors).length) {
+        const err = new Error("VALIDATION_ERROR");
+        err.code = "VALIDATION_ERROR";
+        err.validationErrors = validationErrors;
+        throw err;
+      }
+
+      return await tx.fridge.update({
+        where: {
+          fridgeSerialNumber: req.params.serialNumber,
+          ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+        },
+        data: {
+          iotMacAddress: nextMac || "",
+          cNumber: nextCNumber || "",
+        },
+      });
+    });
 
     logAssetAction("update-device:success", `serial=${req.params.serialNumber}`);
-    return res.json(serializeFridgeRow(result.rows[0]));
+    return res.json(serializeFridgeRow(fridgePrismaToRow(result)));
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "VALIDATION_ERROR") {
+      return res.status(400).json(buildValidationErrorResponse(error.validationErrors));
+    }
+    if (error.code === "NOT_FOUND") {
+      return res.status(404).json({ error: error.message });
+    }
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "update-device", error);
-  } finally {
-    client.release();
   }
 });
 
 app.delete("/deleteDevice/:serialNumber", requireAuth, requirePermission("assets.delete"), async (req, res) => {
-  const client = await pool.connect();
   try {
     logAssetAction(
       "delete-device:start",
       `serial=${req.params.serialNumber || "unknown"} byUser=${req.user?.id || "unknown"}`,
     );
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
-      String(req.user.id),
-    ]);
-    const scope = await resolveOrganisationScope(client, req.user, null);
 
-    const result = await client.query(
-      `DELETE FROM fridges
-       WHERE fridge_serial_number = $1
-         AND ($2::int IS NULL OR organisation_id = $2)
-       RETURNING *`,
-      [req.params.serialNumber, scope.effectiveOrganisationId],
-    );
+    const deleted = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-    await client.query("COMMIT");
+      const scope = await resolveOrganisationScope(tx, req.user, null);
 
-    if (!result.rows.length) {
+      const fridge = await tx.fridge.findFirst({
+        where: {
+          fridgeSerialNumber: req.params.serialNumber,
+          ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+        },
+      });
+
+      if (!fridge) {
+        return null;
+      }
+
+      return await tx.fridge.delete({
+        where: { fridgeSerialNumber: req.params.serialNumber },
+      });
+    });
+
+    if (!deleted) {
       return res.status(404).json({ error: "Fridge not found" });
     }
 
     logAssetAction("delete-device:success", `serial=${req.params.serialNumber}`);
-    return res.json({ message: "Fridge deleted successfully", device: result.rows[0] });
+    return res.json({ message: "Fridge deleted successfully", device: fridgePrismaToRow(deleted) });
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "delete-device", error);
-  } finally {
-    client.release();
   }
 });
 
 app.get("/auditLog/:serialNumber", requireAuth, requirePermission("history.view"), async (req, res) => {
-  const client = await pool.connect();
   try {
-    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    const scope = await resolveOrganisationScope(prisma, req.user, req.query.organisation_id);
     logAssetAction(
       "device-history:start",
       `serial=${req.params.serialNumber || "unknown"} orgFilter=${scope.effectiveOrganisationId ?? "all"}`,
     );
-    const result = await client.query(
-      `SELECT fal.*,
-              u.username AS changed_by_username
-       FROM fridge_audit_log fal
-       LEFT JOIN users u ON u.id = fal.changed_by
-       WHERE UPPER(fal.fridge_serial_number) = UPPER($1)
-         AND ($2::int IS NULL OR fal.organisation_id = $2)
-       ORDER BY fal.changed_at DESC`,
-      [req.params.serialNumber, scope.effectiveOrganisationId],
-    );
-    logAssetAction("device-history:success", `serial=${req.params.serialNumber || "unknown"} count=${result.rows.length}`);
-    return res.json(result.rows);
+
+    const logs = await prisma.fridgeAuditLog.findMany({
+      where: {
+        fridgeSerialNumber: { equals: req.params.serialNumber, mode: "insensitive" },
+        ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+      },
+      include: {
+        changedByUser: { select: { username: true } },
+      },
+      orderBy: { changedAt: "desc" },
+    });
+
+    logAssetAction("device-history:success", `serial=${req.params.serialNumber || "unknown"} count=${logs.length}`);
+
+    return res.json(logs.map((log) => ({
+      log_id: log.logId,
+      fridge_serial_number: log.fridgeSerialNumber,
+      source_table: log.sourceTable,
+      action_type: log.actionType,
+      old_mac: log.oldMac,
+      new_mac: log.newMac,
+      old_c_num: log.oldCNum,
+      new_c_num: log.newCNum,
+      mismatch_id: log.mismatchId,
+      metadata: log.metadata,
+      organisation_id: log.organisationId,
+      changed_at: log.changedAt,
+      changed_by: log.changedBy,
+      changed_by_username: log.changedByUser?.username ?? null,
+    })));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "device-history", error);
-  } finally {
-    client.release();
   }
 });
 
 app.get("/auditLog", requireAuth, requirePermission("history.view"), async (req, res) => {
-  const client = await pool.connect();
   try {
-    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    const scope = await resolveOrganisationScope(prisma, req.user, req.query.organisation_id);
     logAssetAction("audit-history:start", `orgFilter=${scope.effectiveOrganisationId ?? "all"}`);
-    const result = await client.query(
-      `SELECT fal.*,
-              u.username AS changed_by_username
-       FROM fridge_audit_log fal
-       LEFT JOIN users u ON u.id = fal.changed_by
-       WHERE ($1::int IS NULL OR fal.organisation_id = $1)
-       ORDER BY fal.changed_at DESC`,
-      [scope.effectiveOrganisationId],
-    );
-    logAssetAction("audit-history:success", `count=${result.rows.length}`);
-    return res.json(result.rows);
+
+    const logs = await prisma.fridgeAuditLog.findMany({
+      where: scope.effectiveOrganisationId != null
+        ? { organisationId: scope.effectiveOrganisationId }
+        : {},
+      include: {
+        changedByUser: { select: { username: true } },
+      },
+      orderBy: { changedAt: "desc" },
+    });
+
+    logAssetAction("audit-history:success", `count=${logs.length}`);
+
+    return res.json(logs.map((log) => ({
+      log_id: log.logId,
+      fridge_serial_number: log.fridgeSerialNumber,
+      source_table: log.sourceTable,
+      action_type: log.actionType,
+      old_mac: log.oldMac,
+      new_mac: log.newMac,
+      old_c_num: log.oldCNum,
+      new_c_num: log.newCNum,
+      mismatch_id: log.mismatchId,
+      metadata: log.metadata,
+      organisation_id: log.organisationId,
+      changed_at: log.changedAt,
+      changed_by: log.changedBy,
+      changed_by_username: log.changedByUser?.username ?? null,
+    })));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "audit-history", error);
-  } finally {
-    client.release();
   }
 });
 
 app.post("/mobile/verify", requireMobileKey, async (req, res) => {
-  const client = await pool.connect();
   try {
     const fridge_serial_number = String(req.body?.fridge_serial_number || "").trim();
     const received_mac = String(req.body?.mac_address || "").trim().toUpperCase();
@@ -1868,87 +1993,84 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
 
     logAssetAction("mobile-verify:start", `serial=${fridge_serial_number}`);
 
-    await client.query("BEGIN");
-
-    const fridgeRes = await client.query(
-      `SELECT fridge_serial_number, iot_mac_address, c_number, verified
-       FROM fridges
-       WHERE fridge_serial_number = $1`,
-      [fridge_serial_number],
-    );
-
     const norm = (value) => String(value || "").trim().toUpperCase();
 
-    if (!fridgeRes.rows.length) {
-      const mismatchInsert = await client.query(
-        `INSERT INTO fridge_mismatches
-          (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status)
-         VALUES ($1, $2, $3, NULL, NULL, 'open')
-         RETURNING *`,
-        [fridge_serial_number, received_mac || null, received_c_number || null],
-      );
+    const result = await prisma.$transaction(async (tx) => {
+      const fridge = await tx.fridge.findUnique({
+        where: { fridgeSerialNumber: fridge_serial_number },
+        select: { fridgeSerialNumber: true, iotMacAddress: true, cNumber: true, verified: true },
+      });
 
-      await client.query("COMMIT");
+      if (!fridge) {
+        const mismatch = await tx.fridgeMismatch.create({
+          data: {
+            fridgeSerialNumber: fridge_serial_number,
+            receivedMac: received_mac || null,
+            receivedCNumber: received_c_number || null,
+            dbMac: null,
+            dbCNumber: null,
+            status: "open",
+          },
+        });
+        return { type: "NOT_FOUND", mismatch };
+      }
+
+      const macMatches = received_mac ? norm(fridge.iotMacAddress) === norm(received_mac) : true;
+      const cMatches = received_c_number ? norm(fridge.cNumber) === norm(received_c_number) : true;
+
+      if (macMatches && cMatches) {
+        const updated = await tx.fridge.update({
+          where: { fridgeSerialNumber: fridge_serial_number },
+          data: { verified: true, verifiedAt: new Date() },
+        });
+        return { type: "VERIFIED", fridge: updated };
+      }
+
+      const mismatch = await tx.fridgeMismatch.create({
+        data: {
+          fridgeSerialNumber: fridge_serial_number,
+          receivedMac: received_mac || null,
+          receivedCNumber: received_c_number || null,
+          dbMac: fridge.iotMacAddress || null,
+          dbCNumber: fridge.cNumber || null,
+          status: "open",
+        },
+      });
+      return { type: "VALUE_MISMATCH", mismatch };
+    });
+
+    if (result.type === "NOT_FOUND") {
       logAssetAction("mobile-verify:mismatch-created", `serial=${fridge_serial_number} reason=NOT_FOUND`);
       return res.status(200).json({
         ok: false,
         result: "MISMATCH_CREATED",
         reason: "NOT_FOUND",
-        mismatch: serializeMismatchRow(mismatchInsert.rows[0]),
+        mismatch: serializeMismatchRow(mismatchPrismaToRow(result.mismatch)),
       });
     }
 
-    const fridge = fridgeRes.rows[0];
-    const macMatches = received_mac ? norm(fridge.iot_mac_address) === norm(received_mac) : true;
-    const cMatches = received_c_number ? norm(fridge.c_number) === norm(received_c_number) : true;
-
-    if (macMatches && cMatches) {
-      const updated = await client.query(
-        `UPDATE fridges
-         SET verified = true,
-             verified_at = NOW()
-         WHERE fridge_serial_number = $1
-         RETURNING *`,
-        [fridge_serial_number],
-      );
-
-      await client.query("COMMIT");
+    if (result.type === "VERIFIED") {
       logAssetAction("mobile-verify:verified", `serial=${fridge_serial_number}`);
-      return res.status(200).json({ ok: true, result: "VERIFIED", fridge: serializeFridgeRow(updated.rows[0]) });
+      return res.status(200).json({
+        ok: true,
+        result: "VERIFIED",
+        fridge: serializeFridgeRow(fridgePrismaToRow(result.fridge)),
+      });
     }
 
-    const mismatch = await client.query(
-      `INSERT INTO fridge_mismatches
-        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status)
-       VALUES ($1, $2, $3, $4, $5, 'open')
-       RETURNING *`,
-      [
-        fridge_serial_number,
-        received_mac || null,
-        received_c_number || null,
-        fridge.iot_mac_address || null,
-        fridge.c_number || null,
-      ],
-    );
-
-    await client.query("COMMIT");
     logAssetAction("mobile-verify:mismatch-created", `serial=${fridge_serial_number} reason=VALUE_MISMATCH`);
     return res.status(200).json({
       ok: false,
       result: "MISMATCH_CREATED",
       reason: "VALUE_MISMATCH",
-      mismatch: serializeMismatchRow(mismatch.rows[0]),
+      mismatch: serializeMismatchRow(mismatchPrismaToRow(result.mismatch)),
     });
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
     return handleAssetError(res, "mobile-verify", error);
-  } finally {
-    client.release();
   }
 });
 
 app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.submit"), async (req, res) => {
-  const client = await pool.connect();
   try {
     const serial = String(req.body?.fridge_serial_number || "").trim();
     const mac = normalizeHexIdentifier(req.body?.mac_address);
@@ -1971,113 +2093,105 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
 
     logAssetAction(
       "submit-manual-mismatch:start",
-      `serial=${serial} byUser=${req.user?.id || "unknown"}`
+      `serial=${serial} byUser=${req.user?.id || "unknown"}`,
     );
 
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [
-      String(req.user.id),
-    ]);
-    const scope = await resolveOrganisationScope(client, req.user, null);
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-    const fridgeRes = await client.query(
-      `SELECT fridge_serial_number, iot_mac_address, c_number, verified
-       FROM fridges
-       WHERE fridge_serial_number = $1
-         AND ($2::int IS NULL OR organisation_id = $2)`,
-      [serial, scope.effectiveOrganisationId],
-    );
+      const scope = await resolveOrganisationScope(tx, req.user, null);
 
-    if (!fridgeRes.rows.length) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Fridge not found" });
-    }
+      const fridge = await tx.fridge.findFirst({
+        where: {
+          fridgeSerialNumber: serial,
+          ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+        },
+        select: { fridgeSerialNumber: true, iotMacAddress: true, cNumber: true, verified: true },
+      });
 
-    const fridge = fridgeRes.rows[0];
-    const norm = (value) => String(value || "").trim().toUpperCase();
-    const macMatches = norm(fridge.iot_mac_address) === norm(mac);
-    const cMatches = norm(fridge.c_number) === norm(cNum);
+      if (!fridge) {
+        const error = new Error("Fridge not found");
+        error.code = "NOT_FOUND";
+        throw error;
+      }
 
-    if (macMatches && cMatches) {
-      const updatedFridge = await client.query(
-        `UPDATE fridges
-         SET verified = true,
-             verified_at = NOW(),
-             latitude = COALESCE($2::numeric, latitude),
-             longitude = COALESCE($3::numeric, longitude)
-         WHERE fridge_serial_number = $1
-         RETURNING *`,
-        [serial, latitude, longitude],
-      );
+      const norm = (value) => String(value || "").trim().toUpperCase();
+      const macMatches = norm(fridge.iotMacAddress) === norm(mac);
+      const cMatches = norm(fridge.cNumber) === norm(cNum);
 
-      await client.query("COMMIT");
+      if (macMatches && cMatches) {
+        const updatedFridge = await tx.fridge.update({
+          where: { fridgeSerialNumber: serial },
+          data: {
+            verified: true,
+            verifiedAt: new Date(),
+            ...(latitude != null ? { latitude } : {}),
+            ...(longitude != null ? { longitude } : {}),
+          },
+        });
+        return { type: "VERIFIED", fridge: updatedFridge };
+      }
+
+      let updatedFridge = null;
+      if (fridge.verified) {
+        updatedFridge = await tx.fridge.update({
+          where: { fridgeSerialNumber: serial },
+          data: { verified: false, verifiedAt: new Date() },
+        });
+      }
+
+      const mismatch = await tx.fridgeMismatch.create({
+        data: {
+          fridgeSerialNumber: serial,
+          receivedMac: mac || null,
+          receivedCNumber: cNum || null,
+          dbMac: fridge.iotMacAddress || null,
+          dbCNumber: fridge.cNumber || null,
+          status: "open",
+          senderId: req.user.id,
+          latitude,
+          longitude,
+        },
+      });
+
+      return { type: "MISMATCH_CREATED", mismatch, fridge: updatedFridge };
+    });
+
+    if (result.type === "VERIFIED") {
       logAssetAction("submit-manual-mismatch:verified", `serial=${serial}`);
-
       return res.status(200).json({
         ok: true,
         result: "VERIFIED",
         fridge_serial_number: serial,
-        fridge: serializeFridgeRow(updatedFridge.rows[0]),
+        fridge: serializeFridgeRow(fridgePrismaToRow(result.fridge)),
       });
     }
 
-    let updatedFridge = null;
-    if (fridge.verified) {
-      const updated = await client.query(
-        `UPDATE fridges
-         SET verified = false,
-             verified_at = NOW()
-         WHERE fridge_serial_number = $1
-         RETURNING *`,
-        [serial],
-      );
-      updatedFridge = updated.rows[0] || null;
-    }
+    logAssetAction("submit-manual-mismatch:success", `serial=${serial} id=${result.mismatch.id}`);
 
-    const mismatchInsert = await client.query(
-      `INSERT INTO fridge_mismatches
-        (fridge_serial_number, received_mac, received_c_number, db_mac, db_c_number, status, sender_id, latitude, longitude)
-       VALUES ($1, $2, $3, $4, $5, 'open', $6, $7, $8)
-       RETURNING *`,
-      [
-        serial,
-        mac || null,
-        cNum || null,
-        fridge.iot_mac_address || null,
-        fridge.c_number || null,
-        req.user.id,
-        latitude,
-        longitude,
-      ]
-    );
-
-    await client.query("COMMIT");
-    logAssetAction("submit-manual-mismatch:success", `serial=${serial} id=${mismatchInsert.rows[0].id}`);
-    
     return res.status(200).json({
       ok: true,
       result: "MISMATCH_CREATED",
-      id: mismatchInsert.rows[0].id,
-      fridge_serial_number: mismatchInsert.rows[0].fridge_serial_number,
-      mismatch: serializeMismatchRow(mismatchInsert.rows[0]),
-      fridge: serializeFridgeRow(updatedFridge),
+      id: result.mismatch.id,
+      fridge_serial_number: result.mismatch.fridgeSerialNumber,
+      mismatch: serializeMismatchRow(mismatchPrismaToRow(result.mismatch)),
+      fridge: serializeFridgeRow(fridgePrismaToRow(result.fridge)),
     });
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "NOT_FOUND") {
+      return res.status(404).json({ error: error.message });
+    }
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "submit-manual-mismatch", error);
-  } finally {
-    client.release();
   }
 });
 
 app.get("/mismatches", requireAuth, requirePermission("mismatches.view"), async (req, res) => {
-  const client = await pool.connect();
   try {
     const rawStatus = String(req.query.status || "open").trim().toLowerCase();
-    const scope = await resolveOrganisationScope(client, req.user, req.query.organisation_id);
+    const scope = await resolveOrganisationScope(prisma, req.user, req.query.organisation_id);
     logAssetAction(
       "list-mismatches:start",
       `status=${rawStatus} orgFilter=${scope.effectiveOrganisationId ?? "all"}`,
@@ -2086,77 +2200,102 @@ app.get("/mismatches", requireAuth, requirePermission("mismatches.view"), async 
     const to = req.query.to || null;
     const serial = String(req.query.serial || "").trim();
 
-    const filters = [];
-    const params = [];
-    let index = 1;
-
     let statusAliases = [];
     if (rawStatus === "all") {
       statusAliases = [];
     } else if (rawStatus === "open") {
       statusAliases = ["open"];
     } else if (rawStatus === "resolve" || rawStatus === "resolved") {
-      statusAliases = ["resolve", "resolved"];
+      statusAliases = ["resolve"];
     } else if (rawStatus === "cancel" || rawStatus === "cancelled" || rawStatus === "canceled") {
-      statusAliases = ["cancel", "cancelled", "canceled"];
+      statusAliases = ["cancel"];
     } else if (rawStatus === "delete" || rawStatus === "deleted") {
-      statusAliases = ["delete", "deleted"];
+      statusAliases = ["delete"];
     } else {
       return res.status(400).json({ error: "Invalid status filter" });
     }
 
+    const where = {};
+
     if (statusAliases.length) {
-      filters.push(`LOWER(fm.status::text) = ANY($${index++}::text[])`);
+      where.status = { in: statusAliases };
+    }
+
+    if (from) {
+      where.receivedAt = { ...where.receivedAt, gte: new Date(`${from}T00:00:00Z`) };
+    }
+
+    if (to) {
+      where.receivedAt = { ...where.receivedAt, lte: new Date(`${to}T23:59:59Z`) };
+    }
+
+    if (serial) {
+      where.fridgeSerialNumber = { contains: serial, mode: "insensitive" };
+    }
+
+    if (scope.effectiveOrganisationId != null) {
+      where.fridge = { organisationId: scope.effectiveOrganisationId };
+    }
+
+    // Use $queryRaw for this query since it joins fridges for org scoping and
+    // the Prisma relation filter on a non-relation field requires raw SQL for the LEFT JOIN pattern
+    const { Prisma } = require("@prisma/client");
+
+    // Build the query using raw SQL to preserve the original LEFT JOIN behaviour
+    // (mismatches for fridges that no longer exist still appear when no org filter)
+    const filters = [];
+    const params = [];
+    let idx = 1;
+
+    if (statusAliases.length) {
+      filters.push(`LOWER(fm.status::text) = ANY($${idx++}::text[])`);
       params.push(statusAliases);
     }
 
     if (from) {
-      filters.push(`fm.received_at >= $${index++}::timestamptz`);
+      filters.push(`fm.received_at >= $${idx++}::timestamptz`);
       params.push(`${from}T00:00:00Z`);
     }
 
     if (to) {
-      filters.push(`fm.received_at <= $${index++}::timestamptz`);
+      filters.push(`fm.received_at <= $${idx++}::timestamptz`);
       params.push(`${to}T23:59:59Z`);
     }
 
     if (serial) {
-      filters.push(`fm.fridge_serial_number ILIKE $${index++}`);
+      filters.push(`fm.fridge_serial_number ILIKE $${idx++}`);
       params.push(`%${serial}%`);
     }
 
-    const orgParamIndex = index++;
+    const orgParamIndex = idx++;
     filters.push(`($${orgParamIndex}::int IS NULL OR f.organisation_id = $${orgParamIndex})`);
     params.push(scope.effectiveOrganisationId);
 
-    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
-    const result = await client.query(
+    const rows = await prisma.$queryRawUnsafe(
       `SELECT fm.*,
               fm.db_mac AS expected_mac,
               fm.db_c_number AS expected_c_number
        FROM fridge_mismatches fm
        LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
-       ${where}
+       ${whereClause}
        ORDER BY fm.received_at DESC
        LIMIT 500`,
-      params,
+      ...params,
     );
 
-    logAssetAction("list-mismatches:success", `count=${result.rows.length}`);
-    return res.json(result.rows.map(serializeMismatchRow));
+    logAssetAction("list-mismatches:success", `count=${rows.length}`);
+    return res.json(rows.map(serializeMismatchRow));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "list-mismatches", error);
-  } finally {
-    client.release();
   }
 });
 
 app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.resolve"), async (req, res) => {
-  const client = await pool.connect();
   try {
     logAssetAction(
       "resolve-mismatch:start",
@@ -2169,89 +2308,98 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
 
     const { note = "" } = req.body;
 
-    await client.query("BEGIN");
-    const scope = await resolveOrganisationScope(client, req.user, null);
+    const result = await prisma.$transaction(async (tx) => {
+      const scope = await resolveOrganisationScope(tx, req.user, null);
 
-    const mismatchResult = await client.query(
-      `SELECT fm.*, f.organisation_id
-       FROM fridge_mismatches fm
-       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
-       WHERE fm.id = $1
-         AND ($2::int IS NULL OR f.organisation_id = $2)`,
-      [mismatchId, scope.effectiveOrganisationId],
-    );
+      // Fetch mismatch with its fridge's organisation_id via raw query to preserve the LEFT JOIN behaviour
+      const rows = await tx.$queryRawUnsafe(
+        `SELECT fm.*, f.organisation_id
+         FROM fridge_mismatches fm
+         LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+         WHERE fm.id = $1
+           AND ($2::int IS NULL OR f.organisation_id = $2)`,
+        mismatchId,
+        scope.effectiveOrganisationId,
+      );
 
-    if (!mismatchResult.rows.length) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Mismatch not found" });
-    }
+      if (!rows.length) {
+        const error = new Error("Mismatch not found");
+        error.code = "NOT_FOUND";
+        throw error;
+      }
 
-    const mismatch = mismatchResult.rows[0];
-    await client.query("SELECT set_config('myapp.current_user_id', $1, false)", [String(req.user.id)]);
+      const mismatch = rows[0];
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-    const newMac = mismatch.received_mac ? normalizeHexIdentifier(mismatch.received_mac) : "";
-    const newC = mismatch.received_c_number ? normalizeCNumber(mismatch.received_c_number) : "";
-    const rules = await getOrganisationAssetValidationRules(client, mismatch.organisation_id);
-    const validationErrors = validateAssetIdentifiers(
-      {
-        mac_address: newMac,
-        c_number: newC,
-      },
-      rules,
-    );
-    if (Object.keys(validationErrors).length) {
-      await client.query("ROLLBACK");
-      return res.status(400).json(buildValidationErrorResponse(validationErrors));
-    }
+      const newMac = mismatch.received_mac ? normalizeHexIdentifier(mismatch.received_mac) : "";
+      const newC = mismatch.received_c_number ? normalizeCNumber(mismatch.received_c_number) : "";
+      const rules = await getOrganisationAssetValidationRules(tx, mismatch.organisation_id);
+      const validationErrors = validateAssetIdentifiers(
+        { mac_address: newMac, c_number: newC },
+        rules,
+      );
+      if (Object.keys(validationErrors).length) {
+        const err = new Error("VALIDATION_ERROR");
+        err.code = "VALIDATION_ERROR";
+        err.validationErrors = validationErrors;
+        throw err;
+      }
 
-    const updateFridge = await client.query(
-      `UPDATE fridges
-       SET iot_mac_address = COALESCE(NULLIF($1, ''), iot_mac_address),
-           c_number = COALESCE(NULLIF($2, ''), c_number),
-           latitude = COALESCE($4::numeric, latitude),
-           longitude = COALESCE($5::numeric, longitude),
-           verified = true,
-           verified_at = NOW()
-       WHERE fridge_serial_number = $3
-       RETURNING *`,
-      [newMac, newC, mismatch.fridge_serial_number, mismatch.latitude, mismatch.longitude],
-    );
+      // Update fridge using raw to preserve the COALESCE(NULLIF(...)) logic
+      const updatedFridgeRows = await tx.$queryRawUnsafe(
+        `UPDATE fridges
+         SET iot_mac_address = COALESCE(NULLIF($1, ''), iot_mac_address),
+             c_number = COALESCE(NULLIF($2, ''), c_number),
+             latitude = COALESCE($4::numeric, latitude),
+             longitude = COALESCE($5::numeric, longitude),
+             verified = true,
+             verified_at = NOW()
+         WHERE fridge_serial_number = $3
+         RETURNING *`,
+        newMac,
+        newC,
+        mismatch.fridge_serial_number,
+        mismatch.latitude,
+        mismatch.longitude,
+      );
 
-    const fridgeUpdated = updateFridge.rows[0] || null;
+      const fridgeUpdated = updatedFridgeRows[0] || null;
 
-    const resolved = await client.query(
-      `UPDATE fridge_mismatches
-       SET status = 'resolve',
-           resolved_at = NOW(),
-           resolved_by = $1,
-           resolution_note = COALESCE(NULLIF($2, ''), resolution_note)
-       WHERE id = $3
-       RETURNING *`,
-      [req.user.id, String(note || "").trim(), mismatchId],
-    );
+      const resolved = await tx.fridgeMismatch.update({
+        where: { id: BigInt(mismatchId) },
+        data: {
+          status: "resolve",
+          resolvedAt: new Date(),
+          resolvedBy: req.user.id,
+          resolutionNote: String(note || "").trim() || undefined,
+        },
+      });
 
-    await client.query("COMMIT");
+      return { resolved, fridgeUpdated };
+    });
 
     logAssetAction("resolve-mismatch:success", `id=${req.params.id || "unknown"}`);
 
     return res.json({
       ok: true,
-      mismatch: serializeMismatchRow(resolved.rows[0]),
-      fridge: serializeFridgeRow(fridgeUpdated),
+      mismatch: serializeMismatchRow(mismatchPrismaToRow(result.resolved)),
+      fridge: result.fridgeUpdated ? serializeFridgeRow(result.fridgeUpdated) : null,
     });
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "VALIDATION_ERROR") {
+      return res.status(400).json(buildValidationErrorResponse(error.validationErrors));
+    }
+    if (error.code === "NOT_FOUND") {
+      return res.status(404).json({ error: error.message });
+    }
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "resolve-mismatch", error);
-  } finally {
-    client.release();
   }
 });
 
 app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"), async (req, res) => {
-  const client = await pool.connect();
   try {
     logAssetAction(
       "delete-mismatch:start",
@@ -2267,44 +2415,43 @@ app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"
       return res.status(400).json({ error: "A reason is required to delete a mismatch." });
     }
 
-    const scope = await resolveOrganisationScope(client, req.user, null);
-    const mismatchResult = await client.query(
+    const scope = await resolveOrganisationScope(prisma, req.user, null);
+
+    // Check existence via raw to preserve the LEFT JOIN org scoping
+    const checkRows = await prisma.$queryRawUnsafe(
       `SELECT fm.id
        FROM fridge_mismatches fm
        LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
        WHERE fm.id = $1
          AND ($2::int IS NULL OR f.organisation_id = $2)`,
-      [mismatchId, scope.effectiveOrganisationId],
+      mismatchId,
+      scope.effectiveOrganisationId,
     );
 
-    if (!mismatchResult.rows.length) {
+    if (!checkRows.length) {
       return res.status(404).json({ error: "Mismatch not found" });
     }
 
-    const result = await client.query(
-      `UPDATE fridge_mismatches
-       SET status = 'delete',
-           resolved_at = NOW(),
-           resolved_by = $1,
-           resolution_note = $2
-       WHERE id = $3
-       RETURNING *`,
-      [req.user.id, note, mismatchId],
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ error: "Mismatch not found" });
-    }
+    const updated = await prisma.fridgeMismatch.update({
+      where: { id: BigInt(mismatchId) },
+      data: {
+        status: "delete",
+        resolvedAt: new Date(),
+        resolvedBy: req.user.id,
+        resolutionNote: note,
+      },
+    });
 
     logAssetAction("delete-mismatch:success", `id=${req.params.id || "unknown"}`);
-    return res.json({ ok: true, mismatch: serializeMismatchRow(result.rows[0]) });
+    return res.json({ ok: true, mismatch: serializeMismatchRow(mismatchPrismaToRow(updated)) });
   } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "Mismatch not found" });
+    }
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "delete-mismatch", error);
-  } finally {
-    client.release();
   }
 });
 

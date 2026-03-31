@@ -83,8 +83,8 @@ function handleLogout() {
   <!-- Sidebar -->
   <aside
     :class="cn(
-      'bg-white border-r border-gray-200 flex flex-col fixed lg:static inset-y-0 left-0 z-40 transition-all duration-300 ease-in-out shrink-0',
-      !isOpen && '-translate-x-full lg:translate-x-0',
+      'bg-white border-r border-gray-200 flex flex-col max-lg:fixed inset-y-0 left-0 z-40 transition-all duration-300 ease-in-out shrink-0',
+      !isOpen && 'max-lg:-translate-x-full',
       isCollapsed ? 'w-20' : 'w-64'
     )"
   >
