@@ -190,13 +190,13 @@ DECLARE
 BEGIN
   current_user_id_text := current_setting('myapp.current_user_id', true);
 
-  SELECT organisation_id
-  INTO audit_organisation_id
-  FROM fridges
-  WHERE fridge_serial_number = COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number)
-  LIMIT 1;
-
   IF (TG_OP = 'INSERT') THEN
+    SELECT organisation_id
+    INTO audit_organisation_id
+    FROM fridges
+    WHERE fridge_serial_number = NEW.fridge_serial_number
+    LIMIT 1;
+
     INSERT INTO fridge_audit_log (
       fridge_serial_number,
       source_table,
@@ -227,6 +227,12 @@ BEGIN
       )
     );
   ELSIF (TG_OP = 'UPDATE') THEN
+    SELECT organisation_id
+    INTO audit_organisation_id
+    FROM fridges
+    WHERE fridge_serial_number = COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number)
+    LIMIT 1;
+
     INSERT INTO fridge_audit_log (
       fridge_serial_number,
       source_table,
@@ -264,6 +270,12 @@ BEGIN
       )
     );
   ELSIF (TG_OP = 'DELETE') THEN
+    SELECT organisation_id
+    INTO audit_organisation_id
+    FROM fridges
+    WHERE fridge_serial_number = OLD.fridge_serial_number
+    LIMIT 1;
+
     INSERT INTO fridge_audit_log (
       fridge_serial_number,
       source_table,

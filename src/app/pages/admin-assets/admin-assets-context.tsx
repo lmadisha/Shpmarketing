@@ -420,8 +420,9 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
       if (canViewHistory) {
         await loadAllHistory();
       }
-    } catch {
-      setMismatchError("Could not resolve mismatch.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not resolve mismatch.";
+      setMismatchError(message);
       setResolveModal((prev) => ({ ...prev, submitting: false }));
     }
   };
@@ -461,8 +462,9 @@ export function AdminAssetsProvider({ children }: { children: React.ReactNode })
       if (canViewMismatches) {
         await loadMismatches();
       }
-    } catch {
-      setMismatchError("Could not delete mismatch.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not delete mismatch.";
+      setMismatchError(message);
       setDeleteMismatchModal((prev) => ({ ...prev, submitting: false }));
     }
   };
