@@ -29,6 +29,16 @@ export function HistoryPage() {
     );
   }
 
+  const actionVariant = (actionType: string) => {
+    if (actionType === "UPDATE" || actionType === "MISMATCH_UPDATE") {
+      return "secondary" as const;
+    }
+    if (actionType === "DELETE" || actionType === "MISMATCH_DELETE") {
+      return "destructive" as const;
+    }
+    return "default" as const;
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -100,7 +110,7 @@ export function HistoryPage() {
               <TableRow key={entry.log_id}>
                 <TableCell>{new Date(entry.changed_at).toLocaleString()}</TableCell>
                 <TableCell>
-                  <Badge variant={entry.action_type === "UPDATE" ? "secondary" : "default"}>
+                  <Badge variant={actionVariant(entry.action_type)}>
                     {entry.action_type}
                   </Badge>
                 </TableCell>

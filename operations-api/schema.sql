@@ -187,6 +187,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   current_user_id_text TEXT;
   audit_organisation_id INTEGER;
+  mismatch_action_type TEXT;
 BEGIN
   current_user_id_text := current_setting('myapp.current_user_id', true);
 
@@ -233,6 +234,12 @@ BEGIN
     WHERE fridge_serial_number = COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number)
     LIMIT 1;
 
+    mismatch_action_type := CASE LOWER(COALESCE(NEW.status::text, ''))
+      WHEN 'resolve' THEN 'MISMATCH_RESOLVE'
+      WHEN 'delete' THEN 'MISMATCH_DELETE'
+      ELSE 'MISMATCH_UPDATE'
+    END;
+
     INSERT INTO fridge_audit_log (
       fridge_serial_number,
       source_table,
@@ -250,7 +257,7 @@ BEGIN
       COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number),
       'fridge_mismatches',
       COALESCE(NEW.id, OLD.id),
-      'MISMATCH_UPDATE',
+      mismatch_action_type,
       OLD.received_mac,
       NEW.received_mac,
       OLD.received_c_number,
