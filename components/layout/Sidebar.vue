@@ -28,7 +28,7 @@ const navigation: NavigationItem[] = [
   { name: 'Overview', href: '/overview', icon: LayoutDashboard },
   { name: 'Performance', href: '/performance-report', icon: FileBarChart },
   { name: 'Maintenance', href: '/maintenance-report', icon: Server },
-  { name: 'Asset Manager', href: '/admin/assets/inventory', icon: Refrigerator },
+  { name: 'Asset Manager', href: '/admin/assets', icon: Refrigerator },
   { name: 'Workspace', href: '/workspace', icon: Users },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

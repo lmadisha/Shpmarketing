@@ -11,7 +11,7 @@ const isDrawerOpen = ref(false);
   <div class="flex h-screen bg-slate-50">
     <Sidebar />
     <div class="flex-1 flex flex-col overflow-hidden">
-      <header class="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6">
+      <header class="flex h-16 items-center justify-between border-b border-slate-200 bg-white pl-14 pr-4 md:px-6 lg:px-6">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Frostlink</p>
           <h1 class="text-sm font-semibold text-slate-900 md:text-base">Operations Dashboard</h1>

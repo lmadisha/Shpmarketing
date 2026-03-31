@@ -55,5 +55,10 @@ startProcess(
 startProcess(
   "frontend",
   process.execPath,
-  [path.join(rootDir, "node_modules", "nuxt", "bin", "nuxt.mjs"), "dev"],
+  [
+    path.join(rootDir, "node_modules", "nuxt", "bin", "nuxt.mjs"),
+    "dev",
+    "--port",
+    "5173",
+  ],
 );
