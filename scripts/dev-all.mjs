@@ -59,7 +59,8 @@ startProcess(
     path.join(rootDir, "node_modules", "nuxt", "bin", "nuxt.mjs"),
     "dev",
     "--host",
+    "192.168.0.121",
     "--port",
-    "5173",
+    "5174",
   ],
 );

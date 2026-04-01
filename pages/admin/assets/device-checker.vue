@@ -42,13 +42,10 @@ function parsePenguinMacAddress(deviceName: string | null | undefined): string |
 
 const store = useAdminAssetsStore()
 const bluetoothNavigator = typeof navigator !== 'undefined' ? (navigator as BluetoothNavigator) : null
-const isSecureContextNow = typeof window !== 'undefined' && window.isSecureContext
-const bluetoothSupported = isSecureContextNow && Boolean(bluetoothNavigator?.bluetooth)
-const bluetoothUnavailableReason = !isSecureContextNow
-  ? 'Bluetooth scan requires HTTPS or localhost.'
-  : !bluetoothNavigator?.bluetooth
-    ? 'Bluetooth scan is only supported in Chromium-based browsers.'
-    : ''
+const bluetoothSupported = Boolean(bluetoothNavigator?.bluetooth)
+const bluetoothUnavailableReason = !bluetoothNavigator?.bluetooth
+  ? 'Bluetooth scan is only supported in Chromium-based browsers.'
+  : ''
 
 const serials = ref<Fridge[]>([])
 const serialsLoading = ref(false)

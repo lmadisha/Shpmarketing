@@ -16,7 +16,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      operationsApiBase: 'http://192.168.0.121:5001',
+      operationsApiBase: 'http://localhost:5001',
     },
   },
 
