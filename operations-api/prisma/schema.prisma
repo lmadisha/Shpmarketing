@@ -5,7 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["feetlink"]
+  schemas  = ["frostlink"]
 }
 
 enum MismatchActionEnum {
@@ -15,7 +15,7 @@ enum MismatchActionEnum {
   delete
 
   @@map("mismatch_action_enum")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }
 
 enum UserPermissionEnum {
@@ -27,7 +27,7 @@ enum UserPermissionEnum {
   User
 
   @@map("user_permission_enum")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }
 
 model Organisation {
@@ -42,7 +42,7 @@ model Organisation {
   fridgeAuditLogs              FridgeAuditLog[]
 
   @@map("organisation")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }
 
 model OrganisationAssetValidationRules {
@@ -57,7 +57,7 @@ model OrganisationAssetValidationRules {
   organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
   @@map("organisation_asset_validation_rules")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }
 
 model User {
@@ -79,7 +79,7 @@ model User {
   fridgeAuditLogs    FridgeAuditLog[]
 
   @@map("users")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }
 
 model Fridge {
@@ -95,7 +95,7 @@ model Fridge {
   organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
 
   @@map("fridges")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }
 
 model FridgeMismatch {
@@ -118,7 +118,7 @@ model FridgeMismatch {
   senderUser     User? @relation("SentBy", fields: [senderId], references: [id])
 
   @@map("fridge_mismatches")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }
 
 model FridgeAuditLog {
@@ -140,5 +140,5 @@ model FridgeAuditLog {
   changedByUser User?         @relation(fields: [changedBy], references: [id])
 
   @@map("fridge_audit_log")
-  @@schema("feetlink")
+  @@schema("frostlink")
 }

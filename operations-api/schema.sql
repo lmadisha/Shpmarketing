@@ -1,10 +1,10 @@
--- Operations database schema (feetlink)
+-- Operations database schema (frostlink)
 
-CREATE SCHEMA IF NOT EXISTS feetlink;
+CREATE SCHEMA IF NOT EXISTS frostlink;
 
-CREATE TYPE feetlink.mismatch_action_enum AS ENUM ('open', 'resolve', 'cancel', 'delete');
+CREATE TYPE frostlink.mismatch_action_enum AS ENUM ('open', 'resolve', 'cancel', 'delete');
 
-CREATE TYPE feetlink.user_permission_enum AS ENUM (
+CREATE TYPE frostlink.user_permission_enum AS ENUM (
   'Admin',
   'Fleet Manager',
   'Factory',
@@ -13,15 +13,15 @@ CREATE TYPE feetlink.user_permission_enum AS ENUM (
   'User'
 );
 
-CREATE TABLE feetlink.organisation (
+CREATE TABLE frostlink.organisation (
   id SERIAL PRIMARY KEY,
   name VARCHAR(120) UNIQUE NOT NULL,
   domin VARCHAR(120) UNIQUE,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE feetlink.organisation_asset_validation_rules (
-  organisation_id INTEGER PRIMARY KEY REFERENCES feetlink.organisation(id) ON DELETE CASCADE,
+CREATE TABLE frostlink.organisation_asset_validation_rules (
+  organisation_id INTEGER PRIMARY KEY REFERENCES frostlink.organisation(id) ON DELETE CASCADE,
   serial_min_length INTEGER NOT NULL CHECK (serial_min_length > 0 AND serial_min_length <= 32),
   serial_max_length INTEGER NOT NULL CHECK (serial_max_length > 0 AND serial_max_length <= 32),
   mac_min_length INTEGER NOT NULL CHECK (mac_min_length > 0 AND mac_min_length <= 64),
@@ -33,7 +33,7 @@ CREATE TABLE feetlink.organisation_asset_validation_rules (
   CHECK (c_number_min_length <= c_number_max_length)
 );
 
-CREATE TABLE feetlink.users (
+CREATE TABLE frostlink.users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
@@ -42,24 +42,24 @@ CREATE TABLE feetlink.users (
   last_name VARCHAR(100),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  permissions feetlink.user_permission_enum NOT NULL,
-  organisation_id INTEGER REFERENCES feetlink.organisation(id) ON DELETE SET NULL
+  permissions frostlink.user_permission_enum NOT NULL,
+  organisation_id INTEGER REFERENCES frostlink.organisation(id) ON DELETE SET NULL
 );
 
-CREATE TABLE feetlink.fridges (
+CREATE TABLE frostlink.fridges (
   fridge_serial_number VARCHAR(32) PRIMARY KEY,
   iot_mac_address VARCHAR(64) UNIQUE,
   c_number VARCHAR(32),
   verified BOOLEAN DEFAULT false,
   verified_at TIMESTAMPTZ,
-  organisation_id INTEGER REFERENCES feetlink.organisation(id) ON DELETE SET NULL,
+  organisation_id INTEGER REFERENCES frostlink.organisation(id) ON DELETE SET NULL,
   latitude NUMERIC(9, 6),
   longitude NUMERIC(9, 6),
   CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
   CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
 );
 
-CREATE TABLE feetlink.fridge_mismatches (
+CREATE TABLE frostlink.fridge_mismatches (
   id BIGSERIAL PRIMARY KEY,
   received_at TIMESTAMPTZ DEFAULT now() NOT NULL,
   fridge_serial_number VARCHAR(32) NOT NULL,
@@ -67,18 +67,18 @@ CREATE TABLE feetlink.fridge_mismatches (
   received_c_number VARCHAR(32),
   db_mac VARCHAR(64),
   db_c_number VARCHAR(32),
-  status feetlink.mismatch_action_enum DEFAULT 'open' NOT NULL,
+  status frostlink.mismatch_action_enum DEFAULT 'open' NOT NULL,
   resolved_at TIMESTAMPTZ,
-  resolved_by INTEGER REFERENCES feetlink.users(id),
+  resolved_by INTEGER REFERENCES frostlink.users(id),
   resolution_note TEXT,
-  sender_id INTEGER REFERENCES feetlink.users(id),
+  sender_id INTEGER REFERENCES frostlink.users(id),
   latitude NUMERIC(9, 6),
   longitude NUMERIC(9, 6),
   CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
   CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
 );
 
-CREATE TABLE feetlink.fridge_audit_log (
+CREATE TABLE frostlink.fridge_audit_log (
   log_id SERIAL PRIMARY KEY,
   fridge_serial_number VARCHAR(32),
   source_table TEXT DEFAULT 'fridges' NOT NULL,
@@ -89,28 +89,28 @@ CREATE TABLE feetlink.fridge_audit_log (
   new_c_num VARCHAR(32),
   mismatch_id BIGINT,
   metadata JSONB,
-  organisation_id INTEGER REFERENCES feetlink.organisation(id) ON DELETE SET NULL,
+  organisation_id INTEGER REFERENCES frostlink.organisation(id) ON DELETE SET NULL,
   changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-  changed_by INTEGER REFERENCES feetlink.users(id)
+  changed_by INTEGER REFERENCES frostlink.users(id)
 );
 
-CREATE INDEX idx_fridge_mismatches_received_at ON feetlink.fridge_mismatches (received_at DESC);
-CREATE INDEX idx_fridge_mismatches_serial ON feetlink.fridge_mismatches (fridge_serial_number);
-CREATE INDEX idx_fridge_mismatches_status ON feetlink.fridge_mismatches (status);
-CREATE INDEX idx_users_organisation_id ON feetlink.users (organisation_id);
-CREATE INDEX idx_fridges_organisation_id ON feetlink.fridges (organisation_id);
+CREATE INDEX idx_fridge_mismatches_received_at ON frostlink.fridge_mismatches (received_at DESC);
+CREATE INDEX idx_fridge_mismatches_serial ON frostlink.fridge_mismatches (fridge_serial_number);
+CREATE INDEX idx_fridge_mismatches_status ON frostlink.fridge_mismatches (status);
+CREATE INDEX idx_users_organisation_id ON frostlink.users (organisation_id);
+CREATE INDEX idx_fridges_organisation_id ON frostlink.fridges (organisation_id);
 CREATE UNIQUE INDEX idx_organisation_domin_unique
-ON feetlink.organisation ((LOWER(domin)))
+ON frostlink.organisation ((LOWER(domin)))
 WHERE domin IS NOT NULL;
-CREATE INDEX idx_fridge_audit_log_serial ON feetlink.fridge_audit_log (fridge_serial_number);
-CREATE INDEX idx_fridge_audit_log_source_table ON feetlink.fridge_audit_log (source_table);
-CREATE INDEX idx_fridge_audit_log_mismatch_id ON feetlink.fridge_audit_log (mismatch_id);
-CREATE INDEX idx_fridge_audit_log_organisation_id ON feetlink.fridge_audit_log (organisation_id);
+CREATE INDEX idx_fridge_audit_log_serial ON frostlink.fridge_audit_log (fridge_serial_number);
+CREATE INDEX idx_fridge_audit_log_source_table ON frostlink.fridge_audit_log (source_table);
+CREATE INDEX idx_fridge_audit_log_mismatch_id ON frostlink.fridge_audit_log (mismatch_id);
+CREATE INDEX idx_fridge_audit_log_organisation_id ON frostlink.fridge_audit_log (organisation_id);
 CREATE UNIQUE INDEX iot_mac_address_unique_non_null_non_empty
-ON feetlink.fridges (iot_mac_address)
+ON frostlink.fridges (iot_mac_address)
 WHERE iot_mac_address IS NOT NULL AND iot_mac_address <> '';
 
-CREATE OR REPLACE FUNCTION feetlink.log_fridge_changes()
+CREATE OR REPLACE FUNCTION frostlink.log_fridge_changes()
 RETURNS TRIGGER AS $$
 DECLARE
   current_user_id_text TEXT;
@@ -118,7 +118,7 @@ BEGIN
   current_user_id_text := current_setting('myapp.current_user_id', true);
 
   IF (TG_OP = 'UPDATE') THEN
-    INSERT INTO feetlink.fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       action_type,
@@ -141,7 +141,7 @@ BEGIN
       NULLIF(current_user_id_text, '')::integer
     );
   ELSIF (TG_OP = 'INSERT') THEN
-    INSERT INTO feetlink.fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       action_type,
@@ -160,7 +160,7 @@ BEGIN
       NULLIF(current_user_id_text, '')::integer
     );
   ELSIF (TG_OP = 'DELETE') THEN
-    INSERT INTO feetlink.fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       action_type,
@@ -184,7 +184,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION feetlink.log_fridge_mismatch_changes()
+CREATE OR REPLACE FUNCTION frostlink.log_fridge_mismatch_changes()
 RETURNS TRIGGER AS $$
 DECLARE
   current_user_id_text TEXT;
@@ -196,11 +196,11 @@ BEGIN
   IF (TG_OP = 'INSERT') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM feetlink.fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = NEW.fridge_serial_number
     LIMIT 1;
 
-    INSERT INTO feetlink.fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,
@@ -232,7 +232,7 @@ BEGIN
   ELSIF (TG_OP = 'UPDATE') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM feetlink.fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number)
     LIMIT 1;
 
@@ -242,7 +242,7 @@ BEGIN
       ELSE 'MISMATCH_UPDATE'
     END;
 
-    INSERT INTO feetlink.fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,
@@ -281,11 +281,11 @@ BEGIN
   ELSIF (TG_OP = 'DELETE') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM feetlink.fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = OLD.fridge_serial_number
     LIMIT 1;
 
-    INSERT INTO feetlink.fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,
@@ -321,11 +321,40 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_fridge_audit
-AFTER INSERT OR UPDATE OR DELETE ON feetlink.fridges
+AFTER INSERT OR UPDATE OR DELETE ON frostlink.fridges
 FOR EACH ROW
-EXECUTE FUNCTION feetlink.log_fridge_changes();
+EXECUTE FUNCTION frostlink.log_fridge_changes();
 
 CREATE TRIGGER trg_fridge_mismatch_audit
-AFTER INSERT OR UPDATE OR DELETE ON feetlink.fridge_mismatches
+AFTER INSERT OR UPDATE OR DELETE ON frostlink.fridge_mismatches
 FOR EACH ROW
-EXECUTE FUNCTION feetlink.log_fridge_mismatch_changes();
+EXECUTE FUNCTION frostlink.log_fridge_mismatch_changes();
+
+-- ============================================================================
+-- Seed data — initial organisation, admin user, and default validation rules
+-- ============================================================================
+
+INSERT INTO frostlink.organisation (name, domin)
+VALUES ('Example', 'example.com')
+ON CONFLICT (name) DO NOTHING;
+
+-- password: Password  (bcrypt 12 rounds)
+INSERT INTO frostlink.users (username, password_hash, full_name, permissions, organisation_id)
+VALUES (
+  'admin1',
+  '$2b$12$Y88Pz9MZfwGDEXsGoS2riupLlAu9lGPD2ORpmCrnr7W9PWeTO62RG',
+  'System Admin',
+  'Admin',
+  (SELECT id FROM frostlink.organisation WHERE name = 'Example')
+)
+ON CONFLICT (username) DO NOTHING;
+
+INSERT INTO frostlink.organisation_asset_validation_rules (
+  organisation_id, serial_min_length, serial_max_length,
+  mac_min_length, mac_max_length, c_number_min_length, c_number_max_length
+)
+VALUES (
+  (SELECT id FROM frostlink.organisation WHERE name = 'Example'),
+  4, 32, 12, 12, 4, 7
+)
+ON CONFLICT (organisation_id) DO NOTHING;
