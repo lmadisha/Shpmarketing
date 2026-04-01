@@ -52,9 +52,9 @@ onMounted(async () => {
         <Input v-model="store.mismatchFilters.from" type="date" />
         <Input v-model="store.mismatchFilters.to" type="date" />
         <div class="flex gap-2">
-          <Button class="flex-1" variant="outline" @click="store.mismatchPage = 1; store.loadMismatches(store.mismatchFilters)">
+          <Button class="flex-1" @click="store.mismatchPage = 1; store.loadMismatches(store.mismatchFilters)">
             <Search class="h-4 w-4" />
-            Apply
+            Search
           </Button>
           <Button
             class="flex-1"
@@ -83,11 +83,11 @@ onMounted(async () => {
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
             <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-              <th class="px-4 py-3"><button class="inline-flex items-center gap-1" @click="store.toggleMismatchSort('received_at')">Received <component :is="renderSortDirection('received_at')" class="h-4 w-4" /></button></th>
-              <th class="px-4 py-3"><button class="inline-flex items-center gap-1" @click="store.toggleMismatchSort('fridge_serial_number')">Serial <component :is="renderSortDirection('fridge_serial_number')" class="h-4 w-4" /></button></th>
+              <th class="px-4 py-3"><button class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors" @click="store.toggleMismatchSort('received_at')">Received <component :is="renderSortDirection('received_at')" class="h-4 w-4" /></button></th>
+              <th class="px-4 py-3"><button class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors" @click="store.toggleMismatchSort('fridge_serial_number')">Serial <component :is="renderSortDirection('fridge_serial_number')" class="h-4 w-4" /></button></th>
               <th class="px-4 py-3">Received MAC / C</th>
               <th class="px-4 py-3">Expected MAC / C</th>
-              <th class="px-4 py-3"><button class="inline-flex items-center gap-1" @click="store.toggleMismatchSort('status')">Status <component :is="renderSortDirection('status')" class="h-4 w-4" /></button></th>
+              <th class="px-4 py-3"><button class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors" @click="store.toggleMismatchSort('status')">Status <component :is="renderSortDirection('status')" class="h-4 w-4" /></button></th>
               <th class="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -108,8 +108,8 @@ onMounted(async () => {
               </td>
               <td class="px-4 py-3 text-right">
                 <div class="flex flex-wrap justify-end gap-2">
-                  <Button v-if="store.canResolveMismatches" size="sm" variant="outline" :disabled="row.status !== 'open'" @click="store.openResolveMismatch(row)">Resolve</Button>
-                  <Button v-if="store.canDeleteMismatches" size="sm" variant="outline" :disabled="row.status !== 'open'" @click="store.openDeleteMismatch(row)">Delete</Button>
+                  <Button v-if="store.canResolveMismatches" size="sm" variant="success" :disabled="row.status !== 'open'" @click="store.openResolveMismatch(row)">Resolve</Button>
+                  <Button v-if="store.canDeleteMismatches" size="sm" variant="destructive" :disabled="row.status !== 'open'" @click="store.openDeleteMismatch(row)">Delete</Button>
                 </div>
               </td>
             </tr>

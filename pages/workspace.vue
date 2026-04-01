@@ -49,7 +49,7 @@ const organisations = ref<OrganisationOption[]>([])
 const loading = ref(false)
 const error = ref('')
 const searchTerm = ref('')
-const permissionFilter = ref<PermissionLevel | 'all'>('all')
+const permissionFilter = ref<PermissionLevel | 'all'>('all') // kept for backwards compat, unused in template
 const statusFilter = ref<'all' | 'active' | 'inactive'>('all')
 const organisationFilter = ref('all')
 
@@ -125,24 +125,28 @@ async function loadOrganisations() {
 const filteredUsers = computed(() => {
   const term = searchTerm.value.trim().toLowerCase()
   return users.value.filter((user) => {
-    if (permissionFilter.value !== 'all' && user.permissions !== permissionFilter.value) {
-      return false
-    }
-    if (statusFilter.value === 'active' && !user.is_active) {
-      return false
-    }
-    if (statusFilter.value === 'inactive' && user.is_active) {
-      return false
-    }
-    if (!term) {
-      return true
-    }
+    if (statusFilter.value === 'active' && !user.is_active) return false
+    if (statusFilter.value === 'inactive' && user.is_active) return false
+    if (!term) return true
     return [user.full_name || '', user.username, user.organisation_name || '']
       .join(' ')
       .toLowerCase()
       .includes(term)
   })
 })
+
+const usersByPermission = computed(() => {
+  const map = new Map<PermissionLevel, typeof filteredUsers.value>()
+  for (const level of visiblePermissionLevels.value) {
+    map.set(level, filteredUsers.value.filter(u => u.permissions === level))
+  }
+  return map
+})
+
+function openCreateUser(defaultPermission?: PermissionLevel) {
+  if (defaultPermission) createForm.permissions = defaultPermission
+  createUserOpen.value = true
+}
 
 async function submitCreateUser() {
   createSubmitting.value = true
@@ -301,21 +305,23 @@ onMounted(() => {
     />
 
     <template v-else>
+      <!-- Top bar -->
       <Card>
         <div class="border-b border-slate-200 p-5">
-          <h1 class="text-2xl font-semibold text-slate-900">Workspace</h1>
-          <p class="mt-1 text-sm text-slate-600">View and manage users grouped by permission level.</p>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 class="text-2xl font-semibold text-slate-900">Workspace</h1>
+              <p class="mt-1 text-sm text-slate-600">Users grouped by permission level.</p>
+            </div>
+            <div class="flex gap-2">
+              <Button variant="outline" :disabled="loading" @click="loadUsers">Refresh</Button>
+              <Button v-if="canManageUsers" @click="openCreateUser()">Add User</Button>
+            </div>
+          </div>
         </div>
-        <div class="space-y-4 p-5">
-          <div :class="`grid gap-3 ${isAdmin ? 'md:grid-cols-5' : 'md:grid-cols-4'}`">
+        <div class="p-5">
+          <div :class="`grid gap-3 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`">
             <Input v-model="searchTerm" placeholder="Search name, email, organisation" />
-            <Select
-              v-model="permissionFilter"
-              :options="[
-                { value: 'all', label: 'All permissions' },
-                ...visiblePermissionLevels.map(l => ({ value: l, label: l })),
-              ]"
-            />
             <Select
               v-model="statusFilter"
               :options="[
@@ -332,15 +338,12 @@ onMounted(() => {
                 ...organisations.map(o => ({ value: String(o.id), label: o.name })),
               ]"
             />
-            <div class="flex gap-2 justify-end">
-              <Button variant="outline" @click="loadUsers" :disabled="loading">Refresh</Button>
-              <Button v-if="canManageUsers" @click="createUserOpen = true">Add User</Button>
-            </div>
           </div>
-          <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+          <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
         </div>
       </Card>
 
+      <!-- Organisations (admin only) -->
       <Card v-if="isAdmin">
         <div class="border-b border-slate-200 p-5">
           <h2 class="text-lg font-semibold text-slate-900">Organisations</h2>
@@ -363,7 +366,6 @@ onMounted(() => {
             </div>
           </div>
           <p v-if="organisationError" class="text-sm text-red-600">{{ organisationError }}</p>
-
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-slate-200">
               <thead class="bg-slate-50">
@@ -378,7 +380,7 @@ onMounted(() => {
                   <td class="px-4 py-3">{{ organisation.name }}</td>
                   <td class="px-4 py-3">{{ organisation.domin || '-' }}</td>
                   <td class="px-4 py-3 text-right">
-                    <Button size="sm" variant="outline" @click="deletingOrganisation = organisation">Delete</Button>
+                    <Button size="sm" variant="destructive" @click="deletingOrganisation = organisation">Delete</Button>
                   </td>
                 </tr>
               </tbody>
@@ -387,9 +389,23 @@ onMounted(() => {
         </div>
       </Card>
 
-      <Card>
+      <!-- Per-permission sections -->
+      <Card v-for="level in visiblePermissionLevels" :key="level">
         <div class="border-b border-slate-200 p-5">
-          <h2 class="text-lg font-semibold text-slate-900">Users</h2>
+          <div class="flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div>
+                <h2 class="text-lg font-semibold text-slate-900">{{ level }}</h2>
+                <p class="text-sm text-slate-500">
+                  {{ (usersByPermission.get(level) ?? []).length }}
+                  {{ (usersByPermission.get(level) ?? []).length === 1 ? 'user' : 'users' }}
+                </p>
+              </div>
+            </div>
+            <Button v-if="canManageUsers" size="sm" @click="openCreateUser(level)">
+              Add {{ level }} User
+            </Button>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="min-w-full divide-y divide-slate-200">
@@ -397,37 +413,39 @@ onMounted(() => {
               <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <th class="px-4 py-3">Full Name</th>
                 <th class="px-4 py-3">Email</th>
-                <th class="px-4 py-3">Organisation</th>
-                <th class="px-4 py-3">Permission</th>
+                <th v-if="isAdmin" class="px-4 py-3">Organisation</th>
                 <th class="px-4 py-3">Status</th>
                 <th class="px-4 py-3">Created</th>
-                <th class="px-4 py-3 text-right">Actions</th>
+                <th v-if="canManageUsers" class="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-200 bg-white text-sm text-slate-700">
-              <tr v-for="user in filteredUsers" :key="user.id">
-                <td class="px-4 py-3">{{ user.full_name || '-' }}</td>
-                <td class="px-4 py-3">{{ user.username }}</td>
-                <td class="px-4 py-3">{{ user.organisation_name || '-' }}</td>
-                <td class="px-4 py-3"><Badge variant="outline">{{ user.permissions }}</Badge></td>
+              <tr v-for="user in usersByPermission.get(level)" :key="user.id">
+                <td class="px-4 py-3 font-medium">{{ user.full_name || '-' }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ user.username }}</td>
+                <td v-if="isAdmin" class="px-4 py-3 text-slate-600">{{ user.organisation_name || '-' }}</td>
                 <td class="px-4 py-3">
                   <Badge :variant="user.is_active ? 'success' : 'secondary'">{{ user.is_active ? 'Active' : 'Inactive' }}</Badge>
                 </td>
-                <td class="px-4 py-3">{{ new Date(user.created_at).toLocaleString() }}</td>
-                <td class="px-4 py-3 text-right">
-                  <div v-if="canManageUsers" class="flex flex-wrap justify-end gap-2">
+                <td class="px-4 py-3 text-slate-600">{{ new Date(user.created_at).toLocaleDateString() }}</td>
+                <td v-if="canManageUsers" class="px-4 py-3 text-right">
+                  <div class="flex flex-wrap justify-end gap-2">
                     <Button size="sm" variant="outline" @click="permissionTarget = user; nextPermission = user.permissions">Role</Button>
                     <Button size="sm" variant="outline" @click="passwordTarget = user; newPassword = ''">Password</Button>
                     <Button
                       size="sm"
-                      variant="outline"
+                      :variant="user.is_active ? 'secondary' : 'success'"
                       :disabled="selfUserId === user.id && user.is_active"
                       @click="toggleActive(user)"
                     >
                       {{ user.is_active ? 'Deactivate' : 'Activate' }}
                     </Button>
                   </div>
-                  <span v-else class="text-sm text-slate-500">View only</span>
+                </td>
+              </tr>
+              <tr v-if="(usersByPermission.get(level) ?? []).length === 0">
+                <td :colspan="canManageUsers ? (isAdmin ? 6 : 5) : (isAdmin ? 5 : 4)" class="px-4 py-8 text-center text-sm text-slate-400">
+                  No {{ level }} users{{ searchTerm || statusFilter !== 'all' ? ' matching filters' : '' }}.
                 </td>
               </tr>
             </tbody>
@@ -436,7 +454,7 @@ onMounted(() => {
       </Card>
     </template>
 
-    <ModalDialog :open="createUserOpen" title="Create User" description="Create a new workspace user." @close="createUserOpen = false">
+    <ModalDialog :open="createUserOpen" title="Create User" description="Create a new workspace user." @close="createUserOpen = false; createForm.permissions = 'User'">
       <div class="space-y-3">
         <div class="space-y-1">
           <Label for="create-full-name">Full Name</Label>

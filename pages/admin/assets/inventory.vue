@@ -38,9 +38,9 @@ onMounted(async () => {
           <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input v-model="store.searchTerm" placeholder="Search by serial, MAC, or C-number" class="pl-9" />
         </div>
-        <Button variant="outline" :disabled="store.fridgeLoading" @click="store.loadFridges(store.searchTerm)">
+        <Button :disabled="store.fridgeLoading" @click="store.loadFridges(store.searchTerm)">
           <Search class="h-4 w-4" />
-          Apply Search
+          Search
         </Button>
         <Button variant="outline" :disabled="store.fridgeLoading" @click="store.searchTerm = ''; store.loadFridges('')">
           <RefreshCw class="h-4 w-4" />
@@ -62,16 +62,16 @@ onMounted(async () => {
           <thead class="bg-slate-50">
             <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <th class="px-4 py-3">
-                <button class="inline-flex items-center gap-1" @click="store.toggleInventorySort('fridge_serial_number')">Serial <ArrowUpDown class="h-4 w-4" /></button>
+                <button class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors" @click="store.toggleInventorySort('fridge_serial_number')">Serial <ArrowUpDown class="h-4 w-4" /></button>
               </th>
               <th class="px-4 py-3">
-                <button class="inline-flex items-center gap-1" @click="store.toggleInventorySort('iot_mac_address')">MAC <ArrowUpDown class="h-4 w-4" /></button>
+                <button class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors" @click="store.toggleInventorySort('iot_mac_address')">MAC <ArrowUpDown class="h-4 w-4" /></button>
               </th>
               <th class="px-4 py-3">
-                <button class="inline-flex items-center gap-1" @click="store.toggleInventorySort('c_number')">C-Number <ArrowUpDown class="h-4 w-4" /></button>
+                <button class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors" @click="store.toggleInventorySort('c_number')">C-Number <ArrowUpDown class="h-4 w-4" /></button>
               </th>
               <th class="px-4 py-3">
-                <button class="inline-flex items-center gap-1" @click="store.toggleInventorySort('verified')">Verified <ArrowUpDown class="h-4 w-4" /></button>
+                <button class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors" @click="store.toggleInventorySort('verified')">Verified <ArrowUpDown class="h-4 w-4" /></button>
               </th>
               <th class="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -129,7 +129,7 @@ onMounted(async () => {
                   <Button
                     v-if="store.canDeleteAssets"
                     size="sm"
-                    variant="outline"
+                    variant="destructive"
                     :disabled="store.deletingSerial === row.fridge_serial_number"
                     @click="deleteConfirmSerial = row.fridge_serial_number"
                   >
