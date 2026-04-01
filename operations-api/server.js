@@ -1832,6 +1832,10 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
         throw err;
       }
 
+      const macChanged = (nextMac || "") !== (fridge.iotMacAddress || "");
+      const cNumberChanged = (nextCNumber || "") !== (fridge.cNumber || "");
+      const shouldUnverify = fridge.verified && (macChanged || cNumberChanged);
+
       return await tx.fridge.update({
         where: {
           fridgeSerialNumber: req.params.serialNumber,
@@ -1840,6 +1844,7 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
         data: {
           iotMacAddress: nextMac || "",
           cNumber: nextCNumber || "",
+          ...(shouldUnverify ? { verified: false, verifiedAt: null } : {}),
         },
       });
     });
@@ -2139,14 +2144,6 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
         return { type: "VERIFIED", fridge: updatedFridge };
       }
 
-      let updatedFridge = null;
-      if (fridge.verified) {
-        updatedFridge = await tx.fridge.update({
-          where: { fridgeSerialNumber: serial },
-          data: { verified: false, verifiedAt: new Date() },
-        });
-      }
-
       const mismatch = await tx.fridgeMismatch.create({
         data: {
           fridgeSerialNumber: serial,
@@ -2161,7 +2158,7 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
         },
       });
 
-      return { type: "MISMATCH_CREATED", mismatch, fridge: updatedFridge };
+      return { type: "MISMATCH_CREATED", mismatch };
     });
 
     if (result.type === "VERIFIED") {
@@ -2182,7 +2179,6 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
       id: result.mismatch.id,
       fridge_serial_number: result.mismatch.fridgeSerialNumber,
       mismatch: serializeMismatchRow(mismatchPrismaToRow(result.mismatch)),
-      fridge: serializeFridgeRow(fridgePrismaToRow(result.fridge)),
     });
   } catch (error) {
     if (error.code === "NOT_FOUND") {
