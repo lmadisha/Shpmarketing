@@ -30,7 +30,7 @@ watchEffect(() => {
     return
   }
   const currentAllowed = tabs.value.some((tab) => route.path === tab.to || route.path.startsWith(`${tab.to}/`))
-  if (!currentAllowed && route.path !== '/admin/assets') {
+  if (!currentAllowed) {
     void navigateTo(tabs.value[0].to, { replace: true })
   }
 })

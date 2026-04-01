@@ -1,3 +1,3 @@
 <script setup lang="ts">
-await navigateTo('/admin/assets/inventory', { replace: true })
+definePageMeta({ middleware: 'auth' })
 </script>

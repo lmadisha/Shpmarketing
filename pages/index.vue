@@ -1,3 +1,7 @@
 <script setup lang="ts">
-await navigateTo('/admin/assets/inventory', { replace: true })
+definePageMeta({ middleware: 'auth' })
+
+if (import.meta.client) {
+  navigateTo('/admin/assets/inventory', { replace: true })
+}
 </script>
