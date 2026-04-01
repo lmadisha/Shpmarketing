@@ -64,10 +64,13 @@ async function handleSubmit() {
           <Button type="submit" class="w-full" :disabled="submitting">
             {{ submitting ? 'Signing in...' : 'Sign in' }}
           </Button>
+          <!-- Account creation is managed via the Workspace page -->
+          <!--
           <p class="text-center text-sm text-slate-600">
             Need an account?
             <NuxtLink to="/signup" class="font-medium text-blue-600 hover:underline">Create one</NuxtLink>
           </p>
+          -->
         </form>
       </div>
     </Card>

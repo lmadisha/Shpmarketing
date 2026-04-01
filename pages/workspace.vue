@@ -145,6 +145,7 @@ const usersByPermission = computed(() => {
 
 function openCreateUser(defaultPermission?: PermissionLevel) {
   if (defaultPermission) createForm.permissions = defaultPermission
+  if (forceOwnOrg.value) createForm.organisation_id = String(selfOrgId.value || '')
   createUserOpen.value = true
 }
 
@@ -321,7 +322,7 @@ onMounted(() => {
         </div>
         <div class="p-5">
           <div :class="`grid gap-3 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`">
-            <Input v-model="searchTerm" placeholder="Search name, email, organisation" />
+            <Input v-model="searchTerm" placeholder="Search name, email" />
             <Select
               v-model="statusFilter"
               :options="[
@@ -476,12 +477,11 @@ onMounted(() => {
             :options="visiblePermissionLevels.map(l => ({ value: l, label: l }))"
           />
         </div>
-        <div class="space-y-1">
+        <div v-if="isAdmin" class="space-y-1">
           <Label for="create-org">Organisation</Label>
           <Select
             id="create-org"
             v-model="createForm.organisation_id"
-            :disabled="forceOwnOrg"
             :options="[
               { value: '', label: 'Select organisation' },
               ...organisations.map(o => ({ value: String(o.id), label: o.name })),

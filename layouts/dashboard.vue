@@ -11,6 +11,8 @@ const isDrawerOpen = ref(false);
   <div class="flex h-screen bg-slate-50">
     <Sidebar />
     <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- Header bar hidden — AI Assistant will be implemented later -->
+      <!--
       <header class="flex h-16 items-center justify-between border-b border-slate-200 bg-white pl-14 pr-4 lg:px-6">
         <div>
           <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Frostlink</p>
@@ -21,6 +23,7 @@ const isDrawerOpen = ref(false);
           AI Assistant
         </Button>
       </header>
+      -->
       <main class="flex-1 overflow-auto relative">
         <slot />
       </main>
