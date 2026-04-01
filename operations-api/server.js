@@ -2284,8 +2284,8 @@ app.get("/mismatches", requireAuth, requirePermission("mismatches.view"), async 
       `SELECT fm.*,
               fm.db_mac AS expected_mac,
               fm.db_c_number AS expected_c_number
-       FROM fridge_mismatches fm
-       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+       FROM feetlink.fridge_mismatches fm
+       LEFT JOIN feetlink.fridges f ON f.fridge_serial_number = fm.fridge_serial_number
        ${whereClause}
        ORDER BY fm.received_at DESC
        LIMIT 500`,
@@ -2321,8 +2321,8 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
       // Fetch mismatch with its fridge's organisation_id via raw query to preserve the LEFT JOIN behaviour
       const rows = await tx.$queryRawUnsafe(
         `SELECT fm.*, f.organisation_id
-         FROM fridge_mismatches fm
-         LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+         FROM feetlink.fridge_mismatches fm
+         LEFT JOIN feetlink.fridges f ON f.fridge_serial_number = fm.fridge_serial_number
          WHERE fm.id = $1
            AND ($2::int IS NULL OR f.organisation_id = $2)`,
         mismatchId,
@@ -2354,7 +2354,7 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
 
       // Update fridge using raw to preserve the COALESCE(NULLIF(...)) logic
       const updatedFridgeRows = await tx.$queryRawUnsafe(
-        `UPDATE fridges
+        `UPDATE feetlink.fridges
          SET iot_mac_address = COALESCE(NULLIF($1, ''), iot_mac_address),
              c_number = COALESCE(NULLIF($2, ''), c_number),
              latitude = COALESCE($4::numeric, latitude),
@@ -2427,8 +2427,8 @@ app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"
     // Check existence via raw to preserve the LEFT JOIN org scoping
     const checkRows = await prisma.$queryRawUnsafe(
       `SELECT fm.id
-       FROM fridge_mismatches fm
-       LEFT JOIN fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+       FROM feetlink.fridge_mismatches fm
+       LEFT JOIN feetlink.fridges f ON f.fridge_serial_number = fm.fridge_serial_number
        WHERE fm.id = $1
          AND ($2::int IS NULL OR f.organisation_id = $2)`,
       mismatchId,
