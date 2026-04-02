@@ -5,6 +5,10 @@ export default defineNuxtConfig({
 
   ssr: false,
 
+  devServer: {
+    https: true,
+  },
+
   modules: [
     '@pinia/nuxt',
     '@nuxtjs/color-mode',
