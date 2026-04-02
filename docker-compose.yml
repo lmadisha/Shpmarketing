@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./operations-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   frontend:
     image: node:20-bookworm
     working_dir: /workspace
@@ -24,20 +41,22 @@ services:
       - "${OPS_API_PORT:-5001}:5001"
     environment:
       PORT: 5001
-      OPS_DB_USER: ${OPS_DB_USER:-postgres}
-      OPS_DB_PASSWORD: ${OPS_DB_PASSWORD:-postgres}
-      OPS_DB_HOST: ${OPS_DB_HOST:-host.docker.internal}
-      OPS_DB_PORT: ${OPS_DB_PORT:-5432}
-      OPS_DB_NAME: ${OPS_DB_NAME:-shpmarketing_operations}
+      OPS_DB_USER: postgres
+      OPS_DB_PASSWORD: postgres
+      OPS_DB_HOST: postgres
+      OPS_DB_PORT: 5432
+      OPS_DB_NAME: postgres
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
       MOBILE_API_KEY: ${MOBILE_API_KEY:-dev-mobile-api-key}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - .:/workspace
       - operations_api_node_modules:/workspace/operations-api/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
+  postgres_data:
   frontend_node_modules:
   operations_api_node_modules:
