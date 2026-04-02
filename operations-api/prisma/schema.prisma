@@ -20,11 +20,9 @@ enum MismatchActionEnum {
 
 enum UserPermissionEnum {
   Admin
-  Fleet_Manager @map("Fleet Manager")
-  Factory
-  Outlet
-  Technician
-  User
+  Advanced
+  Intermediate
+  Basic
 
   @@map("user_permission_enum")
   @@schema("frostlink")
