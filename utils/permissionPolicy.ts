@@ -3,11 +3,9 @@
 
 export const USER_PERMISSION_LEVELS = [
   "Admin",
-  "Fleet Manager",
-  "Factory",
-  "Outlet",
-  "Technician",
-  "User",
+  "Advanced",
+  "Intermediate",
+  "Basic",
 ] as const;
 
 export type PermissionLevel = (typeof USER_PERMISSION_LEVELS)[number];
@@ -47,7 +45,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     canFilterOrganisation: true,
     grants: [...PERMISSION_FLAGS],
   },
-  "Fleet Manager": {
+  Advanced: {
     description: "Can manage asset operations and resolution workflows.",
     dataScope: "own_org",
     grants: [
@@ -64,35 +62,15 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
       "device_checker.submit",
     ],
   },
-  Factory: {
-    description: "Factory role with the same capabilities as Fleet Manager.",
-    dataScope: "own_org",
-    grants: [
-      "assets.create",
-      "assets.edit",
-      "assets.delete",
-      "assets.view",
-    ],
-  },
-  Outlet: {
-    description: "Outlet role with the same capabilities as Fleet Manager.",
-    dataScope: "own_org",
-    grants: [
-      "assets.create",
-      "assets.edit",
-      "assets.view",
-      "mismatches.view",
-    ],
-  },
-  Technician: {
-    description: "Operational user focused on inventory, checks, and mismatch handling.",
+  Intermediate: {
+    description: "Operational user focused on checks and mismatch handling.",
     dataScope: "own_org",
     grants: [
       "mismatches.view",
       "device_checker.submit",
     ],
   },
-  User: {
+  Basic: {
     description: "Basic read-only user.",
     dataScope: "own_org",
     grants: [],
