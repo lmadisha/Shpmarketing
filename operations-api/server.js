@@ -16,8 +16,7 @@ const {
   validateOrganisationAssetValidationPayload,
 } = require("./asset-validation");
 
-// Prisma returns JS enum names (e.g. Fleet_Manager) but the DB and frontend
-// expect the original string value (e.g. "Fleet Manager"). Serialize on the way out.
+// Prisma returns JS enum names which may use underscores. Serialize on the way out.
 function serializePermission(p) {
   if (!p) return p;
   return p.replace(/_/g, " ");
@@ -124,7 +123,7 @@ const PERMISSION_POLICY = Object.freeze({
     inherits: [],
     grants: [...PERMISSION_FLAGS],
   },
-  "Fleet Manager": {
+  Advanced: {
     inherits: [],
     grants: [
       "users.manage",
@@ -140,32 +139,14 @@ const PERMISSION_POLICY = Object.freeze({
       "device_checker.submit",
     ],
   },
-  Factory: {
-    inherits: [],
-    grants: [
-      "assets.create",
-      "assets.edit",
-      "assets.delete",
-      "assets.view",
-    ],
-  },
-  Outlet: {
-    inherits: [],
-    grants: [
-      "assets.create",
-      "assets.edit",
-      "assets.view",
-      "mismatches.view",
-    ],
-  },
-  Technician: {
+  Intermediate: {
     inherits: [],
     grants: [
       "mismatches.view",
       "device_checker.submit",
     ],
   },
-  User: {
+  Basic: {
     inherits: [],
     grants: [],
   },
@@ -173,11 +154,9 @@ const PERMISSION_POLICY = Object.freeze({
 
 const USER_PERMISSION_LEVELS = Object.freeze([
   "Admin",
-  "Fleet Manager",
-  "Factory",
-  "Outlet",
-  "Technician",
-  "User",
+  "Advanced",
+  "Intermediate",
+  "Basic",
 ]);
 
 const PERMISSION_LEVEL_RANK = Object.freeze(
@@ -270,11 +249,9 @@ function normalizePermission(value) {
   const compactPermission = permission.replace(/[\s_-]+/g, "");
 
   if (compactPermission === "admin") return "Admin";
-  if (compactPermission === "fleetmanager" || compactPermission === "intermediate") return "Fleet Manager";
-  if (compactPermission === "factory" || compactPermission === "factorymanager") return "Factory";
-  if (compactPermission === "outlet" || compactPermission === "outletmanager") return "Outlet";
-  if (compactPermission === "technician") return "Technician";
-  if (compactPermission === "users" || compactPermission === "user" || compactPermission === "basic") return "User";
+  if (compactPermission === "advanced" || compactPermission === "fleetmanager") return "Advanced";
+  if (compactPermission === "intermediate" || compactPermission === "technician") return "Intermediate";
+  if (compactPermission === "basic" || compactPermission === "user" || compactPermission === "users") return "Basic";
 
   return null;
 }
@@ -329,7 +306,7 @@ async function resolveOrganisationScope(tx, user, requestedOrganisationIdRaw) {
 }
 
 function canManageOrganisationAssetValidation(user) {
-  return user?.permissions === "Admin" || user?.permissions === "Fleet Manager";
+  return user?.permissions === "Admin" || user?.permissions === "Advanced";
 }
 
 function requireOrganisationAssetValidationEditor(req, res, next) {
@@ -338,7 +315,7 @@ function requireOrganisationAssetValidationEditor(req, res, next) {
   }
 
   if (!canManageOrganisationAssetValidation(req.user)) {
-    return res.status(403).json({ error: "Only Admin and Fleet Manager can manage organisation asset validation rules." });
+    return res.status(403).json({ error: "Only Admin and Advanced can manage organisation asset validation rules." });
   }
 
   return next();
