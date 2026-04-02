@@ -11,11 +11,9 @@ const store = useAdminAssetsStore()
 definePageMeta({ middleware: 'auth' })
 
 function actionVariant(actionType: string) {
-  if (actionType === 'VERIFY') return 'success'
-  if (actionType === 'UNVERIFY') return 'destructive'
   if (actionType === 'UPDATE' || actionType === 'MISMATCH_UPDATE') return 'secondary'
   if (actionType === 'DELETE' || actionType === 'MISMATCH_DELETE') return 'destructive'
-  return 'outline'
+  return 'success'
 }
 
 onMounted(async () => {
@@ -35,7 +33,7 @@ onMounted(async () => {
   <Card v-else>
     <div class="border-b border-slate-200 p-5">
       <div class="flex items-center gap-2">
-        <Clock3 class="h-4 w-4 text-blue-600" />
+        <Clock3 class="h-4 w-4 text-[#006aea]" />
         <h2 class="text-lg font-semibold text-slate-900">Global Change History</h2>
       </div>
       <p class="mt-1 text-sm text-slate-600">Most recent device changes first.</p>

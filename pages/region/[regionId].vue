@@ -45,7 +45,7 @@ const topUnits = [
     <div class="mx-auto max-w-[1440px] space-y-6 p-4 md:p-6 lg:p-8">
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p class="text-sm text-slate-500"><NuxtLink to="/regional-map" class="text-blue-600 hover:underline">Regional Map</NuxtLink> / {{ regionName }}</p>
+          <p class="text-sm text-slate-500"><NuxtLink to="/regional-map" class="text-[#006aea] hover:underline">Regional Map</NuxtLink> / {{ regionName }}</p>
           <h1 class="text-2xl font-semibold text-slate-900">{{ regionName }}</h1>
           <p class="mt-1 text-sm text-slate-600">Regional performance overview and redistribution context.</p>
         </div>
@@ -85,7 +85,7 @@ const topUnits = [
         <div class="divide-y divide-slate-200">
           <div v-for="unit in topUnits" :key="unit.mac" class="flex items-center justify-between p-5">
             <div>
-              <NuxtLink :to="`/unit/${unit.mac}`" class="font-medium text-blue-600 hover:underline">{{ unit.mac }}</NuxtLink>
+              <NuxtLink :to="`/unit/${unit.mac}`" class="font-medium text-[#006aea] hover:underline">{{ unit.mac }}</NuxtLink>
               <p class="text-sm text-slate-500">{{ unit.opens.toLocaleString() }} opens</p>
             </div>
             <TierBadge :tier="unit.tier" />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, RefreshCw, Search } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, RefreshCw, Search, Trash2, X } from 'lucide-vue-next'
 import Card from '~/components/ui/Card.vue'
 import Input from '~/components/ui/Input.vue'
 import Select from '~/components/ui/Select.vue'
@@ -34,7 +34,10 @@ onMounted(async () => {
 
   <Card v-else>
     <div class="border-b border-slate-200 p-5">
-      <h2 class="text-lg font-semibold text-slate-900">Mismatches</h2>
+      <div class="flex items-center gap-2">
+        <X class="h-4 w-4 text-[#006aea]" />
+        <h2 class="text-lg font-semibold text-slate-900">Mismatches</h2>
+      </div>
       <p class="mt-1 text-sm text-slate-600">Resolve mobile scan discrepancies between received and expected values.</p>
     </div>
     <div class="space-y-4 p-5">
@@ -108,8 +111,8 @@ onMounted(async () => {
               </td>
               <td class="px-4 py-3 text-right">
                 <div class="flex flex-wrap justify-end gap-2">
-                  <Button v-if="store.canResolveMismatches" size="sm" variant="success" :disabled="row.status !== 'open'" @click="store.openResolveMismatch(row)">Resolve</Button>
-                  <Button v-if="store.canDeleteMismatches" size="sm" variant="destructive" :disabled="row.status !== 'open'" @click="store.openDeleteMismatch(row)">Delete</Button>
+                  <Button v-if="store.canResolveMismatches" size="sm" variant="outline" :disabled="row.status !== 'open'" @click="store.openResolveMismatch(row)">Resolve</Button>
+                  <Button v-if="store.canDeleteMismatches" size="icon" variant="ghost" class="h-8 w-8" :disabled="row.status !== 'open'" :title="`Delete mismatch`" @click="store.openDeleteMismatch(row)"><Trash2 class="h-4 w-4" /></Button>
                 </div>
               </td>
             </tr>

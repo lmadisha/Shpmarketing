@@ -191,7 +191,7 @@ watch(
   <Card v-if="canManageRules">
     <div class="border-b border-slate-200 p-6">
       <div class="flex items-center gap-2">
-        <Ruler class="h-5 w-5 text-blue-600" />
+        <Ruler class="h-5 w-5 text-[#006aea]" />
         <h2 class="text-lg font-semibold text-slate-900">Organisation Asset Validation</h2>
       </div>
       <p class="mt-2 text-sm text-slate-600">

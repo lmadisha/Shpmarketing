@@ -21,7 +21,7 @@ const props = withDefaults(defineProps<{
     :placeholder="placeholder"
     :disabled="disabled"
     :class="cn(
-      'flex min-h-24 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500',
+      'flex min-h-24 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500',
       props.class,
     )"
     @input="model = ($event.target as HTMLTextAreaElement).value"

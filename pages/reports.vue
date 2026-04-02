@@ -25,7 +25,7 @@ const reports = [
       <div class="grid gap-4 lg:grid-cols-3">
         <Card v-for="report in reports" :key="report.title">
           <div class="space-y-4 p-5">
-            <component :is="report.icon" class="h-8 w-8 text-blue-600" />
+            <component :is="report.icon" class="h-8 w-8 text-[#006aea]" />
             <div>
               <h2 class="text-lg font-semibold text-slate-900">{{ report.title }}</h2>
               <p class="mt-2 text-sm text-slate-600">{{ report.description }}</p>

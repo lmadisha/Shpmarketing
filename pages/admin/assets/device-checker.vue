@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Camera, ScanLine, Upload } from 'lucide-vue-next'
+import { Camera, ScanLine, Search, Upload } from 'lucide-vue-next'
 import Card from '~/components/ui/Card.vue'
 import Input from '~/components/ui/Input.vue'
 import Select from '~/components/ui/Select.vue'
@@ -42,10 +42,13 @@ function parsePenguinMacAddress(deviceName: string | null | undefined): string |
 
 const store = useAdminAssetsStore()
 const bluetoothNavigator = typeof navigator !== 'undefined' ? (navigator as BluetoothNavigator) : null
-const bluetoothSupported = Boolean(bluetoothNavigator?.bluetooth)
-const bluetoothUnavailableReason = !bluetoothNavigator?.bluetooth
-  ? 'Bluetooth scan is only supported in Chromium-based browsers.'
-  : ''
+const isSecureContextNow = typeof window !== 'undefined' && window.isSecureContext
+const bluetoothSupported = isSecureContextNow && Boolean(bluetoothNavigator?.bluetooth)
+const bluetoothUnavailableReason = !isSecureContextNow
+  ? 'Bluetooth scan requires HTTPS or localhost.'
+  : !bluetoothNavigator?.bluetooth
+    ? 'Bluetooth scan is only supported in Chromium-based browsers.'
+    : ''
 
 const serials = ref<Fridge[]>([])
 const serialsLoading = ref(false)
@@ -244,7 +247,10 @@ async function submitDeviceCheck() {
 
   <Card v-else class="max-w-2xl">
     <div class="border-b border-slate-200 p-5">
-      <h2 class="text-lg font-semibold text-slate-900">Device Checker</h2>
+      <div class="flex items-center gap-2">
+        <Search class="h-4 w-4 text-[#006aea]" />
+        <h2 class="text-lg font-semibold text-slate-900">Device Checker</h2>
+      </div>
       <p class="mt-1 text-sm text-slate-600">Submit a manual device check to verify or flag a mismatch.</p>
     </div>
     <div class="space-y-4 p-5">
@@ -323,7 +329,7 @@ async function submitDeviceCheck() {
       </div>
 
       <div v-else class="space-y-3">
-        <input ref="fileInputRef" type="file" accept="image/*" capture="environment" class="block w-full rounded-md border border-gray-200 px-3 py-2 text-sm" @change="handleImageScanFile">
+        <input ref="fileInputRef" type="file" accept="image/*" capture="environment" class="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200" @change="handleImageScanFile">
         <p class="text-xs text-slate-500">Upload a clear image where the barcode is visible.</p>
       </div>
 

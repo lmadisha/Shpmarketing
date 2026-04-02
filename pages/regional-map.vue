@@ -3,11 +3,14 @@ import { Map, MapPin } from 'lucide-vue-next'
 import FilterBar from '~/components/layout/FilterBar.vue'
 import Card from '~/components/ui/Card.vue'
 import Button from '~/components/ui/Button.vue'
+import Select from '~/components/ui/Select.vue'
 import TierBadge from '~/components/dashboard/TierBadge.vue'
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 
 const selectedRegion = ref<string | null>(null)
+const provinceFilter = ref('')
+const tierFilter = ref('')
 
 const regionData = [
   { name: 'Western Cape', units: 187, doorOpens: 589234, tier: 'gold', x: '26%', y: '30%' },
@@ -22,7 +25,7 @@ const regionData = [
     <FilterBar />
     <div class="mx-auto max-w-[1440px] space-y-6 p-4 md:p-6 lg:p-8">
       <div class="flex items-center gap-2">
-        <Map class="h-8 w-8 text-blue-600" />
+        <Map class="h-8 w-8 text-[#006aea]" />
         <div>
           <h1 class="text-2xl font-semibold text-slate-900">Regional Map Performance</h1>
           <p class="text-sm text-slate-600">Interactive regional summary of fleet activity and tier balance.</p>
@@ -37,22 +40,28 @@ const regionData = [
           <div class="space-y-4 p-5">
             <div class="space-y-2">
               <label class="text-sm font-medium text-slate-700">Province</label>
-              <select class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                <option>All provinces</option>
-                <option>Western Cape</option>
-                <option>Gauteng</option>
-                <option>KwaZulu-Natal</option>
-                <option>Eastern Cape</option>
-              </select>
+              <Select
+                v-model="provinceFilter"
+                :options="[
+                  { value: '', label: 'All provinces' },
+                  { value: 'western-cape', label: 'Western Cape' },
+                  { value: 'gauteng', label: 'Gauteng' },
+                  { value: 'kwazulu-natal', label: 'KwaZulu-Natal' },
+                  { value: 'eastern-cape', label: 'Eastern Cape' },
+                ]"
+              />
             </div>
             <div class="space-y-2">
               <label class="text-sm font-medium text-slate-700">Tier</label>
-              <select class="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                <option>All tiers</option>
-                <option>Gold</option>
-                <option>Silver</option>
-                <option>Bronze</option>
-              </select>
+              <Select
+                v-model="tierFilter"
+                :options="[
+                  { value: '', label: 'All tiers' },
+                  { value: 'gold', label: 'Gold' },
+                  { value: 'silver', label: 'Silver' },
+                  { value: 'bronze', label: 'Bronze' },
+                ]"
+              />
             </div>
             <Button class="w-full">Apply Filters</Button>
           </div>
@@ -72,7 +81,7 @@ const regionData = [
                 @click="selectedRegion = region.name"
               >
                 <div class="group relative">
-                  <MapPin class="h-9 w-9 text-blue-600 drop-shadow-lg" />
+                  <MapPin class="h-9 w-9 text-[#006aea] drop-shadow-lg" />
                   <div class="absolute left-1/2 top-full z-10 mt-2 hidden w-44 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-xl group-hover:block">
                     <p class="font-semibold text-slate-900">{{ region.name }}</p>
                     <p class="mt-1 text-slate-600">{{ region.units }} units</p>

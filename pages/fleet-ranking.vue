@@ -66,7 +66,7 @@ const fleetData = [
               <tr v-for="unit in fleetData" :key="unit.mac" class="text-sm text-slate-700">
                 <td class="px-4 py-3 font-semibold text-slate-900">#{{ unit.rank }}</td>
                 <td class="px-4 py-3">
-                  <NuxtLink :to="`/unit/${unit.mac}`" class="font-medium text-blue-600 hover:underline">{{ unit.mac }}</NuxtLink>
+                  <NuxtLink :to="`/unit/${unit.mac}`" class="font-medium text-[#006aea] hover:underline">{{ unit.mac }}</NuxtLink>
                 </td>
                 <td class="px-4 py-3">{{ unit.region }}</td>
                 <td class="px-4 py-3 text-right font-medium">{{ unit.doorOpens.toLocaleString() }}</td>
