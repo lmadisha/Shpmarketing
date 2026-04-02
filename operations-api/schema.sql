@@ -6,11 +6,9 @@ CREATE TYPE frostlink.mismatch_action_enum AS ENUM ('open', 'resolve', 'cancel',
 
 CREATE TYPE frostlink.user_permission_enum AS ENUM (
   'Admin',
-  'Fleet Manager',
-  'Factory',
-  'Outlet',
-  'Technician',
-  'User'
+  'Advanced',
+  'Intermediate',
+  'Basic'
 );
 
 CREATE TABLE frostlink.organisation (
