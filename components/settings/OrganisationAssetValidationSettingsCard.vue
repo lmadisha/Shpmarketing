@@ -50,8 +50,8 @@ const { request } = useApiClient()
 const authStore = useAuthStore()
 
 const isAdmin = computed(() => authStore.session?.user.permissions === 'Admin')
-const isFleetManager = computed(() => authStore.session?.user.permissions === 'Fleet Manager')
-const canManageRules = computed(() => isAdmin.value || isFleetManager.value)
+const isAdvanced = computed(() => authStore.session?.user.permissions === 'Advanced')
+const canManageRules = computed(() => isAdmin.value || isAdvanced.value)
 
 const organisationOptions = ref<OrganisationOption[]>([])
 const organisationsLoading = ref(false)
