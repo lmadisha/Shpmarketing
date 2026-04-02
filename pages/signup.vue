@@ -21,7 +21,7 @@ const form = reactive({
   full_name: '',
   username: '',
   password: '',
-  permissions: 'User' as PermissionLevel,
+  permissions: 'Basic' as PermissionLevel,
   organisation_id: '',
 })
 
