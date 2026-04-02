@@ -60,7 +60,7 @@ const createForm = reactive({
   full_name: '',
   username: '',
   password: '',
-  permissions: 'User' as PermissionLevel,
+  permissions: 'Basic' as PermissionLevel,
   organisation_id: '',
 })
 
@@ -73,7 +73,7 @@ const organisationError = ref('')
 const deletingOrganisation = ref<OrganisationOption | null>(null)
 
 const permissionTarget = ref<WorkspaceUser | null>(null)
-const nextPermission = ref<PermissionLevel>('User')
+const nextPermission = ref<PermissionLevel>('Basic')
 const permissionSaving = ref(false)
 const permissionError = ref('')
 
@@ -176,7 +176,7 @@ async function submitCreateUser() {
     createForm.full_name = ''
     createForm.username = ''
     createForm.password = ''
-    createForm.permissions = 'User'
+    createForm.permissions = 'Basic'
     createForm.organisation_id = forceOwnOrg.value ? String(selfOrgId.value || '') : ''
     await loadUsers()
   } catch (submitError) {
@@ -455,7 +455,7 @@ onMounted(() => {
       </Card>
     </template>
 
-    <ModalDialog :open="createUserOpen" title="Create User" description="Create a new workspace user." @close="createUserOpen = false; createForm.permissions = 'User'">
+    <ModalDialog :open="createUserOpen" title="Create User" description="Create a new workspace user." @close="createUserOpen = false; createForm.permissions = 'Basic'">
       <div class="space-y-3">
         <div class="space-y-1">
           <Label for="create-full-name">Full Name</Label>
