@@ -11,9 +11,11 @@ const store = useAdminAssetsStore()
 definePageMeta({ middleware: 'auth' })
 
 function actionVariant(actionType: string) {
+  if (actionType === 'VERIFY') return 'success'
+  if (actionType === 'UNVERIFY') return 'destructive'
   if (actionType === 'UPDATE' || actionType === 'MISMATCH_UPDATE') return 'secondary'
   if (actionType === 'DELETE' || actionType === 'MISMATCH_DELETE') return 'destructive'
-  return 'success'
+  return 'outline'
 }
 
 onMounted(async () => {

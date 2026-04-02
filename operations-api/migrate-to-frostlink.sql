@@ -66,13 +66,23 @@ BEGIN
     INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number, source_table, action_type,
       old_mac, new_mac, old_c_num, new_c_num,
-      organisation_id, changed_by
+      organisation_id, changed_by, metadata
     ) VALUES (
-      OLD.fridge_serial_number, 'fridges', 'UPDATE',
+      OLD.fridge_serial_number, 'fridges',
+      CASE
+        WHEN OLD.verified = false AND NEW.verified = true THEN 'VERIFY'
+        WHEN OLD.verified = true AND NEW.verified = false THEN 'UNVERIFY'
+        ELSE 'UPDATE'
+      END,
       OLD.iot_mac_address, NEW.iot_mac_address,
       OLD.c_number, NEW.c_number,
       COALESCE(NEW.organisation_id, OLD.organisation_id),
-      NULLIF(current_user_id_text, '')::integer
+      NULLIF(current_user_id_text, '')::integer,
+      CASE
+        WHEN OLD.verified IS DISTINCT FROM NEW.verified THEN
+          jsonb_build_object('old_verified', OLD.verified, 'new_verified', NEW.verified)
+        ELSE NULL
+      END
     );
   ELSIF (TG_OP = 'INSERT') THEN
     INSERT INTO frostlink.fridge_audit_log (
