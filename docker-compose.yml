@@ -1,62 +1,40 @@
 services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./operations-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   frontend:
-    image: node:20-bookworm
-    working_dir: /workspace
-    command: >
-      sh -c "npm ci && npm run dev:frontend -- --host 0.0.0.0 --port 5173"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NUXT_PUBLIC_OPERATIONS_API_BASE: ${NUXT_PUBLIC_OPERATIONS_API_BASE:-http://localhost:5001}
+    env_file:
+      - ./.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 5173
+      NUXT_PUBLIC_OPERATIONS_API_BASE: ${NUXT_PUBLIC_OPERATIONS_API_BASE:-http://localhost:5001}
+      NUXT_PUBLIC_APP_MODE: ${NUXT_PUBLIC_APP_MODE:-online}
     ports:
       - "5173:5173"
-    environment:
-      NUXT_PUBLIC_OPERATIONS_API_BASE: ${NUXT_PUBLIC_OPERATIONS_API_BASE:-http://localhost:5001}
-      CHOKIDAR_USEPOLLING: "true"
-    volumes:
-      - .:/workspace
-      - frontend_node_modules:/workspace/node_modules
+    restart: unless-stopped
     depends_on:
-      - operations-api
+      operations-api:
+        condition: service_started
 
   operations-api:
-    image: node:20-bookworm
-    working_dir: /workspace/operations-api
-    command: >
-      sh -c "npm ci && npm run dev"
-    ports:
-      - "${OPS_API_PORT:-5001}:5001"
+    build:
+      context: .
+      dockerfile: operations-api/Dockerfile
+    env_file:
+      - ./operations-api/.env
     environment:
-      PORT: 5001
-      OPS_DB_USER: postgres
-      OPS_DB_PASSWORD: postgres
-      OPS_DB_HOST: postgres
-      OPS_DB_PORT: 5432
-      OPS_DB_NAME: postgres
-      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
-      MOBILE_API_KEY: ${MOBILE_API_KEY:-dev-mobile-api-key}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
-    volumes:
-      - .:/workspace
-      - operations_api_node_modules:/workspace/operations-api/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
+      PORT: ${OPS_API_PORT:-5001}
+    ports:
+      - "${OPS_API_PORT:-5001}:${OPS_API_PORT:-5001}"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-volumes:
-  postgres_data:
-  frontend_node_modules:
-  operations_api_node_modules:
+  # PostgreSQL is intentionally not started here.
+  # The API reads its DB configuration from operations-api/.env.
+  #
+  # postgres:
+  #   image: postgres:15
