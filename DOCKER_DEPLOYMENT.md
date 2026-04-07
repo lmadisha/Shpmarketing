@@ -1,20 +1,26 @@
 # Docker Deployment Instructions
 
-This guide explains how to run the ShpMarketing frontend, operations API, and PostgreSQL database with Docker Compose.
+This repository ships two Compose files:
+
+- `docker-compose.yml` for the main local/containerized app setup
+- `docker-compose.prod.yml` for production-style deployment behind `/api`
+
+Neither file starts PostgreSQL anymore. The API connects to an existing database using values from `operations-api/.env`.
 
 ## Prerequisites
 
-- Docker Desktop (or Docker Engine + Docker Compose)
-- Ports `5173`, `5001`, and `5433` available on your machine
+- Docker Desktop or Docker Engine with Compose
+- An existing PostgreSQL server already running
+- Ports available:
+  - `5173` for the local frontend compose file
+  - `5001` for the API
+  - `8080` for the production-style frontend compose file
 
 ## Environment Files
 
-Docker Compose reads configuration from two files:
-
-- Root `.env` for frontend runtime values
-- `operations-api/.env` for API and database values
-
 ### Root `.env`
+
+Used by the frontend build/runtime.
 
 ```bash
 NUXT_PUBLIC_OPERATIONS_API_BASE=http://localhost:5001
@@ -23,22 +29,55 @@ NUXT_PUBLIC_APP_MODE=online
 
 ### `operations-api/.env`
 
+Used by the API container.
+
 ```bash
 PORT=5001
 OPS_DB_USER=postgres
 OPS_DB_PASSWORD=postgres
-OPS_DB_HOST=localhost
+OPS_DB_HOST=host.docker.internal
 OPS_DB_PORT=5433
 OPS_DB_NAME=postgres
 JWT_SECRET=your-secure-jwt-secret-here
 MOBILE_API_KEY=your-mobile-api-key-here
 CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
-DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
+DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5433/postgres
 ```
 
-Compose uses `operations-api/.env` as the source of truth for database credentials and name. Inside the Docker network, the API automatically connects to the internal `postgres` service on port `5432`.
+## Important Networking Note
 
-## Start The Stack
+If the API runs inside Docker and your database runs on the host machine, do not use `localhost` for the database host.
+
+- Inside a container, `localhost` means the container itself
+- Use `host.docker.internal` to connect from the container to a database running on the Docker host
+
+That means these two values usually need to agree:
+
+```bash
+OPS_DB_HOST=host.docker.internal
+DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5433/postgres
+```
+
+## What The API Uses For DB Connection
+
+There are two database config paths in the API:
+
+- Prisma uses `DATABASE_URL`
+- The raw `pg` helper uses `OPS_DB_USER`, `OPS_DB_PASSWORD`, `OPS_DB_HOST`, `OPS_DB_PORT`, and `OPS_DB_NAME`
+
+The current API entrypoint uses Prisma, so `DATABASE_URL` is the most important setting for actual runtime DB access.
+
+On startup, the API logs the loaded DB env summary from `operations-api/env.js`, including:
+
+- `OPS_DB_USER`
+- `OPS_DB_HOST`
+- `OPS_DB_PORT`
+- `OPS_DB_NAME`
+- parsed `DATABASE_URL` target
+
+## Local Compose
+
+Start the local stack:
 
 ```bash
 docker compose up --build
@@ -50,86 +89,106 @@ Run in the background:
 docker compose up -d --build
 ```
 
-## Service URLs
+Service URLs:
 
 - Frontend: `http://localhost:5173`
-- Operations API: `http://localhost:5001`
-- PostgreSQL: `localhost:5433`
+- API: `http://localhost:5001`
+
+This file:
+
+- builds the frontend from `Dockerfile`
+- builds the API from `operations-api/Dockerfile`
+- loads API env from `operations-api/.env`
+- does not start PostgreSQL
+
+## Production Compose
+
+Start the production-style stack:
+
+```bash
+docker compose -f docker-compose.prod.yml up --build
+```
+
+Run in the background:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Service URLs:
+
+- Frontend: `http://localhost:8080`
+- API: `http://localhost:5001`
+
+This file:
+
+- builds the frontend with `NUXT_PUBLIC_OPERATIONS_API_BASE=/api`
+- loads API env from both `.env` and `operations-api/.env`
+- does not start PostgreSQL
 
 ## Useful Commands
 
-Start a single service:
+Rebuild only the API image:
 
 ```bash
-docker compose up operations-api --build
+docker compose build operations-api
+docker compose up -d --no-deps operations-api
+```
+
+Rebuild only the API image with production compose:
+
+```bash
+docker compose -f docker-compose.prod.yml build operations-api
+docker compose -f docker-compose.prod.yml up -d --no-deps operations-api
 ```
 
 View logs:
 
 ```bash
-docker compose logs
-docker compose logs -f frontend
 docker compose logs -f operations-api
-docker compose logs -f postgres
+docker compose logs -f frontend
 ```
 
-Stop everything:
+View production logs:
 
 ```bash
-docker compose down
+docker compose -f docker-compose.prod.yml logs -f operations-api
+docker compose -f docker-compose.prod.yml logs -f frontend
 ```
 
-Stop and remove the database volume:
-
-```bash
-docker compose down -v
-```
-
-## Service Notes
-
-### Frontend
-
-- Built from `Dockerfile`
-- Exposed on port `5173`
-- Uses root `.env`
-
-### Operations API
-
-- Built from `operations-api/Dockerfile`
-- Exposed on port `5001`
-- Uses `operations-api/.env`
-- Waits for PostgreSQL health before starting
-
-### PostgreSQL
-
-- Uses `postgres:15`
-- Exposed on host port `5433`
-- Initializes schema from `operations-api/schema.sql`
-- Persists data in the `postgres_data` volume
-
-## Troubleshooting
-
-Check for port conflicts:
-
-```bash
-netstat -an | findstr "5173\|5001\|5433"  # Windows
-lsof -i :5173,5001,5433                   # Linux/macOS
-```
-
-Inspect the rendered Compose config:
+Render the effective Compose config:
 
 ```bash
 docker compose config
+docker compose -f docker-compose.prod.yml config
 ```
 
-Open a PostgreSQL shell:
+Stop the stack:
 
 ```bash
-docker compose exec postgres psql -U postgres -d postgres
+docker compose down
+docker compose -f docker-compose.prod.yml down
 ```
 
-If you change frontend env values such as `NUXT_PUBLIC_OPERATIONS_API_BASE`, rebuild the frontend image:
+## Troubleshooting
+
+Check container port conflicts:
 
 ```bash
-docker compose up --build
+netstat -an | findstr "5173\|5001\|8080"  # Windows
+lsof -i :5173,5001,8080                   # Linux/macOS
+```
+
+If the API starts but cannot reach the database:
+
+1. Check the startup log line beginning with `[ops-db] Loaded database env:`
+2. Confirm `DATABASE_URL` points at the correct host and port
+3. If the DB is on the host machine, switch `localhost` to `host.docker.internal`
+4. Confirm PostgreSQL allows TCP connections from Docker
+
+If you change any Dockerfile or dependency related to the API runtime, rebuild the API image:
+
+```bash
+docker compose build operations-api
+docker compose up -d --no-deps operations-api
 ```
