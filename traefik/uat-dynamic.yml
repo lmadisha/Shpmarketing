@@ -1,0 +1,61 @@
+http:
+  routers:
+    frontend-uat:
+      rule: "Host(`uat.frostlink.digital`)"
+      entryPoints:
+        - websecure
+      service: frontend-uat
+      priority: 100
+      tls:
+        certResolver: letsencrypt
+
+    api-uat:
+      rule: "Host(`uat.frostlink.digital`) && PathPrefix(`/api`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - api-uat-stripprefix
+      service: api-uat
+      priority: 110
+      tls:
+        certResolver: letsencrypt
+
+    landing-www:
+      rule: "Host(`www.frostlink.digital`) || Host(`frostlink.digital`)"
+      entryPoints:
+        - websecure
+      service: landing-uat
+      priority: 50
+      tls:
+        certResolver: letsencrypt
+
+    landing-wildcard:
+      rule: "HostRegexp(`.+`)"
+      entryPoints:
+        - websecure
+      service: landing-uat
+      priority: 1
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    api-uat-stripprefix:
+      stripPrefix:
+        prefixes:
+          - /api
+
+  services:
+    frontend-uat:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+
+    api-uat:
+      loadBalancer:
+        servers:
+          - url: "http://operations-api:5001"
+
+    landing-uat:
+      loadBalancer:
+        servers:
+          - url: "http://landing:80"
