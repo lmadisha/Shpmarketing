@@ -2198,10 +2198,6 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
       return res.status(400).json({ error: "fridge_serial_number is required" });
     }
 
-    if (!mac || !cNum) {
-      return res.status(400).json({ error: "mac_address and c_number are required" });
-    }
-
     if (!parsedLocation.isValid) {
       return res.status(400).json(buildValidationErrorResponse(parsedLocation.errors));
     }
@@ -2233,10 +2229,12 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
       }
 
       const norm = (value) => String(value || "").trim().toUpperCase();
-      const macMatches = norm(fridge.iotMacAddress) === norm(mac);
-      const cMatches = norm(fridge.cNumber) === norm(cNum);
+      const macMatches = mac ? norm(fridge.iotMacAddress) === norm(mac) : null;
+      const cMatches = cNum ? norm(fridge.cNumber) === norm(cNum) : null;
+      const hasAnyField = mac || cNum;
+      const allProvidedMatch = hasAnyField && macMatches !== false && cMatches !== false;
 
-      if (macMatches && cMatches) {
+      if (allProvidedMatch) {
         const updatedFridge = await tx.fridge.update({
           where: { fridgeSerialNumber: serial },
           data: {

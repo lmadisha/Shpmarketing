@@ -341,7 +341,7 @@ async function submitDeviceCheck() {
         {{ success.result === 'VERIFIED' ? `${success.fridge_serial_number} matched and was marked verified.` : `Mismatch #${success.id} submitted for ${success.fridge_serial_number}.` }}
       </p>
 
-      <Button :disabled="submitting || !form.fridge_serial_number || !form.mac_address || !form.c_number" @click="submitDeviceCheck">
+      <Button :disabled="submitting || !form.fridge_serial_number" @click="submitDeviceCheck">
         {{ submitting ? 'Submitting...' : `Submit ${form.fridge_serial_number || 'Check'}` }}
       </Button>
     </div>
