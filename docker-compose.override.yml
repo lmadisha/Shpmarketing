@@ -1,0 +1,20 @@
+# Docker Compose override for local development
+# This provides hot-reload and additional debugging capabilities
+# Usage: docker compose up (automatically uses this override in development)
+
+services:
+  frontend:
+    volumes:
+      - .:/app
+      - /app/.nuxt
+      - /app/node_modules
+      - /app/.output
+    environment:
+      NODE_ENV: development
+
+  operations-api:
+    volumes:
+      - ./operations-api:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development

@@ -1,106 +1,123 @@
-# Docker Deployment Instructions
+# Docker Deployment Guide - Production Ready Stack
 
-This repository ships two Compose files:
+This repository has been updated with a **production-ready Docker stack** that includes:
 
-- `docker-compose.yml` for the main local/containerized app setup
-- `docker-compose.prod.yml` for production-style deployment behind `/api`
+- **PostgreSQL** with persistent volume storage
+- **Self-contained services** communicating via Docker network
+- **Traefik reverse proxy** with automatic SSL/TLS via Let's Encrypt
+- **Environment-specific compose files** for local, UAT, and production
+- **Health checks** for all services
 
-Neither file starts PostgreSQL anymore. The API connects to an existing database using values from `operations-api/.env`.
+## Quick Start Guide
 
-## Prerequisites
+### Local Development (with hot-reload)
 
-- Docker Desktop or Docker Engine with Compose
-- An existing PostgreSQL server already running
-- Ports available:
-  - `5173` for the local frontend compose file
-  - `5001` for the API
-  - `8080` for the production-style frontend compose file
+```bash
+# 1. Set up environment
+cp .env.example .env
+cp operations-api/.env.example operations-api/.env
+
+# 2. Start the full stack with PostgreSQL
+docker compose up --build
+
+# 3. Access services
+# - Frontend: http://localhost:5173
+# - API: http://localhost:5001
+# - Database: localhost:5432
+```
+
+The `docker-compose.override.yml` is automatically used for local development, providing hot-reload capabilities for both frontend and API.
+
+### UAT Deployment (Local or Remote)
+
+```bash
+# 1. Set up UAT environment
+cp .env.uat .env.uat.local
+cp operations-api/.env.uat operations-api/.env.uat.local
+# Edit values in .env.uat.local and operations-api/.env.uat.local
+
+# 2. Add domain to hosts file (for local testing)
+# Windows: C:\Windows\System32\drivers\etc\hosts
+# Linux/macOS: /etc/hosts
+# 127.0.0.1 uat.frostlink.local
+
+# 3. Start UAT stack with Traefik and HTTPS
+docker compose -f docker-compose.uat.yml up --build
+
+# 4. Access
+# - Frontend: https://uat.frostlink.local
+# - API: https://uat.frostlink.local/api
+# - Traefik Dashboard: https://uat.frostlink.local:8081/dashboard
+```
+
+### Production Deployment
+
+```bash
+# 1. Configure environment with REAL secrets
+cp .env.prod .env.prod.local
+# Edit with strong passwords, real domain, Let's Encrypt email, etc.
+
+# 2. Deploy
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. Verify
+docker compose -f docker-compose.prod.yml ps
+```
 
 ## Environment Files
 
-### Root `.env`
-
-Used by the frontend build/runtime.
-
+### Root `.env` (Local Development)
 ```bash
 NUXT_PUBLIC_OPERATIONS_API_BASE=http://localhost:5001
 NUXT_PUBLIC_APP_MODE=online
-```
+DATABASE_USER=frostlink
+DATABASE_PASSWORD=frostlink-dev-password
+DATABASE_NAME=frostlink
 
-### `operations-api/.env`
 
-Used by the API container.
+## Architecture
 
+### Docker Network
+All services communicate via an internal Docker network called `frostlink`:
+- **frontend** ↔ **operations-api** ↔ **postgres**
+- **traefik** (UAT/Prod) routes external requests
+
+### Service Health Checks
+- **PostgreSQL:** `pg_isready` check every 10s
+- *Database Management
+
+### Backup
 ```bash
-PORT=5001
-OPS_DB_USER=postgres
-OPS_DB_PASSWORD=postgres
-OPS_DB_HOST=host.docker.internal
-OPS_DB_PORT=5433
-OPS_DB_NAME=postgres
-JWT_SECRET=your-secure-jwt-secret-here
-MOBILE_API_KEY=your-mobile-api-key-here
-CORS_ORIGIN=http://localhost:5173,http://127.0.0.1:5173
-DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5433/postgres
+# Local development
+docker compose exec postgres pg_dump -U frostlink frostlink > backup.sql
+
+# Production
+docker compose -f docker-compose.prod.yml exec postgres pg_dump -U frostlink_prod frostlink_prod > backup-prod.sql
 ```
 
-## Important Networking Note
-
-If the API runs inside Docker and your database runs on the host machine, do not use `localhost` for the database host.
-
-- Inside a container, `localhost` means the container itself
-- Use `host.docker.internal` to connect from the container to a database running on the Docker host
-
-That means these two values usually need to agree:
-
+### Restore
 ```bash
-OPS_DB_HOST=host.docker.internal
-DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5433/postgres
+# Local development
+docker compose exec -T postgres psql -U frostlink frostlink < backup.sql
 ```
 
-## What The API Uses For DB Connection
-
-There are two database config paths in the API:
-
-- Prisma uses `DATABASE_URL`
-- The raw `pg` helper uses `OPS_DB_USER`, `OPS_DB_PASSWORD`, `OPS_DB_HOST`, `OPS_DB_PORT`, and `OPS_DB_NAME`
-
-The current API entrypoint uses Prisma, so `DATABASE_URL` is the most important setting for actual runtime DB access.
-
-On startup, the API logs the loaded DB env summary from `operations-api/env.js`, including:
-
-- `OPS_DB_USER`
-- `OPS_DB_HOST`
-- `OPS_DB_PORT`
-- `OPS_DB_NAME`
-- parsed `DATABASE_URL` target
-
-## Local Compose
-
-Start the local stack:
-
+### Direct Access
 ```bash
-docker compose up --build
+# Local
+docker compose exec postgres psql -U frostlink -d frostlink
+
+# Production
+docker compose -f docker-compose.prod.yml exec postgres psql -U frostlink_prod -d frostlink_prod
 ```
 
-Run in the background:
+## Compose Files Reference
 
-```bash
-docker compose up -d --build
-```
-
-Service URLs:
-
-- Frontend: `http://localhost:5173`
-- API: `http://localhost:5001`
-
-This file:
-
-- builds the frontend from `Dockerfile`
-- builds the API from `operations-api/Dockerfile`
-- loads API env from `operations-api/.env`
-- does not start PostgreSQL
-
+| File | Purpose | Services | Networks |
+|------|---------|----------|----------|
+| `docker-compose.yml` | Local development with hot-reload | PostgreSQL + API + Frontend | Internal only |
+| `docker-compose.override.yml` | Development overrides (auto-used) | Volume mounts for hot-reload | Extends base |
+| `docker-compose.uat.yml` | UAT with Traefik + HTTPS | PostgreSQL + API + Frontend + Traefik | Internal + Traefik |
+| `docker-compose.prod.yml` | Production with Traefik + HTTPS | PostgreSQL + API + Frontend + Traefik | Internal + Traefik |
 ## Production Compose
 
 Start the production-style stack:
@@ -128,67 +145,206 @@ This file:
 
 ## Useful Commands
 
-Rebuild only the API image:
-
+### Local Development
 ```bash
-docker compose build operations-api
-docker compose up -d --no-deps operations-api
-```
+# Start fresh
+docker compose down -v
+docker compose up --build
 
-Rebuild only the API image with production compose:
-
-```bash
-docker compose -f docker-compose.prod.yml build operations-api
-docker compose -f docker-compose.prod.yml up -d --no-deps operations-api
-```
-
-View logs:
-
-```bash
+# View logs
+docker compose logs -f
 docker compose logs -f operations-api
-docker compose logs -f frontend
-```
+docker compose logs -f postgres
 
-View production logs:
+# Rebuild services
+docker compose build operations-api
+docker compose build --no-cache
 
-```bash
-docker compose -f docker-compose.prod.yml logs -f operations-api
-docker compose -f docker-compose.prod.yml logs -f frontend
-```
-
-Render the effective Compose config:
-
-```bash
+# Render final config
 docker compose config
-docker compose -f docker-compose.prod.yml config
 ```
 
-Stop the stack:
-
+### UAT
 ```bash
-docker compose down
+# Start UAT stack
+docker compose -f docker-compose.uat.yml up -d --build
+
+# View logs
+docker compose -f docker-compose.uat.yml logs -f
+docker compose -f docker-compose.uat.yml logs -f traefik
+
+# Stop UAT
+docker compose -f docker-compose.uat.yml down
+
+# View running services
+docker compose -f docker-compose.uat.yml ps
+```
+
+### Production
+```bash
+# Start production (background)
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Monitor logs
+docker compose -f docker-compose.prod.yml logs -f
+
+# Stop production
 docker compose -f docker-compose.prod.yml down
+
+# View service status
+docker compose -f docker-compose.prod.yml ps
+
+# View specific service logs
+docker compose -f docker-compose.prod.yml logs -f operations-api
+docker compose -f docker-compose.prod.yml logs -f traefik
 ```
 
 ## Troubleshooting
 
-Check container port conflicts:
+### Services fail to start
+
+1. **Check logs first:**
+   ```bash
+   docker compose logs postgres
+   docker compose logs operations-api
+   ```
+
+2. **Verify ports are available:**
+   ```bash
+   # Windows
+   netstat -an | findstr "5173\|5001\|5432\|80\|443"
+   
+   # Linux/macOS
+   lsof -i :5173,5001,5432,80,443
+   ```
+
+3. **Clean and restart:**
+   ```bash
+   docker compose down -v
+   docker compose up --build
+   ```
+
+### Database won't connect
+
+1. **Check PostgreSQL is running:**
+   ```bash
+   docker compose ps postgres
+   # Status should show "healthy" after ~30 seconds
+   ```
+
+2. **Verify health check:**
+   ```bash
+   docker compose exec postgres pg_isready -U frostlink
+   ```
+
+3. **Check logs:**
+   ```bash
+   docker compose logs postgres
+   ```
+
+### API can't reach database
+
+1. **Verify environment variables:**
+   ```bash
+   docker compose exec operations-api env | grep OPS_DB
+   docker compose exec operations-api env | grep DATABASE_URL
+   ```
+
+2. **Test connection from API container:**
+   ```bash
+   docker compose exec operations-api psql postgresql://frostlink:frostlink-dev-password@postgres:5432/frostlink
+   ```
+
+### Traefik SSL/TLS issues (UAT/Prod)
+
+1. **Check Let's Encrypt setup:**
+   ```bash
+   docker compose -f docker-compose.uat.yml logs traefik
+   ```
+
+2. **Verify domain resolution:**
+   ```bash
+   # Windows
+   nslookup uat.frostlink.local
+   
+   # Linux/macOS
+   dig uat.frostlink.local
+   ```
+
+3. **Check certificate storage:**
+   ```bash
+   docker compose -f docker-compose.uat.yml exec traefik ls -la /letsencrypt/
+   ```
+
+### Container resource issues
 
 ```bash
-netstat -an | findstr "5173\|5001\|8080"  # Windows
-lsof -i :5173,5001,8080                   # Linux/macOS
+# Check resource usage
+docker stats
+
+# View container details
+docker ps -a
+
+# Free up resources
+docker system prune -a
+docker volume prune
 ```
 
-If the API starts but cannot reach the database:
+## Migration from Old Setup
 
-1. Check the startup log line beginning with `[ops-db] Loaded database env:`
-2. Confirm `DATABASE_URL` points at the correct host and port
-3. If the DB is on the host machine, switch `localhost` to `host.docker.internal`
-4. Confirm PostgreSQL allows TCP connections from Docker
+If moving from an existing PostgreSQL instance:
 
-If you change any Dockerfile or dependency related to the API runtime, rebuild the API image:
+1. **Backup old database:**
+   ```bash
+   pg_dump -U <old_user> -h <old_host> <old_db> > old_backup.sql
+   ```
 
-```bash
-docker compose build operations-api
-docker compose up -d --no-deps operations-api
-```
+2. **Start new stack:**
+   ```bash
+   docker compose up --build
+   ```
+
+3. **Restore to new database:**
+   ```bash
+   docker compose exec -T postgres psql -U frostlink -d frostlink < old_backup.sql
+   ```
+
+4. **Verify data:**
+   ```bash
+   docker compose exec postgres psql -U frostlink -d frostlink -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';"
+   ```
+
+## Performance Tips
+
+- **Development:** Local volumes + hot-reload enabled by default
+- **UAT:** Use persistent volumes for data retention between restarts
+- **Production:** Monitor Docker stats and consider resource limits
+- **Database:** Place `postgres_data_*` volumes on fast storage (SSD preferred)
+- **Backups:** Schedule regular automated backups before production use
+
+## Security Best Practices
+
+- ✅ Change all default passwords (`.env.prod` and `operations-api/.env.prod`)
+- ✅ Use strong passwords (min 16 chars, mixed types)
+- ✅ Don't commit production `.env.prod` or `.env.prod.local` files
+- ✅ Use Docker secrets for true production deployments
+- ✅ Enable database backups and replication
+- ✅ Rotate JWT_SECRET and MOBILE_API_KEY periodically
+- ✅ Monitor all activity via Traefik dashboard
+- ✅ Update base images regularly (`docker pull postgres:15-bookworm`)
+
+## Next Steps
+
+1. **Test locally:** Run `docker compose up` and verify all services
+2. **Try UAT:** Deploy to UAT server with real domain
+3. **Production ready:** When satisfied, promote to production
+4. **Monitoring:** Set up centralized logging and metrics
+5. **CI/CD:** Automate building and pushing images to registry
+6. **Backups:** Implement automated database backup strategy
+
+## Additional Resources
+
+- See `DOCKER_COMPOSE_GUIDE.md` for detailed advanced configuration
+- PostgreSQL docs: https://www.postgresql.org/docs/15/
+- Traefik docs: https://doc.traefik.io/traefik/
+- Docker Compose docs: https://docs.docker.com/compose/

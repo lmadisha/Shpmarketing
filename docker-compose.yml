@@ -1,10 +1,79 @@
+networks:
+  frostlink:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
 services:
+  postgres:
+    image: ghcr.io/digitaltwin-za/postgres:latest
+    container_name: frostlink-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_ANON_ROLE: ${DB_ANON_ROLE}
+      DB_SCHEMA: ${DB_SCHEMA}
+      TZ: ${TZ:-Etc/UTC}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./operations-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - frostlink
+
+  operations-api:
+    image: crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:${OPS_API_TAG:-latest}
+    build:
+      context: .
+      dockerfile: operations-api/Dockerfile
+    container_name: frostlink-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ./.env
+      - ./operations-api/.env
+    environment:
+      PORT: ${OPS_API_PORT:-5001}
+      OPS_DB_HOST: postgres
+      OPS_DB_PORT: 5432
+      OPS_DB_USER: ${POSTGRES_USER}
+      OPS_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      OPS_DB_NAME: ${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "${OPS_API_PORT:-5001}:${OPS_API_PORT:-5001}"
+    restart: unless-stopped
+    networks:
+      - frostlink
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${OPS_API_PORT:-5001}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   frontend:
+    image: crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:${FRONTEND_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
       args:
         NUXT_PUBLIC_OPERATIONS_API_BASE: ${NUXT_PUBLIC_OPERATIONS_API_BASE:-http://localhost:5001}
+    container_name: frostlink-frontend
+    depends_on:
+      - operations-api
     env_file:
       - ./.env
     environment:
@@ -15,26 +84,5 @@ services:
     ports:
       - "5173:5173"
     restart: unless-stopped
-    depends_on:
-      operations-api:
-        condition: service_started
-
-  operations-api:
-    build:
-      context: .
-      dockerfile: operations-api/Dockerfile
-    env_file:
-      - ./operations-api/.env
-    environment:
-      PORT: ${OPS_API_PORT:-5001}
-    ports:
-      - "${OPS_API_PORT:-5001}:${OPS_API_PORT:-5001}"
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  # PostgreSQL is intentionally not started here.
-  # The API reads its DB configuration from operations-api/.env.
-  #
-  # postgres:
-  #   image: postgres:15
+    networks:
+      - frostlink
