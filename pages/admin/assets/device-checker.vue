@@ -62,6 +62,9 @@ const form = reactive<DeviceCheckForm>({
 const submitting = ref(false)
 const error = ref<string | null>(null)
 const success = ref<DeviceCheckSuccess | null>(null)
+const locationLatitude = ref<number | null>(null)
+const locationLongitude = ref<number | null>(null)
+const locationStatus = ref<'pending' | 'granted' | 'denied' | 'unavailable'>('pending')
 const scannerOpen = ref(false)
 const scannerMode = ref<'camera' | 'upload'>('camera')
 const scannerError = ref<string | null>(null)
@@ -109,8 +112,27 @@ watch(serialQuery, () => {
   }, 200)
 })
 
+function requestLocation() {
+  if (!navigator.geolocation) {
+    locationStatus.value = 'unavailable'
+    return
+  }
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      locationLatitude.value = position.coords.latitude
+      locationLongitude.value = position.coords.longitude
+      locationStatus.value = 'granted'
+    },
+    () => {
+      locationStatus.value = 'denied'
+    },
+    { enableHighAccuracy: true, timeout: 10000 },
+  )
+}
+
 onMounted(() => {
   void loadSerials()
+  requestLocation()
 })
 
 async function handleScannedSerial(candidate: string) {
@@ -224,7 +246,12 @@ async function submitDeviceCheck() {
     const result = await store.adminRequest<DeviceCheckSuccess>('deviceCheck:submit', '/mismatches/manual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        ...(locationLatitude.value != null && locationLongitude.value != null
+          ? { latitude: locationLatitude.value, longitude: locationLongitude.value }
+          : {}),
+      }),
     })
     success.value = result
     form.fridge_serial_number = ''
@@ -287,6 +314,26 @@ async function submitDeviceCheck() {
       <div class="space-y-1">
         <label class="text-sm font-medium text-slate-700">C-Code / C-Number</label>
         <Input :model-value="form.c_number" placeholder="C-Code / C-Number" @update:model-value="(value) => form.c_number = cleanCNumber(String(value || ''))" />
+      </div>
+
+      <div class="flex items-center gap-2 text-sm">
+        <span v-if="locationStatus === 'granted'" class="flex items-center gap-1.5 text-green-600">
+          <span class="h-2 w-2 rounded-full bg-green-500" />
+          Location enabled ({{ locationLatitude?.toFixed(4) }}, {{ locationLongitude?.toFixed(4) }})
+        </span>
+        <span v-else-if="locationStatus === 'denied'" class="flex items-center gap-1.5 text-amber-600">
+          <span class="h-2 w-2 rounded-full bg-amber-500" />
+          Location denied — coordinates won't be recorded
+          <Button type="button" variant="link" size="sm" class="h-auto p-0 text-amber-700 underline" @click="requestLocation">Retry</Button>
+        </span>
+        <span v-else-if="locationStatus === 'unavailable'" class="flex items-center gap-1.5 text-slate-500">
+          <span class="h-2 w-2 rounded-full bg-slate-400" />
+          Geolocation not available in this browser
+        </span>
+        <span v-else class="flex items-center gap-1.5 text-slate-500">
+          <span class="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
+          Requesting location...
+        </span>
       </div>
 
       <p v-if="error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>

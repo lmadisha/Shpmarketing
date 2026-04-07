@@ -1977,9 +1977,25 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, requirePermission("assets
         return null;
       }
 
-      return await tx.fridge.delete({
+      const result = await tx.fridge.delete({
         where: { fridgeSerialNumber: req.params.serialNumber },
       });
+
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (reason) {
+        await tx.fridgeAuditLog.updateMany({
+          where: {
+            fridgeSerialNumber: req.params.serialNumber,
+            actionType: "DELETE",
+            metadata: { equals: null },
+          },
+          data: {
+            metadata: { deletion_reason: reason },
+          },
+        });
+      }
+
+      return result;
     });
 
     if (!deleted) {

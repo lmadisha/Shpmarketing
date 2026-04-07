@@ -26,6 +26,7 @@ import {
 
 const store = useAdminAssetsStore();
 const deleteConfirmSerial = ref<string | null>(null);
+const deleteReason = ref("");
 
 definePageMeta({ middleware: "auth" });
 
@@ -332,14 +333,27 @@ onMounted(async () => {
     :open="Boolean(deleteConfirmSerial)"
     title="Delete Fridge"
     description="Delete this fridge from inventory?"
-    @close="deleteConfirmSerial = null"
+    @close="deleteConfirmSerial = null; deleteReason = ''"
   >
     <p class="text-sm text-slate-600">
       Fridge:
       <span class="font-medium text-slate-900">{{ deleteConfirmSerial }}</span>
     </p>
+    <div class="mt-3">
+      <label for="delete-reason" class="block text-sm font-medium text-slate-700">
+        Reason for deletion
+        <span class="text-slate-400 font-normal">(optional)</span>
+      </label>
+      <textarea
+        id="delete-reason"
+        v-model="deleteReason"
+        rows="2"
+        placeholder="e.g. Device decommissioned, duplicate entry..."
+        class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      />
+    </div>
     <template #footer>
-      <Button variant="outline" @click="deleteConfirmSerial = null"
+      <Button variant="outline" @click="deleteConfirmSerial = null; deleteReason = ''"
         >Cancel</Button
       >
       <Button
@@ -347,8 +361,9 @@ onMounted(async () => {
         :disabled="store.deletingSerial === deleteConfirmSerial"
         @click="
           if (deleteConfirmSerial) {
-            store.deleteFridge(deleteConfirmSerial);
+            store.deleteFridge(deleteConfirmSerial, deleteReason.trim() || undefined);
             deleteConfirmSerial = null;
+            deleteReason = '';
           }
         "
       >

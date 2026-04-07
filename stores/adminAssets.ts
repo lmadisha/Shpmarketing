@@ -409,7 +409,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     }
   }
 
-  async function deleteFridge(serial: string) {
+  async function deleteFridge(serial: string, reason?: string) {
     if (!canDeleteAssets.value) {
       fridgeError.value = 'You do not have permission to delete devices.'
       return
@@ -421,6 +421,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
       await adminRequest('deleteFridge', `/deleteDevice/${encodeURIComponent(serial)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason || undefined }),
       })
       if (canViewAssets.value) await loadFridges(searchTerm.value)
       if (canViewHistory.value) await loadAllHistory()
