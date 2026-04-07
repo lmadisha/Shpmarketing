@@ -59,7 +59,7 @@ const condenserData = [
       <Card>
         <div class="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between">
           <div>
-            <p class="text-sm text-slate-500"><NuxtLink to="/fleet-ranking" class="text-blue-600 hover:underline">Fleet Ranking</NuxtLink> / {{ unitId }}</p>
+            <p class="text-sm text-slate-500"><NuxtLink to="/fleet-ranking" class="text-[#006aea] hover:underline">Fleet Ranking</NuxtLink> / {{ unitId }}</p>
             <h1 class="mt-2 text-3xl font-semibold text-slate-900">Unit {{ unitId }}</h1>
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <TierBadge tier="gold" />

@@ -2,20 +2,81 @@
 import { ArrowUpDown, ChevronLeft, ChevronRight, Clock3, Download, RefreshCw } from 'lucide-vue-next'
 import Card from '~/components/ui/Card.vue'
 import Button from '~/components/ui/Button.vue'
-import Badge from '~/components/ui/Badge.vue'
 import AccessDeniedCard from '~/components/auth/AccessDeniedCard.vue'
 import { downloadExcel } from '~/utils/adminAssets'
+import type { AuditLogRow } from '~/types/adminAssets'
 
 const store = useAdminAssetsStore()
 
 definePageMeta({ middleware: 'auth' })
 
-function actionVariant(actionType: string) {
-  if (actionType === 'VERIFY') return 'success'
-  if (actionType === 'UNVERIFY') return 'destructive'
-  if (actionType === 'UPDATE' || actionType === 'MISMATCH_UPDATE') return 'secondary'
-  if (actionType === 'DELETE' || actionType === 'MISMATCH_DELETE') return 'destructive'
-  return 'outline'
+function actionLabel(actionType: AuditLogRow['action_type']) {
+  switch (actionType) {
+    case 'INSERT':
+      return 'Added'
+    case 'UPDATE':
+      return 'Updated'
+    case 'VERIFY':
+      return 'Verified'
+    case 'UNVERIFY':
+      return 'Unverified'
+    case 'DELETE':
+      return 'Deleted'
+    case 'MISMATCH_INSERT':
+      return 'Mismatch Found'
+    case 'MISMATCH_UPDATE':
+      return 'Mismatch Updated'
+    case 'MISMATCH_RESOLVE':
+      return 'Mismatch Resolved'
+    case 'MISMATCH_DELETE':
+      return 'Mismatch Deleted'
+  }
+}
+
+function actionBadgeClass(actionType: AuditLogRow['action_type']) {
+  switch (actionType) {
+    case 'INSERT':
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
+    case 'UPDATE':
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
+    case 'VERIFY':
+      return 'border border-emerald-100 bg-emerald-50/70 text-emerald-700'
+    case 'UNVERIFY':
+      return 'border border-amber-100 bg-amber-50/70 text-amber-700'
+    case 'DELETE':
+      return 'border border-rose-100 bg-rose-50/70 text-rose-700'
+    case 'MISMATCH_INSERT':
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
+    case 'MISMATCH_UPDATE':
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
+    case 'MISMATCH_RESOLVE':
+      return 'border border-emerald-100 bg-emerald-50/70 text-emerald-700'
+    case 'MISMATCH_DELETE':
+      return 'border border-rose-100 bg-rose-50/70 text-rose-700'
+  }
+}
+
+function actionDotClass(actionType: AuditLogRow['action_type']) {
+  switch (actionType) {
+    case 'INSERT':
+      return 'bg-slate-400'
+    case 'UPDATE':
+      return 'bg-slate-400'
+    case 'VERIFY':
+      return 'bg-emerald-500'
+    case 'UNVERIFY':
+      return 'bg-amber-500'
+    case 'DELETE':
+      return 'bg-rose-500'
+    case 'MISMATCH_INSERT':
+      return 'bg-slate-500'
+    case 'MISMATCH_UPDATE':
+      return 'bg-slate-500'
+    case 'MISMATCH_RESOLVE':
+      return 'bg-emerald-500'
+    case 'MISMATCH_DELETE':
+      return 'bg-red-500'
+  }
 }
 
 onMounted(async () => {
@@ -35,7 +96,7 @@ onMounted(async () => {
   <Card v-else>
     <div class="border-b border-slate-200 p-5">
       <div class="flex items-center gap-2">
-        <Clock3 class="h-4 w-4 text-blue-600" />
+        <Clock3 class="h-4 w-4 text-[#006aea]" />
         <h2 class="text-lg font-semibold text-slate-900">Global Change History</h2>
       </div>
       <p class="mt-1 text-sm text-slate-600">Most recent device changes first.</p>
@@ -72,7 +133,17 @@ onMounted(async () => {
           <tbody class="divide-y divide-slate-200 bg-white text-sm text-slate-700">
             <tr v-for="entry in store.paginatedHistory" :key="entry.log_id">
               <td class="px-4 py-3">{{ new Date(entry.changed_at).toLocaleString() }}</td>
-              <td class="px-4 py-3"><Badge :variant="actionVariant(entry.action_type)">{{ entry.action_type }}</Badge></td>
+              <td class="px-4 py-3">
+                <span
+                  :class="[
+                    'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em]',
+                    actionBadgeClass(entry.action_type),
+                  ]"
+                >
+                  <span :class="['h-2 w-2 rounded-full', actionDotClass(entry.action_type)]" />
+                  {{ actionLabel(entry.action_type) }}
+                </span>
+              </td>
               <td class="px-4 py-3 font-medium">{{ entry.fridge_serial_number }}</td>
               <td class="px-4 py-3">{{ entry.old_mac || '-' }} → {{ entry.new_mac || '-' }}</td>
               <td class="px-4 py-3">{{ entry.old_c_num || '-' }} → {{ entry.new_c_num || '-' }}</td>

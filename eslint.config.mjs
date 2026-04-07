@@ -4,7 +4,9 @@ export default [
   {
     ignores: [
       ".nuxt/**",
+      "**/.nuxt/**",
       ".output/**",
+      "**/.output/**",
       "coverage/**",
       "dist/**",
       "node_modules/**",

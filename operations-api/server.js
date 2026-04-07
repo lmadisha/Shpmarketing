@@ -148,7 +148,11 @@ const PERMISSION_POLICY = Object.freeze({
   },
   Basic: {
     inherits: [],
-    grants: [],
+    grants: [
+      "assets.view",
+      "mismatches.view",
+      "history.view",
+    ],
   },
 });
 
@@ -1657,6 +1661,114 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
       return handleAssetError(res, "bulk-upload", error);
     }
   });
+});
+
+app.post("/newDevice/bulk/update", requireAuth, requirePermission("assets.edit"), async (req, res) => {
+  try {
+    const rows = req.body?.rows;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "No rows provided for update." });
+    }
+
+    logAssetAction("bulk-update:start", `rowCount=${rows.length} byUser=${req.user?.id || "unknown"}`);
+
+    await prisma.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
+
+    const scope = await resolveOrganisationScope(prisma, req.user, null);
+    const organisationId = scope.effectiveOrganisationId;
+
+    const rules = organisationId
+      ? await getOrganisationAssetValidationRules(prisma, organisationId)
+      : null;
+
+    const updated = [];
+    const skipped = [];
+    const errors = [];
+
+    for (const row of rows) {
+      const serial = normalizeHexIdentifier(row.serial || row.fridge_serial_number || "");
+      const mac = normalizeHexIdentifier(row.upload_mac_address || row.mac_address || "");
+      const cNumber = normalizeCNumber(row.upload_c_number || row.c_number || "");
+
+      if (!serial) {
+        errors.push({ serial, reason: "MISSING_SERIAL", message: "Serial number is required." });
+        continue;
+      }
+
+      if (rules) {
+        const validationErrors = validateAssetIdentifiers(
+          { mac_address: mac, c_number: cNumber },
+          rules,
+        );
+        if (Object.keys(validationErrors).length) {
+          const fieldErrorMessages = formatValidationErrors(validationErrors)
+            .map((item) => item.message)
+            .join(" ");
+          errors.push({ serial, reason: "VALIDATION_ERROR", message: fieldErrorMessages });
+          continue;
+        }
+      }
+
+      try {
+        const fridge = await prisma.fridge.findFirst({
+          where: {
+            fridgeSerialNumber: serial,
+            ...(organisationId != null ? { organisationId } : {}),
+          },
+        });
+
+        if (!fridge) {
+          skipped.push({ serial, reason: "NOT_FOUND", message: "Fridge not found in database." });
+          continue;
+        }
+
+        const macChanged = (mac || "") !== (fridge.iotMacAddress || "");
+        const cNumberChanged = (cNumber || "") !== (fridge.cNumber || "");
+
+        if (!macChanged && !cNumberChanged) {
+          skipped.push({ serial, reason: "NO_CHANGES", message: "No changes to apply." });
+          continue;
+        }
+
+        const shouldUnverify = fridge.verified && (macChanged || cNumberChanged);
+
+        const result = await prisma.fridge.update({
+          where: { fridgeSerialNumber: serial },
+          data: {
+            iotMacAddress: mac || "",
+            cNumber: cNumber || "",
+            ...(shouldUnverify ? { verified: false, verifiedAt: null } : {}),
+          },
+        });
+        updated.push(serializeFridgeRow(fridgePrismaToRow(result)));
+      } catch (rowError) {
+        errors.push({ serial, reason: "UPDATE_ERROR", message: rowError.message || "Unexpected update error." });
+      }
+    }
+
+    logAssetAction(
+      "bulk-update:success",
+      `updated=${updated.length} skipped=${skipped.length} failed=${errors.length}`,
+    );
+
+    return res.json({
+      ok: true,
+      summary: {
+        totalRows: rows.length,
+        updatedRows: updated.length,
+        skippedRows: skipped.length,
+        failedRows: errors.length,
+      },
+      updated,
+      skipped,
+      errors,
+    });
+  } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    return handleAssetError(res, "bulk-update", error);
+  }
 });
 
 app.post("/newDevice/bulk/preview", requireAuth, requirePermission("assets.create"), (req, res) => {

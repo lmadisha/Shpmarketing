@@ -71,9 +71,13 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     ],
   },
   Basic: {
-    description: "Basic read-only user.",
+    description: "Read-only access to inventory, mismatches, and history.",
     dataScope: "own_org",
-    grants: [],
+    grants: [
+      "assets.view",
+      "mismatches.view",
+      "history.view",
+    ],
   },
 };
 
