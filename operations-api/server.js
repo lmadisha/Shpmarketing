@@ -148,7 +148,11 @@ const PERMISSION_POLICY = Object.freeze({
   },
   Basic: {
     inherits: [],
-    grants: [],
+    grants: [
+      "assets.view",
+      "mismatches.view",
+      "history.view",
+    ],
   },
 });
 

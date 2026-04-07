@@ -2,15 +2,84 @@
 import { Refrigerator } from "lucide-vue-next";
 import Button from "~/components/ui/Button.vue";
 import Select from "~/components/ui/Select.vue";
-import Badge from "~/components/ui/Badge.vue";
 import Textarea from "~/components/ui/Textarea.vue";
 import ModalDialog from "~/components/ui/ModalDialog.vue";
 import AccessDeniedCard from "~/components/auth/AccessDeniedCard.vue";
+import type { AuditLogRow } from "~/types/adminAssets";
 
 definePageMeta({ layout: "dashboard", middleware: "auth" });
 
 const route = useRoute();
 const store = useAdminAssetsStore();
+
+function actionLabel(actionType: AuditLogRow["action_type"]) {
+  switch (actionType) {
+    case "INSERT":
+      return "Added";
+    case "UPDATE":
+      return "Updated";
+    case "VERIFY":
+      return "Verified";
+    case "UNVERIFY":
+      return "Unverified";
+    case "DELETE":
+      return "Deleted";
+    case "MISMATCH_INSERT":
+      return "Mismatch Found";
+    case "MISMATCH_UPDATE":
+      return "Mismatch Updated";
+    case "MISMATCH_RESOLVE":
+      return "Mismatch Resolved";
+    case "MISMATCH_DELETE":
+      return "Mismatch Deleted";
+  }
+}
+
+function actionBadgeClass(actionType: AuditLogRow["action_type"]) {
+  switch (actionType) {
+    case "INSERT":
+      return "border border-slate-200 bg-slate-50 text-slate-700";
+    case "UPDATE":
+      return "border border-slate-200 bg-slate-50 text-slate-700";
+    case "VERIFY":
+      return "border border-emerald-100 bg-emerald-50/70 text-emerald-700";
+    case "UNVERIFY":
+      return "border border-amber-100 bg-amber-50/70 text-amber-700";
+    case "DELETE":
+      return "border border-rose-100 bg-rose-50/70 text-rose-700";
+    case "MISMATCH_INSERT":
+      return "border border-slate-200 bg-slate-50 text-slate-700";
+    case "MISMATCH_UPDATE":
+      return "border border-slate-200 bg-slate-50 text-slate-700";
+    case "MISMATCH_RESOLVE":
+      return "border border-emerald-100 bg-emerald-50/70 text-emerald-700";
+    case "MISMATCH_DELETE":
+      return "border border-rose-100 bg-rose-50/70 text-rose-700";
+  }
+}
+
+function actionDotClass(actionType: AuditLogRow["action_type"]) {
+  switch (actionType) {
+    case "INSERT":
+      return "bg-slate-400";
+    case "UPDATE":
+      return "bg-slate-400";
+    case "VERIFY":
+      return "bg-emerald-500";
+    case "UNVERIFY":
+      return "bg-amber-500";
+    case "DELETE":
+      return "bg-rose-500";
+    case "MISMATCH_INSERT":
+      return "bg-slate-500";
+    case "MISMATCH_UPDATE":
+      return "bg-slate-500";
+    case "MISMATCH_RESOLVE":
+      return "bg-emerald-500";
+    case "MISMATCH_DELETE":
+      return "bg-red-500";
+  }
+}
 
 const tabs = computed(() =>
   [
@@ -176,12 +245,20 @@ onMounted(async () => {
                   {{ new Date(entry.changed_at).toLocaleString() }}
                 </td>
                 <td class="px-4 py-3">
-                  <Badge
-                    :variant="
-                      entry.action_type === 'UPDATE' ? 'secondary' : 'outline'
-                    "
-                    >{{ entry.action_type }}</Badge
+                  <span
+                    :class="[
+                      'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em]',
+                      actionBadgeClass(entry.action_type),
+                    ]"
                   >
+                    <span
+                      :class="[
+                        'h-2 w-2 rounded-full',
+                        actionDotClass(entry.action_type),
+                      ]"
+                    />
+                    {{ actionLabel(entry.action_type) }}
+                  </span>
                 </td>
                 <td class="px-4 py-3">
                   {{ entry.old_mac || "-" }} → {{ entry.new_mac || "-" }}

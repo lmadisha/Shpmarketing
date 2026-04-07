@@ -40,6 +40,8 @@ export type AuditLogRow = {
   action_type:
     | "INSERT"
     | "UPDATE"
+    | "VERIFY"
+    | "UNVERIFY"
     | "DELETE"
     | "MISMATCH_INSERT"
     | "MISMATCH_UPDATE"

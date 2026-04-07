@@ -16,6 +16,10 @@ function actionLabel(actionType: AuditLogRow['action_type']) {
       return 'Added'
     case 'UPDATE':
       return 'Updated'
+    case 'VERIFY':
+      return 'Verified'
+    case 'UNVERIFY':
+      return 'Unverified'
     case 'DELETE':
       return 'Deleted'
     case 'MISMATCH_INSERT':
@@ -32,34 +36,42 @@ function actionLabel(actionType: AuditLogRow['action_type']) {
 function actionBadgeClass(actionType: AuditLogRow['action_type']) {
   switch (actionType) {
     case 'INSERT':
-      return 'border border-sky-200 bg-sky-50 text-sky-700'
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
     case 'UPDATE':
-      return 'border border-amber-200 bg-amber-50 text-amber-700'
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
+    case 'VERIFY':
+      return 'border border-emerald-100 bg-emerald-50/70 text-emerald-700'
+    case 'UNVERIFY':
+      return 'border border-amber-100 bg-amber-50/70 text-amber-700'
     case 'DELETE':
-      return 'border border-rose-200 bg-rose-50 text-rose-700'
+      return 'border border-rose-100 bg-rose-50/70 text-rose-700'
     case 'MISMATCH_INSERT':
-      return 'border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
     case 'MISMATCH_UPDATE':
-      return 'border border-violet-200 bg-violet-50 text-violet-700'
+      return 'border border-slate-200 bg-slate-50 text-slate-700'
     case 'MISMATCH_RESOLVE':
-      return 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+      return 'border border-emerald-100 bg-emerald-50/70 text-emerald-700'
     case 'MISMATCH_DELETE':
-      return 'border border-red-200 bg-red-50 text-red-700'
+      return 'border border-rose-100 bg-rose-50/70 text-rose-700'
   }
 }
 
 function actionDotClass(actionType: AuditLogRow['action_type']) {
   switch (actionType) {
     case 'INSERT':
-      return 'bg-sky-500'
+      return 'bg-slate-400'
     case 'UPDATE':
+      return 'bg-slate-400'
+    case 'VERIFY':
+      return 'bg-emerald-500'
+    case 'UNVERIFY':
       return 'bg-amber-500'
     case 'DELETE':
       return 'bg-rose-500'
     case 'MISMATCH_INSERT':
-      return 'bg-fuchsia-500'
+      return 'bg-slate-500'
     case 'MISMATCH_UPDATE':
-      return 'bg-violet-500'
+      return 'bg-slate-500'
     case 'MISMATCH_RESOLVE':
       return 'bg-emerald-500'
     case 'MISMATCH_DELETE':
