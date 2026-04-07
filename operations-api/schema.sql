@@ -1,5 +1,12 @@
 -- Operations database schema (frostlink)
 
+-- Ensure pg_cron is installed in the postgres database.
+-- The current database name is captured so we can switch back for app schema + seed.
+\set target_db :DBNAME
+\connect postgres
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+\connect :target_db
+
 CREATE SCHEMA IF NOT EXISTS frostlink;
 
 CREATE TYPE frostlink.mismatch_action_enum AS ENUM ('open', 'resolve', 'cancel', 'delete');
@@ -349,7 +356,7 @@ ON CONFLICT (name) DO NOTHING;
 -- password: Password  (bcrypt 12 rounds)
 INSERT INTO frostlink.users (username, password_hash, full_name, permissions, organisation_id)
 VALUES (
-  'admin1',
+  'admin@example.com',
   '$2b$12$Y88Pz9MZfwGDEXsGoS2riupLlAu9lGPD2ORpmCrnr7W9PWeTO62RG',
   'System Admin',
   'Admin',
