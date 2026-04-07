@@ -63,6 +63,8 @@ const bulkPreviewSummary = ref<{
   excludedRows: number;
 } | null>(null);
 const skippedModalOpen = ref(false);
+const bulkUpdating = ref(false);
+const bulkUpdateResult = ref("");
 
 definePageMeta({ middleware: "auth" });
 
@@ -186,6 +188,7 @@ async function submitBulkUpload() {
   bulkMessage.value = "";
   bulkErrors.value = [];
   bulkSkippedRows.value = [];
+  bulkUpdateResult.value = "";
   skippedModalOpen.value = false;
   try {
     const formData = new FormData();
@@ -221,6 +224,41 @@ async function submitBulkUpload() {
       error instanceof Error ? error.message : "Bulk upload failed.";
   } finally {
     bulkSubmitting.value = false;
+  }
+}
+
+async function submitBulkUpdate() {
+  if (!bulkSkippedRows.value.length) return;
+  bulkUpdating.value = true;
+  bulkUpdateResult.value = "";
+  try {
+    const response = await store.adminRequest<{
+      summary: {
+        totalRows: number;
+        updatedRows: number;
+        skippedRows: number;
+        failedRows: number;
+      };
+      skipped?: Array<{ serial: string; reason: string; message: string }>;
+      errors?: Array<{ serial: string; reason: string; message: string }>;
+    }>("bulkUpdate", "/newDevice/bulk/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: bulkSkippedRows.value }),
+    });
+    const summary = response.summary;
+    bulkUpdateResult.value = `Bulk update complete. Updated: ${summary.updatedRows}, Skipped: ${summary.skippedRows}, Failed: ${summary.failedRows}`;
+    if (summary.updatedRows > 0) {
+      bulkSkippedRows.value = [];
+      skippedModalOpen.value = false;
+      if (store.canViewAssets) await store.loadFridges(store.searchTerm);
+      if (store.canViewHistory) await store.loadAllHistory();
+    }
+  } catch (error) {
+    bulkUpdateResult.value =
+      error instanceof Error ? error.message : "Bulk update failed.";
+  } finally {
+    bulkUpdating.value = false;
   }
 }
 </script>
@@ -458,6 +496,9 @@ async function submitBulkUpload() {
           </tbody>
         </table>
       </div>
+      <p v-if="bulkUpdateResult" class="px-1 text-sm text-slate-600">
+        {{ bulkUpdateResult }}
+      </p>
       <template #footer>
         <Button
           variant="outline"
@@ -492,6 +533,17 @@ async function submitBulkUpload() {
         >
           <Download class="h-4 w-4" />
           Download Report
+        </Button>
+        <Button
+          :disabled="bulkUpdating || !bulkSkippedRows.length"
+          @click="submitBulkUpdate"
+        >
+          <Upload class="h-4 w-4" />
+          {{
+            bulkUpdating
+              ? "Updating..."
+              : `Update All (${bulkSkippedRows.length})`
+          }}
         </Button>
         <Button variant="outline" @click="skippedModalOpen = false"
           >Close</Button
