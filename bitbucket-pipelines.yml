@@ -20,7 +20,11 @@ pipelines:
             - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
             - export DOCKER_BUILDKIT=0
             - export COMPOSE_DOCKER_CLI_BUILD=0
-            - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+            - export REG_USER="${REGISTRY_USER:-${REGISTRY_USERNAME:-}}"
+            - export REG_PASS="${REGISTRY_PASSWORD:-${REGISTRY_TOKEN:-}}"
+            - test -n "$REG_USER" || (echo "Missing registry username. Set REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
+            - test -n "$REG_PASS" || (echo "Missing registry password/token. Set REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
+            - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:uat" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:uat" .
             - docker push "${FRONTEND_IMAGE}:uat"
@@ -58,7 +62,11 @@ pipelines:
             - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
             - export DOCKER_BUILDKIT=0
             - export COMPOSE_DOCKER_CLI_BUILD=0
-            - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+            - export REG_USER="${REGISTRY_USER:-${REGISTRY_USERNAME:-}}"
+            - export REG_PASS="${REGISTRY_PASSWORD:-${REGISTRY_TOKEN:-}}"
+            - test -n "$REG_USER" || (echo "Missing registry username. Set REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
+            - test -n "$REG_PASS" || (echo "Missing registry password/token. Set REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
+            - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:prod" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:prod" .
             - docker push "${FRONTEND_IMAGE}:prod"
