@@ -29,8 +29,6 @@ pipelines:
           script:
             - apk add --no-cache openssh-client bash
             - mkdir -p ~/.ssh
-            - echo "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
-            - chmod 600 ~/.ssh/id_ed25519
             - ssh-keyscan -p "${UAT_SSH_PORT:-4242}" "$UAT_SSH_HOST" >> ~/.ssh/known_hosts
             - scp -P "${UAT_SSH_PORT:-4242}" docker-compose.uat.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/docker-compose.uat.yml"
             - scp -P "${UAT_SSH_PORT:-4242}" traefik/uat-dynamic.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/traefik/uat-dynamic.yml"
@@ -68,8 +66,6 @@ pipelines:
           script:
             - apk add --no-cache openssh-client bash
             - mkdir -p ~/.ssh
-            - echo "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
-            - chmod 600 ~/.ssh/id_ed25519
             - ssh-keyscan -p "${PROD_SSH_PORT:-4242}" "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
             - scp -P "${PROD_SSH_PORT:-4242}" docker-compose.prod.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/docker-compose.prod.yml"
             - scp -P "${PROD_SSH_PORT:-4242}" traefik/prod-dynamic.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/traefik/prod-dynamic.yml"
