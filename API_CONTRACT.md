@@ -333,6 +333,7 @@ Input body:
 - fridge_serial_number: string
 - mac_address: string | null
 - c_number: string | null
+- organisation_id: number | "all" (optional; admin scope selector)
 
 Responses:
 
@@ -345,7 +346,9 @@ Notes:
 
 - Runs in transaction.
 - Sets myapp.current_user_id for audit trigger context.
-- Fridge `organisation_id` is derived from authenticated user (`users.organisation_id`) on server side.
+- Non-admin users always create in their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), write scope defaults to the admin user's own organisation.
 
 ## POST /newDevice/bulk
 
@@ -359,6 +362,7 @@ Request format:
 - field name: file
 - accepted file types: CSV/XLS/XLSX
 - max file size: 5 MB
+- optional field `organisation_id`: number | "all" (admin scope selector)
 
 Parsing and sanitization behavior:
 
@@ -430,9 +434,35 @@ Responses:
 
 Notes:
 
-- Fridge `organisation_id` is derived from authenticated user (`users.organisation_id`) on server side.
+- Non-admin users always insert into their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), write scope defaults to the admin user's own organisation.
 - DB duplicates are skipped and reported in `skippedRows`.
 - Row-level insert errors are reported in `errors` without aborting entire bulk run.
+
+## POST /newDevice/bulk/update
+
+Purpose: bulk update existing fridges (MAC/C-number) from skipped rows report.
+
+Auth: Bearer.
+
+Input body:
+
+- rows: array (required)
+- organisation_id: number | "all" (optional; admin scope selector)
+
+Responses:
+
+- 200: summary + updated/skipped/errors
+- 400: invalid payload, invalid organisation filter, or user organisation not configured
+- 401
+- 500: { "error": "bulk-update failed: ..." }
+
+Notes:
+
+- Non-admin users always update within their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), update scope defaults to the admin user's own organisation.
 
 ## POST /newDevice/bulk/preview
 
@@ -521,6 +551,10 @@ Purpose: update fridge MAC/C-number.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional; admin scope selector)
+
 Input body:
 
 - mac_address: string | null
@@ -534,11 +568,21 @@ Responses:
 - 401
 - 500: { "error": "update-device failed: ..." }
 
+Notes:
+
+- Non-admin users are always scoped to their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), update scope defaults to the admin user's own organisation.
+
 ## DELETE /deleteDevice/:serialNumber
 
 Purpose: delete fridge by serial.
 
 Auth: Bearer.
+
+Query params:
+
+- organisation_id: number | "all" (optional; admin scope selector)
 
 Responses:
 
@@ -547,6 +591,12 @@ Responses:
 - 400: user organisation not configured (non-admin)
 - 401
 - 500: { "error": "delete-device failed: ..." }
+
+Notes:
+
+- Non-admin users are always scoped to their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), delete scope defaults to the admin user's own organisation.
 
 ## GET /auditLog/:serialNumber
 
@@ -620,6 +670,7 @@ Input body:
 - fridge_serial_number: string (required)
 - mac_address: string (required)
 - c_number: string (required)
+- organisation_id: number | "all" (optional; admin scope selector)
 - latitude: number | null (optional, must be paired with longitude when provided)
 - longitude: number | null (optional, must be paired with latitude when provided)
 
@@ -657,6 +708,8 @@ Notes:
 - Runs in transaction with `myapp.current_user_id` set for audit trigger context.
 - sender_id is set to req.user.id (the authenticated user who submitted).
 - Non-admin users can only submit against fridges in their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), scope defaults to the admin user's own organisation.
 - If browser geolocation is unavailable, the request may omit `latitude`/`longitude` and still succeed.
 
 ## GET /mismatches
@@ -686,6 +739,10 @@ Purpose: resolve mismatch and automatically apply received values to fridge.
 
 Auth: Bearer.
 
+Query params:
+
+- organisation_id: number | "all" (optional; admin scope selector)
+
 Input body:
 
 - note: string (optional)
@@ -709,12 +766,18 @@ Notes:
 - On resolve, server also copies mismatch `latitude` and `longitude` into the fridge row when the mismatch has location data.
 - On resolve, server always sets fridge `verified = true` and `verified_at = NOW()`.
 - Non-admin users can only resolve mismatches that belong to their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), scope defaults to the admin user's own organisation.
 
 ## DELETE /mismatches/:id
 
 Purpose: soft-delete a mismatch.
 
 Auth: Bearer.
+
+Query params:
+
+- organisation_id: number | "all" (optional; admin scope selector)
 
 Input body:
 
@@ -731,6 +794,8 @@ Responses:
 Notes:
 
 - Non-admin users can only delete mismatches that belong to their own organisation.
+- Admin users can target a selected organisation via `organisation_id`.
+- If admin sends `organisation_id="all"` (or omits it), scope defaults to the admin user's own organisation.
 
 ## Fallback Route
 

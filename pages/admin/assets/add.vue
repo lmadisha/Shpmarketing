@@ -32,10 +32,6 @@ type BulkPreviewRow = {
 };
 
 const store = useAdminAssetsStore();
-const authStore = useAuthStore();
-const organisationId = computed(
-  () => authStore.session?.user.organisation_id ?? null,
-);
 
 const createForm = reactive({
   fridge_serial_number: "",
@@ -68,7 +64,7 @@ const bulkUpdateResult = ref("");
 
 definePageMeta({ middleware: "auth" });
 
-function validateCreate() {
+async function validateCreate() {
   const serial = normalizeHexIdentifier(createForm.fridge_serial_number);
   const mac = createForm.mac_address
     ? normalizeHexIdentifier(createForm.mac_address)
@@ -77,9 +73,22 @@ function validateCreate() {
     ? normalizeCNumber(createForm.c_number)
     : "";
 
-  if (!store.actorOrganisationValidationRules) {
+  const organisationId = store.effectiveOrganisationIdForMutations;
+  if (!organisationId) {
     createErrors.value = {
-      serial: "Could not load organisation validation rules.",
+      serial: "Could not resolve organisation from current selection.",
+    };
+    return { isValid: false, serial, mac, cNumber };
+  }
+  let rules: Awaited<ReturnType<typeof store.getOrganisationValidationRules>>;
+  try {
+    rules = await store.getOrganisationValidationRules(organisationId);
+  } catch (error) {
+    createErrors.value = {
+      serial:
+        error instanceof Error
+          ? error.message
+          : "Could not load organisation validation rules.",
     };
     return { isValid: false, serial, mac, cNumber };
   }
@@ -90,7 +99,7 @@ function validateCreate() {
       mac_address: mac,
       c_number: cNumber,
     },
-    store.actorOrganisationValidationRules,
+    rules,
     { requireSerial: true },
   );
 
@@ -109,9 +118,10 @@ function validateCreate() {
 }
 
 async function submitCreate() {
-  const { isValid, serial, mac, cNumber } = validateCreate();
+  const { isValid, serial, mac, cNumber } = await validateCreate();
   if (!isValid) return;
-  if (!organisationId.value) {
+  const scopeValue = store.mutationOrganisationScopeValue;
+  if (!scopeValue) {
     createResult.value =
       "Could not add fridge. Your account has no organisation assigned.";
     return;
@@ -127,7 +137,7 @@ async function submitCreate() {
         fridge_serial_number: serial,
         mac_address: mac,
         c_number: cNumber,
-        organisation_id: organisationId.value,
+        organisation_id: scopeValue,
       }),
     });
     createForm.fridge_serial_number = "";
@@ -159,8 +169,8 @@ async function previewBulkUpload() {
   try {
     const formData = new FormData();
     formData.append("file", bulkFile.value);
-    if (organisationId.value)
-      formData.append("organisation_id", String(organisationId.value));
+    if (store.mutationOrganisationScopeValue)
+      formData.append("organisation_id", store.mutationOrganisationScopeValue);
     const response = await store.adminRequest<{
       summary: { totalRows: number; previewRows: number; excludedRows: number };
       rows: BulkPreviewRow[];
@@ -193,8 +203,8 @@ async function submitBulkUpload() {
   try {
     const formData = new FormData();
     formData.append("file", bulkFile.value);
-    if (organisationId.value)
-      formData.append("organisation_id", String(organisationId.value));
+    if (store.mutationOrganisationScopeValue)
+      formData.append("organisation_id", store.mutationOrganisationScopeValue);
     const response = await store.adminRequest<{
       summary: {
         totalRows: number;
@@ -244,7 +254,10 @@ async function submitBulkUpdate() {
     }>("bulkUpdate", "/newDevice/bulk/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: bulkSkippedRows.value }),
+      body: JSON.stringify({
+        rows: bulkSkippedRows.value,
+        organisation_id: store.mutationOrganisationScopeValue,
+      }),
     });
     const summary = response.summary;
     bulkUpdateResult.value = `Bulk update complete. Updated: ${summary.updatedRows}, Skipped: ${summary.skippedRows}, Failed: ${summary.failedRows}`;
@@ -333,7 +346,7 @@ async function submitBulkUpdate() {
             </p>
           </div>
           <Button
-            :disabled="creating || store.actorOrganisationValidationLoading"
+            :disabled="creating"
             @click="submitCreate"
             >{{ creating ? "Adding..." : "Add Fridge" }}</Button
           >

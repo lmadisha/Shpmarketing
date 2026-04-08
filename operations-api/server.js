@@ -310,6 +310,44 @@ async function resolveOrganisationScope(tx, user, requestedOrganisationIdRaw) {
   };
 }
 
+async function resolveOrganisationMutationScope(
+  tx,
+  user,
+  requestedOrganisationIdRaw,
+  options = {},
+) {
+  const { requireExisting = false } = options;
+  const scope = await resolveOrganisationScope(tx, user, requestedOrganisationIdRaw);
+
+  if (!scope.isAdmin) {
+    return scope;
+  }
+
+  const effectiveOrganisationId = scope.requestedOrganisationId ?? scope.userOrganisationId;
+  if (!effectiveOrganisationId) {
+    const error = new Error("User organisation is not configured.");
+    error.code = "USER_ORGANISATION_REQUIRED";
+    throw error;
+  }
+
+  if (requireExisting) {
+    const organisation = await tx.organisation.findUnique({
+      where: { id: effectiveOrganisationId },
+      select: { id: true },
+    });
+    if (!organisation) {
+      const error = new Error("Organisation not found.");
+      error.code = "ORGANISATION_NOT_FOUND";
+      throw error;
+    }
+  }
+
+  return {
+    ...scope,
+    effectiveOrganisationId,
+  };
+}
+
 function canManageOrganisationAssetValidation(user) {
   return user?.permissions === "Admin" || user?.permissions === "Advanced";
 }
@@ -1495,7 +1533,14 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
     const result = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-      const organisationId = await getUserOrganisationId(tx, req.user.id);
+      const requestedOrganisationScope = req.body?.organisation_id ?? req.query.organisation_id;
+      const scope = await resolveOrganisationMutationScope(
+        tx,
+        req.user,
+        requestedOrganisationScope,
+        { requireExisting: true },
+      );
+      const organisationId = scope.effectiveOrganisationId;
       if (!organisationId) {
         const error = new Error("User organisation is not configured.");
         error.code = "USER_ORGANISATION_REQUIRED";
@@ -1532,6 +1577,9 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
       return res.status(400).json(buildValidationErrorResponse(error.validationErrors));
     }
     if (error.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error.code === "ORGANISATION_NOT_FOUND") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "create-device", error);
@@ -1617,7 +1665,14 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
       // Set the current user config for audit trigger (no transaction wrapping the whole bulk, rows are individual)
       await prisma.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-      const organisationId = await getUserOrganisationId(prisma, req.user.id);
+      const requestedOrganisationScope = req.body?.organisation_id ?? req.query.organisation_id;
+      const scope = await resolveOrganisationMutationScope(
+        prisma,
+        req.user,
+        requestedOrganisationScope,
+        { requireExisting: true },
+      );
+      const organisationId = scope.effectiveOrganisationId;
       if (!organisationId) {
         return res.status(400).json({ error: "User organisation is not configured." });
       }
@@ -1738,6 +1793,12 @@ app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (re
         errors,
       });
     } catch (error) {
+      if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error?.code === "ORGANISATION_NOT_FOUND") {
+        return res.status(400).json({ error: error.message });
+      }
       return handleAssetError(res, "bulk-upload", error);
     }
   });
@@ -1754,7 +1815,13 @@ app.post("/newDevice/bulk/update", requireAuth, requirePermission("assets.edit")
 
     await prisma.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-    const scope = await resolveOrganisationScope(prisma, req.user, null);
+    const requestedOrganisationScope = req.body?.organisation_id ?? req.query.organisation_id;
+    const scope = await resolveOrganisationMutationScope(
+      prisma,
+      req.user,
+      requestedOrganisationScope,
+      { requireExisting: true },
+    );
     const organisationId = scope.effectiveOrganisationId;
 
     const rules = organisationId
@@ -1845,6 +1912,9 @@ app.post("/newDevice/bulk/update", requireAuth, requirePermission("assets.edit")
     });
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error?.code === "ORGANISATION_NOT_FOUND") {
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "bulk-update", error);
@@ -1967,7 +2037,7 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
     const result = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-      const scope = await resolveOrganisationScope(tx, req.user, null);
+      const scope = await resolveOrganisationMutationScope(tx, req.user, req.query.organisation_id);
 
       const fridge = await tx.fridge.findFirst({
         where: {
@@ -2044,7 +2114,7 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, requirePermission("assets
     const deleted = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-      const scope = await resolveOrganisationScope(tx, req.user, null);
+      const scope = await resolveOrganisationMutationScope(tx, req.user, req.query.organisation_id);
 
       const fridge = await tx.fridge.findFirst({
         where: {
@@ -2292,7 +2362,8 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
     const result = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
-      const scope = await resolveOrganisationScope(tx, req.user, null);
+      const requestedOrganisationScope = req.body?.organisation_id ?? req.query.organisation_id;
+      const scope = await resolveOrganisationMutationScope(tx, req.user, requestedOrganisationScope);
 
       const fridge = await tx.fridge.findFirst({
         where: {
@@ -2495,7 +2566,7 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
     const { note = "" } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
-      const scope = await resolveOrganisationScope(tx, req.user, null);
+      const scope = await resolveOrganisationMutationScope(tx, req.user, req.query.organisation_id);
 
       // Fetch mismatch with its fridge's organisation_id via raw query to preserve the LEFT JOIN behaviour
       const rows = await tx.$queryRawUnsafe(
@@ -2619,7 +2690,7 @@ app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"
       return res.status(400).json({ error: "A reason is required to delete a mismatch." });
     }
 
-    const scope = await resolveOrganisationScope(prisma, req.user, null);
+    const scope = await resolveOrganisationMutationScope(prisma, req.user, req.query.organisation_id);
 
     // Check existence via raw to preserve the LEFT JOIN org scoping
     const checkRows = await prisma.$queryRawUnsafe(
