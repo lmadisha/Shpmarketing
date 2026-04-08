@@ -18,6 +18,8 @@ pipelines:
             - export REPO_BASE="${REGISTRY}/digitaltwin_za"
             - export FRONTEND_IMAGE="${REPO_BASE}/digital.frostlink.frontend"
             - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
+            - export DOCKER_BUILDKIT=0
+            - export COMPOSE_DOCKER_CLI_BUILD=0
             - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:uat" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:uat" .
@@ -54,6 +56,8 @@ pipelines:
             - export REPO_BASE="${REGISTRY}/digitaltwin_za"
             - export FRONTEND_IMAGE="${REPO_BASE}/digital.frostlink.frontend"
             - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
+            - export DOCKER_BUILDKIT=0
+            - export COMPOSE_DOCKER_CLI_BUILD=0
             - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:prod" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:prod" .
