@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const XLSX = require("xlsx");
 const prisma = require("./prisma");
+const { sendWelcomeEmail } = require("./email");
 const {
   DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES,
   normalizeHexIdentifier,
@@ -1205,6 +1206,15 @@ app.post("/users", requireAuth, requirePermission("users.manage"), async (req, r
         organisationId: true,
       },
     });
+
+    const appUrl = process.env.APP_URL || (process.env.CORS_ORIGIN || "").split(",")[0] || "http://localhost:5173";
+    sendWelcomeEmail({
+      to: created.username,
+      fullName: created.fullName,
+      password: String(req.body.password),
+      permissions: serializePermission(created.permissions),
+      appUrl,
+    }).catch((emailErr) => console.error("[email] Welcome email failed:", emailErr));
 
     return res.json({
       id: created.id,
@@ -2451,6 +2461,21 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
         throw err;
       }
 
+      // Check for duplicate MAC address before updating
+      if (newMac) {
+        const duplicateMac = await tx.$queryRawUnsafe(
+          `SELECT fridge_serial_number FROM frostlink.fridges
+           WHERE iot_mac_address = $1 AND fridge_serial_number <> $2`,
+          newMac,
+          mismatch.fridge_serial_number,
+        );
+        if (duplicateMac.length) {
+          const err = new Error(`MAC address ${newMac} is already assigned to fridge ${duplicateMac[0].fridge_serial_number}.`);
+          err.code = "DUPLICATE_MAC";
+          throw err;
+        }
+      }
+
       // Update fridge using raw to preserve the COALESCE(NULLIF(...)) logic
       const updatedFridgeRows = await tx.$queryRawUnsafe(
         `UPDATE frostlink.fridges
@@ -2494,6 +2519,9 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
   } catch (error) {
     if (error.code === "VALIDATION_ERROR") {
       return res.status(400).json(buildValidationErrorResponse(error.validationErrors));
+    }
+    if (error.code === "DUPLICATE_MAC") {
+      return res.status(409).json({ error: error.message });
     }
     if (error.code === "NOT_FOUND") {
       return res.status(404).json({ error: error.message });
