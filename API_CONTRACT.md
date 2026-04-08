@@ -25,7 +25,7 @@ This document describes the Operations API used by the Shpmarketing application.
 
 - id: number
 - username: string
-- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User
+- permissions: Admin | Advanced | Intermediate | Basic
 
 ### Common auth-related responses
 
@@ -71,7 +71,7 @@ Input body:
 - username: string (required)
 - password: string (required, min 8)
 - full_name: string (required)
-- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User (required)
+- permissions: Admin | Advanced | Intermediate | Basic (required)
 - organisation_id: number (required)
 
 Responses:
@@ -83,7 +83,7 @@ Responses:
       "id": 1,
       "username": "user@example.com",
       "full_name": "User Name",
-      "permissions": "User",
+      "permissions": "Basic",
       "organisation_id": 2
     }
   }
@@ -179,7 +179,7 @@ Responses:
     "full_name": "User Name",
     "first_name": "User",
     "last_name": "Name",
-    "permissions": "Fleet Manager",
+    "permissions": "Advanced",
     "organisation_id": 2,
     "organisation_name": "Org Name",
     "organisation_domin": "org.com"
@@ -248,7 +248,7 @@ Input body:
 - username: string (required)
 - password: string (required)
 - full_name: string (required)
-- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User (required)
+- permissions: Admin | Advanced | Intermediate | Basic (required)
 - organisation_id: number (optional)
 
 Responses:
@@ -268,7 +268,7 @@ Auth: Bearer + `users.manage`.
 
 Input body:
 
-- permissions: Admin | Fleet Manager | Factory | Outlet | Technician | User
+- permissions: Admin | Advanced | Intermediate | Basic
 
 Responses:
 
@@ -278,6 +278,30 @@ Responses:
 - 404: user not found
 - 401/403
 - 500
+
+## PUT /users/:id/organisation
+
+Purpose: reassign a user to a different organisation.
+
+Auth: Bearer + `users.manage` + Admin role.
+
+Input body:
+
+- organisation_id: number (required)
+
+Responses:
+
+- 200: updated user row
+- 400: invalid user id, invalid organisation_id, or organisation not found
+- 403: admin permission required or caller cannot modify a user above their own level
+- 404: user not found
+- 401/403
+- 500
+
+Notes:
+
+- Admin can reassign any user, including their own account.
+- Frontend should update local session `organisation_id` after self-reassignment so org-scoped UI state stays in sync.
 
 ## PUT /users/:id/password
 
@@ -718,7 +742,7 @@ Any unknown route returns:
 
 - fridges.fridge_serial_number is a primary key in database schema.
 - fridges.iot_mac_address is unique (including partial unique index for non-empty values).
-- users.permissions is an enum: Admin | Fleet Manager | Factory | Outlet | Technician | User.
+- users.permissions is an enum: Admin | Advanced | Intermediate | Basic.
 - organisation has optional `domin` column (unique when provided).
 - Fridge change auditing is trigger-based via fridge_audit_log.
 - fridge_mismatches.sender_id references users(id) and records the admin user who manually submitted the mismatch via POST /mismatches/manual.

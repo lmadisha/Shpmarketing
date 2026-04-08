@@ -113,6 +113,11 @@ const newPassword = ref("");
 const passwordSaving = ref(false);
 const passwordError = ref("");
 
+const organisationTarget = ref<WorkspaceUser | null>(null);
+const nextOrganisationId = ref("");
+const organisationMoveSaving = ref(false);
+const organisationMoveError = ref("");
+
 async function loadUsers() {
   if (!canViewUsers.value) {
     users.value = [];
@@ -294,6 +299,60 @@ async function submitPasswordReset() {
         : "Could not reset password.";
   } finally {
     passwordSaving.value = false;
+  }
+}
+
+function openOrganisationReassign(user: WorkspaceUser) {
+  organisationTarget.value = user;
+  nextOrganisationId.value =
+    user.organisation_id != null ? String(user.organisation_id) : "";
+  organisationMoveError.value = "";
+}
+
+async function submitOrganisationReassign() {
+  if (!organisationTarget.value) return;
+  const organisationId = Number(nextOrganisationId.value);
+
+  if (!Number.isInteger(organisationId) || organisationId <= 0) {
+    organisationMoveError.value = "Please select a valid organisation.";
+    return;
+  }
+
+  organisationMoveSaving.value = true;
+  organisationMoveError.value = "";
+  try {
+    const updated = await request<WorkspaceUser>(
+      `/users/${organisationTarget.value.id}/organisation`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organisation_id: organisationId }),
+      },
+    );
+
+    if (
+      authStore.session &&
+      authStore.session.user.id === updated.id
+    ) {
+      authStore.setSession({
+        ...authStore.session,
+        user: {
+          ...authStore.session.user,
+          organisation_id: updated.organisation_id ?? null,
+        },
+      });
+    }
+
+    organisationTarget.value = null;
+    nextOrganisationId.value = "";
+    await loadUsers();
+  } catch (submitError) {
+    organisationMoveError.value =
+      submitError instanceof Error
+        ? submitError.message
+        : "Could not reassign organisation.";
+  } finally {
+    organisationMoveSaving.value = false;
   }
 }
 
@@ -618,6 +677,15 @@ function getLevelIcon(level: string): Component {
                           Role
                         </Button>
                         <Button
+                          v-if="isAdmin"
+                          size="sm"
+                          variant="outline"
+                          @click="openOrganisationReassign(user)"
+                        >
+                          <Building2 class="h-4 w-4" />
+                          Organisation
+                        </Button>
+                        <Button
                           size="sm"
                           variant="outline"
                           @click="
@@ -772,6 +840,48 @@ function getLevelIcon(level: string): Component {
         <Button variant="outline" @click="passwordTarget = null">Cancel</Button>
         <Button :disabled="passwordSaving" @click="submitPasswordReset">{{
           passwordSaving ? "Updating..." : "Update Password"
+        }}</Button>
+      </template>
+    </ModalDialog>
+
+    <ModalDialog
+      :open="Boolean(organisationTarget)"
+      title="Reassign User Organisation"
+      description="Move this user to a different organisation."
+      @close="
+        organisationTarget = null;
+        nextOrganisationId = '';
+        organisationMoveError = '';
+      "
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-slate-500">{{ organisationTarget?.username }}</p>
+        <Select
+          v-model="nextOrganisationId"
+          :options="[
+            { value: '', label: 'Select organisation' },
+            ...organisations.map((o) => ({
+              value: String(o.id),
+              label: o.name,
+            })),
+          ]"
+        />
+        <p v-if="organisationMoveError" class="text-sm text-red-600">
+          {{ organisationMoveError }}
+        </p>
+      </div>
+      <template #footer>
+        <Button
+          variant="outline"
+          @click="
+            organisationTarget = null;
+            nextOrganisationId = '';
+            organisationMoveError = '';
+          "
+          >Cancel</Button
+        >
+        <Button :disabled="organisationMoveSaving" @click="submitOrganisationReassign">{{
+          organisationMoveSaving ? 'Saving...' : 'Save'
         }}</Button>
       </template>
     </ModalDialog>

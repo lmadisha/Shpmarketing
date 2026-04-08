@@ -1305,6 +1305,76 @@ app.put("/users/:id/permissions", requireAuth, requirePermission("users.manage")
   }
 });
 
+app.put("/users/:id/organisation", requireAuth, requirePermission("users.manage"), async (req, res) => {
+  try {
+    if (req.user?.permissions !== "Admin") {
+      return res.status(403).json({ error: "Admin permission required" });
+    }
+
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const organisationId = Number(req.body?.organisation_id);
+    if (!Number.isInteger(organisationId) || organisationId <= 0) {
+      return res.status(400).json({ error: "Invalid organisation_id" });
+    }
+
+    const organisation = await prisma.organisation.findUnique({
+      where: { id: organisationId },
+      select: { id: true, name: true },
+    });
+    if (!organisation) {
+      return res.status(400).json({ error: "Organisation not found" });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, permissions: true },
+    });
+    if (!target) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!canTargetRole(req.user.permissions, target.permissions)) {
+      return res.status(403).json({ error: "You cannot modify a user above your permission level." });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: targetId },
+      data: { organisationId },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        permissions: true,
+        isActive: true,
+        createdAt: true,
+        organisationId: true,
+        organisation: { select: { name: true } },
+      },
+    });
+
+    return res.json({
+      id: updated.id,
+      username: updated.username,
+      full_name: updated.fullName,
+      permissions: serializePermission(updated.permissions),
+      is_active: updated.isActive,
+      created_at: updated.createdAt,
+      organisation_id: updated.organisationId,
+      organisation_name: updated.organisation?.name ?? null,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "User not found" });
+    }
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  }
+});
+
 app.put("/users/:id/password", requireAuth, async (req, res) => {
   try {
     const targetId = Number(req.params.id);
