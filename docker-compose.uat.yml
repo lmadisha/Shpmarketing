@@ -87,15 +87,6 @@ services:
     networks:
       - frostlink
 
-  landing:
-    image: nginx:alpine
-    container_name: frostlink-landing-uat
-    volumes:
-      - ./landing:/usr/share/nginx/html:ro
-    restart: unless-stopped
-    networks:
-      - frostlink
-
   traefik:
     image: traefik:v3.4
     container_name: frostlink-traefik-uat
