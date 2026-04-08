@@ -1,0 +1,80 @@
+http:
+  routers:
+    frontend-uat-http:
+      rule: "Host(`uat.frostlink.digital`) || Host(`frostlink.scryui.com`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: frontend-uat
+      priority: 120
+
+    api-uat-http:
+      rule: "(Host(`uat.frostlink.digital`) || Host(`frostlink.scryui.com`)) && PathPrefix(`/api`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: api-uat
+      priority: 130
+
+    frontend-uat:
+      rule: "Host(`uat.frostlink.digital`) || Host(`frostlink.scryui.com`)"
+      entryPoints:
+        - websecure
+      service: frontend-uat
+      priority: 100
+      tls:
+        certResolver: letsencrypt
+
+    api-uat:
+      rule: "(Host(`uat.frostlink.digital`) || Host(`frostlink.scryui.com`)) && PathPrefix(`/api`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - api-uat-stripprefix
+      service: api-uat
+      priority: 110
+      tls:
+        certResolver: letsencrypt
+
+    redirect-other-hosts:
+      rule: "HostRegexp(`.+`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - redirect-to-digitaltwin
+      service: frontend-uat
+      priority: 1
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    redirect-to-https:
+      redirectRegex:
+        regex: "^http://([^/]+)(.*)$"
+        replacement: "https://${1}${2}"
+        permanent: true
+
+    api-uat-stripprefix:
+      stripPrefix:
+        prefixes:
+          - /api
+
+    redirect-to-digitaltwin:
+      redirectRegex:
+        regex: "^https://[^/]+(.*)$"
+        replacement: "https://digitaltwin.digital$1"
+        permanent: true
+
+  services:
+    frontend-uat:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+
+    api-uat:
+      loadBalancer:
+        servers:
+          - url: "http://operations-api:5001"
+

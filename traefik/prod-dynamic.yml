@@ -1,0 +1,79 @@
+http:
+  routers:
+    frontend-prod-http:
+      rule: "Host(`frostlink.scryui.com`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: frontend-prod
+      priority: 120
+
+    api-prod-http:
+      rule: "Host(`frostlink.scryui.com`) && PathPrefix(`/api`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: api-prod
+      priority: 130
+
+    frontend-prod:
+      rule: "Host(`frostlink.scryui.com`)"
+      entryPoints:
+        - websecure
+      service: frontend-prod
+      priority: 100
+      tls:
+        certResolver: letsencrypt
+
+    api-prod:
+      rule: "Host(`frostlink.scryui.com`) && PathPrefix(`/api`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - api-prod-stripprefix
+      service: api-prod
+      priority: 110
+      tls:
+        certResolver: letsencrypt
+
+    redirect-other-hosts:
+      rule: "HostRegexp(`.+`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - redirect-to-digitaltwin
+      service: frontend-prod
+      priority: 1
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    redirect-to-https:
+      redirectRegex:
+        regex: "^http://([^/]+)(.*)$"
+        replacement: "https://${1}${2}"
+        permanent: true
+
+    api-prod-stripprefix:
+      stripPrefix:
+        prefixes:
+          - /api
+
+    redirect-to-digitaltwin:
+      redirectRegex:
+        regex: "^https://[^/]+(.*)$"
+        replacement: "https://digitaltwin.digital$1"
+        permanent: true
+
+  services:
+    frontend-prod:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+
+    api-prod:
+      loadBalancer:
+        servers:
+          - url: "http://operations-api:5001"
