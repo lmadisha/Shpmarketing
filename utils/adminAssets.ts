@@ -1,5 +1,6 @@
 export function normalizeHexIdentifier(value: string) {
-  return (value || "").replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+  // Keep alphanumeric characters only; MAC and serial inputs may include letters beyond A-F.
+  return (value || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 
 export function normalizeCNumber(value: string) {

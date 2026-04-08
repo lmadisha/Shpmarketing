@@ -15,7 +15,8 @@ const DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES = Object.freeze({
 
 function normalizeHexIdentifier(value) {
   return String(value ?? "")
-    .replace(/[^a-fA-F0-9]/g, "")
+    // Keep alphanumeric characters only; asset identifiers are not strictly limited to hex digits.
+    .replace(/[^a-zA-Z0-9]/g, "")
     .toUpperCase();
 }
 
