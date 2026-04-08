@@ -1,0 +1,91 @@
+image: docker:27.5.1
+
+options:
+  docker: true
+  max-time: 60
+
+pipelines:
+  branches:
+    uat:
+      - step:
+          name: Build and Push UAT Images
+          services:
+            - docker
+          caches:
+            - docker
+          script:
+            - export REGISTRY="crg.apkg.io"
+            - export REPO_BASE="${REGISTRY}/digitaltwin_za"
+            - export FRONTEND_IMAGE="${REPO_BASE}/digital.frostlink.frontend"
+            - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
+            - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+            - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:uat" .
+            - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:uat" .
+            - docker push "${FRONTEND_IMAGE}:uat"
+            - docker push "${API_IMAGE}:uat"
+      - step:
+          name: Deploy UAT
+          deployment: test
+          script:
+            - apk add --no-cache openssh-client bash
+            - mkdir -p ~/.ssh
+            - echo "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+            - chmod 600 ~/.ssh/id_ed25519
+            - ssh-keyscan -p "${UAT_SSH_PORT:-4242}" "$UAT_SSH_HOST" >> ~/.ssh/known_hosts
+            - scp -P "${UAT_SSH_PORT:-4242}" docker-compose.uat.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/docker-compose.uat.yml"
+            - scp -P "${UAT_SSH_PORT:-4242}" traefik/uat-dynamic.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/traefik/uat-dynamic.yml"
+            - scp -P "${UAT_SSH_PORT:-4242}" operations-api/schema.sql "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/operations-api/schema.sql"
+            - |
+              ssh -p "${UAT_SSH_PORT:-4242}" "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}" <<'EOSSH'
+              set -e
+              cd /home/docker/frostlink
+              docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:uat
+              docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:uat
+              docker compose --env-file .env.uat -f docker-compose.uat.yml up -d --no-build
+              EOSSH
+
+    main:
+      - step:
+          name: Build and Push PROD Images
+          services:
+            - docker
+          caches:
+            - docker
+          script:
+            - export REGISTRY="crg.apkg.io"
+            - export REPO_BASE="${REGISTRY}/digitaltwin_za"
+            - export FRONTEND_IMAGE="${REPO_BASE}/digital.frostlink.frontend"
+            - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
+            - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+            - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:prod" .
+            - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:prod" .
+            - docker push "${FRONTEND_IMAGE}:prod"
+            - docker push "${API_IMAGE}:prod"
+      - step:
+          name: Deploy PROD
+          deployment: production
+          trigger: manual
+          script:
+            - apk add --no-cache openssh-client bash
+            - mkdir -p ~/.ssh
+            - echo "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+            - chmod 600 ~/.ssh/id_ed25519
+            - ssh-keyscan -p "${PROD_SSH_PORT:-4242}" "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
+            - scp -P "${PROD_SSH_PORT:-4242}" docker-compose.prod.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/docker-compose.prod.yml"
+            - scp -P "${PROD_SSH_PORT:-4242}" traefik/prod-dynamic.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/traefik/prod-dynamic.yml"
+            - scp -P "${PROD_SSH_PORT:-4242}" operations-api/schema.sql "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/operations-api/schema.sql"
+            - |
+              ssh -p "${PROD_SSH_PORT:-4242}" "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}" <<'EOSSH'
+              set -e
+              cd /home/docker/frostlink
+              docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:prod
+              docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:prod
+              sed -i 's/^FRONTEND_TAG=.*/FRONTEND_TAG=prod/' .env.prod
+              sed -i 's/^OPS_API_TAG=.*/OPS_API_TAG=prod/' .env.prod
+              docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build
+              EOSSH
+
+definitions:
+  services:
+    docker:
+      memory: 3072
