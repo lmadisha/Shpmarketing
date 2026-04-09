@@ -122,7 +122,7 @@ async function sendWelcomeEmail({ to, fullName, password, permissions, appUrl })
   const info = await transport.sendMail({
     from,
     to,
-    subject: "Your SHP Marketing account has been created",
+    subject: "Your FeetLink account has been created",
     html,
   });
 
