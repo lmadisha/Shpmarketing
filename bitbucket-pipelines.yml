@@ -26,7 +26,7 @@ pipelines:
             - export REG_PASS="$(printf '%s' "$REG_PASS" | tr -d '\r\n')"
             - test -n "$REG_USER" || (echo "Missing registry username. Set REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
             - test -n "$REG_PASS" || (echo "Missing registry password/token. Set REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
-            - echo "Registry login check: host=$REGISTRY user=$REG_USER pass_len=${#REG_PASS}"
+            - 'echo "Registry login check: host=$REGISTRY user=$REG_USER pass_len=${#REG_PASS}"'
             - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:uat" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:uat" .
@@ -71,7 +71,7 @@ pipelines:
             - export REG_PASS="$(printf '%s' "$REG_PASS" | tr -d '\r\n')"
             - test -n "$REG_USER" || (echo "Missing registry username. Set REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
             - test -n "$REG_PASS" || (echo "Missing registry password/token. Set REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
-            - echo "Registry login check: host=$REGISTRY user=$REG_USER pass_len=${#REG_PASS}"
+            - 'echo "Registry login check: host=$REGISTRY user=$REG_USER pass_len=${#REG_PASS}"'
             - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:prod" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:prod" .
