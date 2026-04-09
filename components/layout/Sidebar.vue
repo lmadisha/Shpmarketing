@@ -11,6 +11,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  MenuIcon,
 } from "lucide-vue-next";
 import { cn } from "~/utils/cn";
 import { useAuth } from "~/composables/useAuth";
@@ -25,19 +26,10 @@ type NavigationItem = {
 };
 
 const navigation: NavigationItem[] = [
-  { name: "Overview", href: "/overview", icon: LayoutDashboard, hidden: true },
-  {
-    name: "Performance",
-    href: "/performance-report",
-    icon: FileBarChart,
-    hidden: true,
-  },
-  {
-    name: "Maintenance",
-    href: "/maintenance-report",
-    icon: Server,
-    hidden: true,
-  },
+  // { name: "Overview", href: "/overview", icon: LayoutDashboard },
+  { name: "Performance", href: "/performance-report", icon: FileBarChart },
+  // { name: "Maintenance", href: "/maintenance-report", icon: Server },
+  { name: "Unit Detail", href: "/unit/[unitId]", icon: Refrigerator },
   { name: "Asset Manager", href: "/admin/assets", icon: Refrigerator },
   { name: "Workspace", href: "/workspace", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },

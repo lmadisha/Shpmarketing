@@ -64,6 +64,37 @@ services:
       retries: 3
       start_period: 30s
 
+  analytics-api:
+    image: crg.apkg.io/digitaltwin_za/digital.frostlink.analytics-api:${ANALYTICS_API_TAG:-latest}
+    build:
+      context: .
+      dockerfile: analytics-api/Dockerfile
+    container_name: frostlink-analytics-api
+    env_file:
+      - ./.env
+      - ./analytics-api/.env
+    environment:
+      PORT: ${ANALYTICS_API_PORT:-5002}
+      ANALYTICS_DB_HOST: ${ANALYTICS_DB_HOST:-host.docker.internal}
+      ANALYTICS_DB_PORT: ${ANALYTICS_DB_PORT:-5432}
+      ANALYTICS_DB_USER: ${ANALYTICS_DB_USER:-postgres}
+      ANALYTICS_DB_PASSWORD: ${ANALYTICS_DB_PASSWORD:-postgres}
+      ANALYTICS_DB_NAME: ${ANALYTICS_DB_NAME:-shpmarketing_analytics}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "${ANALYTICS_API_PORT:-5002}:${ANALYTICS_API_PORT:-5002}"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frostlink
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${ANALYTICS_API_PORT:-5002}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   frontend:
     image: crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:${FRONTEND_TAG:-latest}
     build:

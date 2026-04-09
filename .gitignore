@@ -18,6 +18,11 @@ operations-api/.env.prod
 operations-api/.env.prod.local
 operations-api/.env.uat
 operations-api/.env.uat.local
+analytics-api/.env
+analytics-api/.env.local
+analytics-api/.env.prod
+analytics-api/.env.uat
+analytics-api/node_modules/
 
 # Docker
 docker-compose.override.yml.local

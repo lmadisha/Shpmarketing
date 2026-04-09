@@ -53,6 +53,13 @@ startProcess(
 );
 
 startProcess(
+  "analytics-api",
+  process.execPath,
+  ["server.js"],
+  path.join(rootDir, "analytics-api"),
+);
+
+startProcess(
   "frontend",
   process.execPath,
   [

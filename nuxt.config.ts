@@ -21,6 +21,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       operationsApiBase: 'http://localhost:5001',
+      analyticsApiBase: 'http://localhost:5002',
     },
   },
 
