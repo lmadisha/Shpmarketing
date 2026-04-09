@@ -47,7 +47,7 @@ pipelines:
               cd /home/docker/frostlink
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:uat
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:uat
-              docker compose --env-file .env.uat -f docker-compose.uat.yml up -d --no-build
+              docker compose --env-file /home/docker/frostlink/.env.uat -f /home/docker/frostlink/docker-compose.uat.yml up -d --no-build
               EOSSH
 
     main:
@@ -94,7 +94,7 @@ pipelines:
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:prod
               sed -i 's/^FRONTEND_TAG=.*/FRONTEND_TAG=prod/' .env.prod
               sed -i 's/^OPS_API_TAG=.*/OPS_API_TAG=prod/' .env.prod
-              docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build
+              docker compose --env-file /home/docker/frostlink/.env.prod -f /home/docker/frostlink/docker-compose.prod.yml up -d --no-build
               EOSSH
 
 definitions:
