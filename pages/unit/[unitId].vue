@@ -31,6 +31,10 @@ type Trends = {
   powered: TrendPoint[]
   voltage: TrendPoint[]
 }
+type StatusValue = 'ok' | 'med' | 'high' | 'warn' | 'bad' | 'no-data'
+type UnitLookupRow = {
+  mac_address: string
+}
 
 const route = useRoute()
 const unitId = computed(() => String(route.params.unitId || ''))
@@ -40,11 +44,13 @@ const dates = ref<string[]>([])
 const tenants = ref<string[]>([])
 const selectedDate = ref('')
 const selectedTenant = ref('ALL')
+const selectedMacAddress = ref('')
 const loading = ref(false)
 const error = ref('')
 
 const unitInfo = ref<UnitInfo | null>(null)
 const trends = ref<Trends | null>(null)
+const availableMacAddresses = ref<string[]>([])
 
 const metrics = reactive({
   doorOpens: true,
@@ -58,6 +64,10 @@ const tenantOptions = computed(() => [
   ...tenants.value.map((t) => ({ value: t, label: t })),
 ])
 
+const macAddressOptions = computed(() =>
+  availableMacAddresses.value.map((mac) => ({ value: mac, label: mac })),
+)
+
 async function loadFilters() {
   try {
     const [d, t] = await Promise.all([
@@ -69,6 +79,20 @@ async function loadFilters() {
     if (d.length) selectedDate.value = d[0]
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load filters'
+  }
+}
+
+async function loadMacAddressOptions() {
+  if (!selectedDate.value || !selectedTenant.value) return
+
+  try {
+    const qs = `?date=${encodeURIComponent(selectedDate.value)}&tenant=${encodeURIComponent(selectedTenant.value)}`
+    const rows = await request<UnitLookupRow[]>(`/performance/units${qs}`)
+    availableMacAddresses.value = [...new Set(
+      rows.map((row) => row.mac_address).filter(Boolean),
+    )].sort((left, right) => left.localeCompare(right))
+  } catch (e) {
+    console.warn('[unit] Failed to load MAC address filter options', e)
   }
 }
 
@@ -85,6 +109,7 @@ async function loadUnit() {
     ])
     unitInfo.value = info
     trends.value = trendData
+    selectedMacAddress.value = info.mac_address || unitId.value
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load unit detail'
   } finally {
@@ -92,17 +117,43 @@ async function loadUnit() {
   }
 }
 
+async function goToSelectedMacAddress() {
+  const targetMac = selectedMacAddress.value.trim()
+  if (!targetMac || targetMac === unitId.value) return
+  await navigateTo(`/unit/${encodeURIComponent(targetMac)}`)
+}
+
 onMounted(async () => {
+  selectedMacAddress.value = unitId.value
   await loadFilters()
+  if (selectedDate.value && selectedTenant.value) {
+    await Promise.all([loadMacAddressOptions(), loadUnit()])
+  }
+})
+
+watch(unitId, async (nextUnitId) => {
+  selectedMacAddress.value = String(nextUnitId || '')
   if (selectedDate.value && selectedTenant.value) {
     await loadUnit()
   }
 })
 
-function flagToStatus(flag: string | null): string {
-  if (!flag || flag === 'N/A') return 'ok'
-  const map: Record<string, string> = { ok: 'ok', warn: 'warn', bad: 'bad' }
-  return map[flag] || 'ok'
+watch([selectedDate, selectedTenant], async () => {
+  if (!selectedDate.value || !selectedTenant.value) return
+  await loadMacAddressOptions()
+})
+
+function flagToStatus(flag: string | null): StatusValue {
+  if (!flag || flag === 'N/A') return 'no-data'
+  const map: Record<string, StatusValue> = {
+    ok: 'ok',
+    warn: 'warn',
+    bad: 'bad',
+    med: 'med',
+    high: 'high',
+    'no-data': 'no-data',
+  }
+  return map[String(flag).toLowerCase()] || 'no-data'
 }
 </script>
 
@@ -120,6 +171,17 @@ function flagToStatus(flag: string | null): string {
           :options="tenantOptions"
           class="w-48"
         />
+        <Select
+          v-model="selectedMacAddress"
+          :options="macAddressOptions"
+          class="w-64"
+          searchable
+          search-placeholder="Search MAC address"
+          placeholder="Filter by MAC address"
+        />
+        <Button variant="outline" :disabled="!selectedMacAddress || selectedMacAddress === unitId" @click="goToSelectedMacAddress">
+          View Unit
+        </Button>
         <Button :disabled="loading" @click="loadUnit">
           <RefreshCw class="h-4 w-4" />
           {{ loading ? 'Loading...' : 'Refresh' }}
@@ -147,7 +209,7 @@ function flagToStatus(flag: string | null): string {
               <StatusBadge :status="flagToStatus(unitInfo.voltage_risk)" label="Voltage" />
             </div>
           </div>
-          <div class="text-left md:text-right space-y-1">
+          <div class="space-y-1 text-left md:text-right">
             <p class="text-sm text-slate-500">Powered</p>
             <p class="text-2xl font-semibold text-slate-900">{{ unitInfo.powered_pct != null ? `${unitInfo.powered_pct}%` : '-' }}</p>
             <p class="text-sm text-slate-500">Door Opens: <span class="font-medium text-slate-900">{{ unitInfo.door_opens != null ? unitInfo.door_opens.toLocaleString() : '-' }}</span></p>
@@ -174,7 +236,7 @@ function flagToStatus(flag: string | null): string {
         </Card>
         <Card v-if="metrics.temperature && trends.temperature.length">
           <div class="border-b border-slate-200 p-5"><h2 class="text-lg font-semibold text-slate-900">Average Temperature</h2></div>
-          <div class="p-5"><TrendChart :points="trends.temperature" color="#10b981" y-label="Temp (°C)" unit="°C" /></div>
+          <div class="p-5"><TrendChart :points="trends.temperature" color="#10b981" y-label="Temp (C)" unit="C" /></div>
         </Card>
         <Card v-if="metrics.powered && trends.powered.length">
           <div class="border-b border-slate-200 p-5"><h2 class="text-lg font-semibold text-slate-900">Powered Percentage</h2></div>

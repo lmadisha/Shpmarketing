@@ -29,7 +29,7 @@ const navigation: NavigationItem[] = [
   // { name: "Overview", href: "/overview", icon: LayoutDashboard },
   { name: "Performance", href: "/performance-report", icon: FileBarChart },
   // { name: "Maintenance", href: "/maintenance-report", icon: Server },
-  { name: "Unit Detail", href: "/unit/[unitId]", icon: Refrigerator },
+  { name: "Unit Detail", href: "/unit/[unitId]", icon: Server },
   { name: "Asset Manager", href: "/admin/assets", icon: Refrigerator },
   { name: "Workspace", href: "/workspace", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },

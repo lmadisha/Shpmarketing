@@ -14,9 +14,13 @@ export function useAnalyticsClient() {
     }
 
     if (!response.ok) {
-      const message =
-        (data && typeof data === 'object' && 'error' in data && String((data as Record<string, unknown>).error)) ||
-        `${response.status} ${response.statusText}`
+      let message = `${response.status} ${response.statusText}`
+      if (data && typeof data === 'object' && 'error' in data) {
+        const errorValue = (data as Record<string, unknown>).error
+        if (errorValue != null) {
+          message = String(errorValue)
+        }
+      }
       throw new Error(message)
     }
 
