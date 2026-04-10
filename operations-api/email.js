@@ -1,6 +1,30 @@
 const nodemailer = require("nodemailer");
 
+function createSesTransporter() {
+  const { SESClient, SendRawEmailCommand } = require("@aws-sdk/client-ses");
+
+  const sesConfig = { region: process.env.AWS_REGION || "us-east-1" };
+
+  if (process.env.AWS_ACCESS_KEY_ID) {
+    sesConfig.credentials = {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    };
+  }
+  // If AWS_ACCESS_KEY_ID is absent, SDK uses default credential chain (IAM role)
+
+  const ses = new SESClient(sesConfig);
+  return nodemailer.createTransport({ SES: { ses, aws: { SendRawEmailCommand } } });
+}
+
 function createTransporter() {
+  const provider = (process.env.EMAIL_PROVIDER || "smtp").toLowerCase();
+
+  if (provider === "ses") {
+    return createSesTransporter();
+  }
+
+  // SMTP (default)
   if (!process.env.SMTP_HOST) {
     return null;
   }
@@ -41,7 +65,7 @@ function buildWelcomeHtml({ fullName, email, password, permissions, appUrl }) {
           <!-- Header -->
           <tr>
             <td style="background-color:#006aea; padding:28px 32px;">
-              <h1 style="margin:0; color:#ffffff; font-size:20px; font-weight:600;">Welcome to FleetLink</h1>
+              <h1 style="margin:0; color:#ffffff; font-size:20px; font-weight:600;">Welcome to FrostLink</h1>
             </td>
           </tr>
           <!-- Body -->
@@ -106,11 +130,11 @@ function buildWelcomeHtml({ fullName, email, password, permissions, appUrl }) {
 async function sendWelcomeEmail({ to, fullName, password, permissions, appUrl }) {
   const transport = getTransporter();
   if (!transport) {
-    console.warn("[email] SMTP not configured — skipping welcome email for", to);
+    console.warn("[email] Email transport not configured — skipping welcome email for", to);
     return;
   }
 
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const from = process.env.SES_FROM || process.env.SMTP_FROM || process.env.SMTP_USER;
   const html = buildWelcomeHtml({
     fullName: fullName || "User",
     email: to,
@@ -122,7 +146,7 @@ async function sendWelcomeEmail({ to, fullName, password, permissions, appUrl })
   const info = await transport.sendMail({
     from,
     to,
-    subject: "Your FeetLink account has been created",
+    subject: "Your FrostLink account has been created",
     html,
   });
 

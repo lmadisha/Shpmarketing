@@ -1994,6 +1994,28 @@ app.get(
   },
 );
 
+app.get("/stats", requireAuth, async (req, res) => {
+  try {
+    const isAdmin = req.user?.permissions === "Admin";
+    let total_units;
+
+    if (isAdmin) {
+      total_units = await prisma.fridge.count();
+    } else {
+      const organisationId = await getUserOrganisationId(prisma, req.user.id);
+      if (!organisationId) {
+        return res.status(400).json({ error: "User organisation is not configured." });
+      }
+      total_units = await prisma.fridge.count({ where: { organisationId } });
+    }
+
+    return res.json({ total_units });
+  } catch (error) {
+    console.error("[stats] error", error);
+    return res.status(500).json({ error: "Could not retrieve stats." });
+  }
+});
+
 app.get(
   "/searchFridges",
   requireAuth,

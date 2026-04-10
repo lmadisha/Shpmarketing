@@ -23,11 +23,24 @@ type ProfileDetails = {
 
 const { request } = useApiClient();
 const authStore = useAuthStore();
+const config = useRuntimeConfig();
 const canViewTotalUnits = computed(() =>
   authStore.session?.user.permissions
     ? hasPermission(authStore.session.user.permissions, "assets.view")
     : false,
 );
+
+const totalUnits = ref<number | null>(null);
+
+async function loadStats() {
+  if (!canViewTotalUnits.value) return;
+  try {
+    const data = await request<{ total_units: number }>("/stats");
+    totalUnits.value = data.total_units;
+  } catch {
+    totalUnits.value = null;
+  }
+}
 
 const profile = ref<ProfileDetails | null>(null);
 const profileLoading = ref(false);
@@ -141,6 +154,7 @@ async function submitPasswordChange() {
 
 onMounted(() => {
   void loadProfile();
+  void loadStats();
 });
 </script>
 
@@ -278,19 +292,13 @@ onMounted(() => {
         <div class="space-y-4 p-5 text-sm">
           <div>
             <p class="text-slate-500">Version</p>
-            <p class="font-medium text-slate-900">Frostlink v1.2.4</p>
-          </div>
-          <div>
-            <p class="text-slate-500">Last Data Sync</p>
-            <p class="font-medium text-slate-900">2 minutes ago</p>
+            <p class="font-medium text-slate-900">v{{ config.public.appVersion }}</p>
           </div>
           <div v-if="canViewTotalUnits">
             <p class="text-slate-500">Total Units</p>
-            <p class="font-medium text-slate-900">624 active</p>
-          </div>
-          <div>
-            <p class="text-slate-500">Data Retention</p>
-            <p class="font-medium text-slate-900">90 days</p>
+            <p class="font-medium text-slate-900">
+              {{ totalUnits !== null ? totalUnits : "—" }}
+            </p>
           </div>
         </div>
       </Card>
