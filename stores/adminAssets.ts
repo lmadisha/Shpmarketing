@@ -36,6 +36,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
   // ── Permissions ────────────────────────────────────────────────────────────
   const permissionLevel = computed(() => authStore.session?.user.permissions)
   const actor = computed(() => authStore.session?.user.full_name || authStore.session?.user.username || 'Unknown')
+  const actorOrganisationId = computed(() => authStore.session?.user.organisation_id ?? null)
 
   const isOrganisationFilterEnabled = computed(() =>
     permissionLevel.value ? canFilterOrganisationByRole(permissionLevel.value) : false
@@ -55,16 +56,75 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
   const organisationOptions = ref<OrganisationOption[]>([])
   const organisationsLoading = ref(false)
 
+  function normalizeOrganisationFilterValue(rawValue: string | null | undefined): string {
+    const raw = String(rawValue ?? '').trim()
+    if (!raw || raw.toLowerCase() === 'all') {
+      return ''
+    }
+
+    if (/^\d+$/.test(raw)) {
+      const parsed = Number(raw)
+      return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : ''
+    }
+
+    const byName = organisationOptions.value.find(
+      (option) => option.name.trim().toLowerCase() === raw.toLowerCase(),
+    )
+    return byName ? String(byName.id) : ''
+  }
+
   function setOrganisationFilter(organisationId: string) {
-    organisationFilter.value = organisationId
+    organisationFilter.value = normalizeOrganisationFilterValue(organisationId)
   }
 
   function withOrganisationFilter(path: string) {
-    if (!isOrganisationFilterEnabled.value || !organisationFilter.value) {
+    const normalizedFilter = normalizeOrganisationFilterValue(organisationFilter.value)
+    if (!isOrganisationFilterEnabled.value || !normalizedFilter) {
       return path
     }
     const joiner = path.includes('?') ? '&' : '?'
-    return `${path}${joiner}organisation_id=${encodeURIComponent(organisationFilter.value)}`
+    return `${path}${joiner}organisation_id=${encodeURIComponent(normalizedFilter)}`
+  }
+
+  function parseOrganisationFilterSelection(rawValue: string | null | undefined): number | null {
+    const normalized = normalizeOrganisationFilterValue(rawValue)
+    if (!normalized) {
+      return null
+    }
+    const parsed = Number(normalized)
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+  }
+
+  const selectedOrganisationId = computed(() =>
+    isOrganisationFilterEnabled.value
+      ? parseOrganisationFilterSelection(organisationFilter.value)
+      : actorOrganisationId.value
+  )
+
+  const effectiveOrganisationIdForMutations = computed(() =>
+    selectedOrganisationId.value ?? actorOrganisationId.value ?? null
+  )
+
+  const mutationOrganisationScopeValue = computed(() => {
+    if (selectedOrganisationId.value != null) {
+      return String(selectedOrganisationId.value)
+    }
+    if (isOrganisationFilterEnabled.value) {
+      return 'all'
+    }
+    if (actorOrganisationId.value != null) {
+      return String(actorOrganisationId.value)
+    }
+    return null
+  })
+
+  function withMutationOrganisationScope(path: string) {
+    const scopeValue = mutationOrganisationScopeValue.value
+    if (!scopeValue) {
+      return path
+    }
+    const joiner = path.includes('?') ? '&' : '?'
+    return `${path}${joiner}organisation_id=${encodeURIComponent(scopeValue)}`
   }
 
   // ── Validation rules cache ─────────────────────────────────────────────────
@@ -243,8 +303,9 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
       if (activeFilters.serial.trim()) params.set('serial', activeFilters.serial.trim())
       if (activeFilters.from) params.set('from', activeFilters.from)
       if (activeFilters.to) params.set('to', activeFilters.to)
-      if (isOrganisationFilterEnabled.value && organisationFilter.value) {
-        params.set('organisation_id', organisationFilter.value)
+      const normalizedFilter = normalizeOrganisationFilterValue(organisationFilter.value)
+      if (isOrganisationFilterEnabled.value && normalizedFilter) {
+        params.set('organisation_id', normalizedFilter)
       }
       const data = await adminRequest<Mismatch[]>('loadMismatches', `/mismatches?${params.toString()}`)
       mismatches.value = Array.isArray(data) ? data : []
@@ -277,11 +338,15 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     resolveModal.value.submitting = true
     mismatchError.value = ''
     try {
-      await adminRequest('resolveMismatch', `/mismatches/${resolveModal.value.row.id}/resolve`, {
+      await adminRequest(
+        'resolveMismatch',
+        withMutationOrganisationScope(`/mismatches/${resolveModal.value.row.id}/resolve`),
+        {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: resolveModal.value.note }),
-      })
+        },
+      )
       resolveModal.value = { open: false, row: null, note: '', submitting: false }
       if (canViewMismatches.value) await loadMismatches()
       if (canViewAssets.value) await loadFridges(searchTerm.value)
@@ -319,11 +384,15 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     deleteMismatchModal.value.submitting = true
     mismatchError.value = ''
     try {
-      await adminRequest('deleteMismatch', `/mismatches/${deleteMismatchModal.value.row.id}`, {
+      await adminRequest(
+        'deleteMismatch',
+        withMutationOrganisationScope(`/mismatches/${deleteMismatchModal.value.row.id}`),
+        {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note: deleteMismatchModal.value.note.trim() }),
-      })
+        },
+      )
       deleteMismatchModal.value = { open: false, row: null, note: '', submitting: false }
       if (canViewMismatches.value) await loadMismatches()
     } catch (error) {
@@ -394,7 +463,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     editFormErrors.value = {}
     savingEdit.value = true
     try {
-      await adminRequest<Fridge>('updateFridge', `/updateDevice/${encodeURIComponent(serial)}`, {
+      await adminRequest<Fridge>('updateFridge', withMutationOrganisationScope(`/updateDevice/${encodeURIComponent(serial)}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mac_address: mac, c_number: cNumber }),
@@ -418,7 +487,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     deletingSerial.value = serial
     fridgeError.value = ''
     try {
-      await adminRequest('deleteFridge', `/deleteDevice/${encodeURIComponent(serial)}`, {
+      await adminRequest('deleteFridge', withMutationOrganisationScope(`/deleteDevice/${encodeURIComponent(serial)}`), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason || undefined }),
@@ -610,6 +679,17 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
   )
 
   watch(
+    organisationFilter,
+    (value) => {
+      const normalized = normalizeOrganisationFilterValue(value)
+      if (value !== normalized) {
+        organisationFilter.value = normalized
+      }
+    },
+    { immediate: false },
+  )
+
+  watch(
     [organisationFilter, isOrganisationFilterEnabled, canViewAssets, canViewHistory, canViewMismatches],
     () => {
       if (canViewAssets.value) {
@@ -640,6 +720,8 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     // Permissions
     isOrganisationFilterEnabled, organisationFilter, setOrganisationFilter,
     organisationOptions, organisationsLoading, withOrganisationFilter,
+    selectedOrganisationId, effectiveOrganisationIdForMutations,
+    mutationOrganisationScopeValue, withMutationOrganisationScope,
     canCreateAssets, canViewAssets, canEditAssets, canDeleteAssets,
     canViewMismatches, canResolveMismatches, canDeleteMismatches,
     canViewHistory, canSubmitDeviceCheck,

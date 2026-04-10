@@ -28,7 +28,7 @@ export const DEFAULT_ORGANISATION_ASSET_VALIDATION_RULES: Omit<
 
 function normalizeHexIdentifier(value: string) {
   return String(value ?? "")
-    .replace(/[^a-fA-F0-9]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
     .toUpperCase();
 }
 

@@ -1,4 +1,8 @@
 import tailwindcss from '@tailwindcss/vite'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const { version } = JSON.parse(readFileSync(resolve('./package.json'), 'utf-8')) as { version: string }
 
 export default defineNuxtConfig({
   devtools: { enabled: false },
@@ -21,6 +25,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       operationsApiBase: 'http://localhost:5001',
+      appVersion: version,
     },
   },
 
