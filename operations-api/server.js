@@ -34,6 +34,12 @@ const PORT = Number(process.env.PORT || 5001);
 const JWT_SECRET = process.env.JWT_SECRET;
 const MOBILE_API_KEY = process.env.MOBILE_API_KEY;
 
+if (!prisma?.fridgeImage?.create) {
+  console.warn(
+    "[asset-manager] Prisma client is missing fridgeImage delegate. Run `npx prisma generate` in operations-api to enable image persistence.",
+  );
+}
+
 if (!JWT_SECRET || !MOBILE_API_KEY) {
   console.error("FATAL: JWT_SECRET and MOBILE_API_KEY must be set in operations-api/.env");
   process.exit(1);
@@ -83,9 +89,40 @@ const loginLimiter = rateLimit({
   message: { error: "Too many login attempts, please try again later." },
 });
 
-const upload = multer({
+const imageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are accepted'));
+    }
+  },
+});
+
+const spreadsheetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const mime = String(file.mimetype || "").toLowerCase();
+    const name = String(file.originalname || "").toLowerCase();
+    const hasValidExtension = /\.(csv|xlsx|xls)$/i.test(name);
+    const allowedMimeTypes = new Set([
+      "text/csv",
+      "application/csv",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel.sheet.macroenabled.12",
+    ]);
+
+    if (allowedMimeTypes.has(mime) || hasValidExtension) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error("Only CSV and Excel files are accepted"));
+  },
 });
 
 function requireAuth(req, res, next) {
@@ -1587,7 +1624,7 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
 });
 
 app.post("/newDevice/bulk", requireAuth, requirePermission("assets.create"), (req, res) => {
-  upload.single("file")(req, res, async (uploadError) => {
+  spreadsheetUpload.single("file")(req, res, async (uploadError) => {
     if (uploadError) {
       return res.status(400).json({ error: uploadError.message || "Invalid upload." });
     }
@@ -1922,7 +1959,7 @@ app.post("/newDevice/bulk/update", requireAuth, requirePermission("assets.edit")
 });
 
 app.post("/newDevice/bulk/preview", requireAuth, requirePermission("assets.create"), (req, res) => {
-  upload.single("file")(req, res, async (uploadError) => {
+  spreadsheetUpload.single("file")(req, res, async (uploadError) => {
     if (uploadError) {
       return res.status(400).json({ error: uploadError.message || "Invalid upload." });
     }
@@ -2359,8 +2396,22 @@ app.post("/mobile/verify", requireMobileKey, async (req, res) => {
   }
 });
 
-app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.submit"), async (req, res) => {
+app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.submit"), (req, res, next) => {
+  imageUpload.single("image")(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File size exceeds 5MB limit' });
+      }
+      return res.status(400).json({ error: `File upload error: ${err.message}` });
+    }
+    if (err) {
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
+
     const serial = String(req.body?.fridge_serial_number || "").trim();
     const mac = normalizeHexIdentifier(req.body?.mac_address);
     const cNum = normalizeCNumber(req.body?.c_number);
@@ -2401,6 +2452,25 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
         throw error;
       }
 
+      // Persist image when the Prisma client includes the FridgeImage delegate.
+      // This guards older generated clients where tx.fridgeImage is undefined.
+      let fridgeImageId = null;
+      if (req.file && tx?.fridgeImage?.create) {
+        const fridgeImage = await tx.fridgeImage.create({
+          data: {
+            fridgeSerialNumber: serial,
+            image: req.file.buffer,
+            createdBy: req.user.id,
+          },
+        });
+        fridgeImageId = fridgeImage.id;
+      } else if (req.file) {
+        logAssetAction(
+          "submit-manual-mismatch:image-storage-skipped",
+          `serial=${serial} reason=missing-prisma-fridgeImage-delegate`,
+        );
+      }
+
       const norm = (value) => String(value || "").trim().toUpperCase();
       const macMatches = mac ? norm(fridge.iotMacAddress) === norm(mac) : null;
       const cMatches = cNum ? norm(fridge.cNumber) === norm(cNum) : null;
@@ -2415,6 +2485,7 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
             verifiedAt: new Date(),
             ...(latitude != null ? { latitude } : {}),
             ...(longitude != null ? { longitude } : {}),
+            ...(fridgeImageId != null ? { image: { connect: { id: fridgeImageId } } } : {}),
           },
         });
         return { type: "VERIFIED", fridge: updatedFridge };
@@ -2428,9 +2499,10 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
           dbMac: fridge.iotMacAddress || null,
           dbCNumber: fridge.cNumber || null,
           status: "open",
-          senderId: req.user.id,
+          senderUser: { connect: { id: req.user.id } },
           latitude,
           longitude,
+          ...(fridgeImageId != null ? { image: { connect: { id: fridgeImageId } } } : {}),
         },
       });
 
