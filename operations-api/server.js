@@ -2506,6 +2506,13 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
         },
       });
 
+      if (fridgeImageId != null && tx?.fridgeImage?.update) {
+        await tx.fridgeImage.update({
+          where: { id: fridgeImageId },
+          data: { mismatchAction: "open" },
+        });
+      }
+
       return { type: "MISMATCH_CREATED", mismatch };
     });
 
@@ -2718,6 +2725,7 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
              c_number = COALESCE(NULLIF($2, ''), c_number),
              latitude = COALESCE($4::numeric, latitude),
              longitude = COALESCE($5::numeric, longitude),
+             image_id = COALESCE($6::bigint, image_id),
              verified = true,
              verified_at = NOW()
          WHERE fridge_serial_number = $3
@@ -2727,6 +2735,7 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
         mismatch.fridge_serial_number,
         mismatch.latitude,
         mismatch.longitude,
+        mismatch.image_id,
       );
 
       const fridgeUpdated = updatedFridgeRows[0] || null;
@@ -2740,6 +2749,13 @@ app.put("/mismatches/:id/resolve", requireAuth, requirePermission("mismatches.re
           resolutionNote: String(note || "").trim() || undefined,
         },
       });
+
+      if (mismatch.image_id != null && tx?.fridgeImage?.update) {
+        await tx.fridgeImage.update({
+          where: { id: BigInt(mismatch.image_id) },
+          data: { mismatchAction: "resolve" },
+        });
+      }
 
       return { resolved, fridgeUpdated };
     });
@@ -2784,36 +2800,54 @@ app.delete("/mismatches/:id", requireAuth, requirePermission("mismatches.delete"
       return res.status(400).json({ error: "A reason is required to delete a mismatch." });
     }
 
-    const scope = await resolveOrganisationMutationScope(prisma, req.user, req.query.organisation_id);
+    const updated = await prisma.$transaction(async (tx) => {
+      const scope = await resolveOrganisationMutationScope(tx, req.user, req.query.organisation_id);
 
-    // Check existence via raw to preserve the LEFT JOIN org scoping
-    const checkRows = await prisma.$queryRawUnsafe(
-      `SELECT fm.id
-       FROM frostlink.fridge_mismatches fm
-       LEFT JOIN frostlink.fridges f ON f.fridge_serial_number = fm.fridge_serial_number
-       WHERE fm.id = $1
-         AND ($2::int IS NULL OR f.organisation_id = $2)`,
-      mismatchId,
-      scope.effectiveOrganisationId,
-    );
+      // Check existence via raw to preserve the LEFT JOIN org scoping
+      const rows = await tx.$queryRawUnsafe(
+        `SELECT fm.id, fm.image_id
+         FROM frostlink.fridge_mismatches fm
+         LEFT JOIN frostlink.fridges f ON f.fridge_serial_number = fm.fridge_serial_number
+         WHERE fm.id = $1
+           AND ($2::int IS NULL OR f.organisation_id = $2)`,
+        mismatchId,
+        scope.effectiveOrganisationId,
+      );
 
-    if (!checkRows.length) {
-      return res.status(404).json({ error: "Mismatch not found" });
-    }
+      if (!rows.length) {
+        const error = new Error("Mismatch not found");
+        error.code = "NOT_FOUND";
+        throw error;
+      }
 
-    const updated = await prisma.fridgeMismatch.update({
-      where: { id: BigInt(mismatchId) },
-      data: {
-        status: "delete",
-        resolvedAt: new Date(),
-        resolvedBy: req.user.id,
-        resolutionNote: note,
-      },
+      const mismatch = rows[0];
+
+      const deletedMismatch = await tx.fridgeMismatch.update({
+        where: { id: BigInt(mismatchId) },
+        data: {
+          status: "delete",
+          resolvedAt: new Date(),
+          resolvedBy: req.user.id,
+          resolutionNote: note,
+        },
+      });
+
+      if (mismatch.image_id != null && tx?.fridgeImage?.update) {
+        await tx.fridgeImage.update({
+          where: { id: BigInt(mismatch.image_id) },
+          data: { mismatchAction: "delete" },
+        });
+      }
+
+      return deletedMismatch;
     });
 
     logAssetAction("delete-mismatch:success", `id=${req.params.id || "unknown"}`);
     return res.json({ ok: true, mismatch: serializeMismatchRow(mismatchPrismaToRow(updated)) });
   } catch (error) {
+    if (error.code === "NOT_FOUND") {
+      return res.status(404).json({ error: error.message });
+    }
     if (error.code === "P2025") {
       return res.status(404).json({ error: "Mismatch not found" });
     }
