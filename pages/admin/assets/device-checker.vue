@@ -15,6 +15,7 @@ type DeviceCheckForm = {
   fridge_serial_number: string
   mac_address: string
   c_number: string
+  image?: File | null
 }
 
 type DeviceCheckSuccess = {
@@ -58,10 +59,13 @@ const form = reactive<DeviceCheckForm>({
   fridge_serial_number: '',
   mac_address: '',
   c_number: '',
+  image: null,
 })
 const submitting = ref(false)
 const error = ref<string | null>(null)
 const success = ref<DeviceCheckSuccess | null>(null)
+const imagePreviewUrl = ref<string | null>(null)
+const imageInputRef = ref<HTMLInputElement | null>(null)
 const locationLatitude = ref<number | null>(null)
 const locationLongitude = ref<number | null>(null)
 const locationStatus = ref<'pending' | 'granted' | 'denied' | 'unavailable'>('pending')
@@ -213,6 +217,23 @@ async function handleImageScanFile(event: Event) {
   }
 }
 
+function handleImageSelect(event: Event) {
+  const file = ((event.target as HTMLInputElement).files || [])[0]
+  if (!file) return
+  form.image = file
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    imagePreviewUrl.value = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+}
+
+function clearImage() {
+  form.image = null
+  imagePreviewUrl.value = null
+  if (imageInputRef.value) imageInputRef.value.value = ''
+}
+
 async function requestBluetoothMacAddress() {
   error.value = null
   success.value = null
@@ -243,21 +264,24 @@ async function submitDeviceCheck() {
   success.value = null
   submitting.value = true
   try {
+    const formData = new FormData()
+    formData.append('fridge_serial_number', form.fridge_serial_number)
+    formData.append('mac_address', form.mac_address)
+    formData.append('c_number', form.c_number)
+    formData.append('organisation_id', String(store.mutationOrganisationScopeValue))
+    if (locationLatitude.value != null) formData.append('latitude', String(locationLatitude.value))
+    if (locationLongitude.value != null) formData.append('longitude', String(locationLongitude.value))
+    if (form.image) formData.append('image', form.image)
+
     const result = await store.adminRequest<DeviceCheckSuccess>('deviceCheck:submit', store.withMutationOrganisationScope('/mismatches/manual'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        organisation_id: store.mutationOrganisationScopeValue,
-        ...(locationLatitude.value != null && locationLongitude.value != null
-          ? { latitude: locationLatitude.value, longitude: locationLongitude.value }
-          : {}),
-      }),
+      body: formData,
     })
     success.value = result
     form.fridge_serial_number = ''
     form.mac_address = ''
     form.c_number = ''
+    clearImage()
   } catch (submitError) {
     error.value = submitError instanceof Error ? submitError.message : 'Submission failed.'
   } finally {
@@ -315,6 +339,24 @@ async function submitDeviceCheck() {
       <div class="space-y-1">
         <label class="text-sm font-medium text-slate-700">C-Code / C-Number</label>
         <Input :model-value="form.c_number" placeholder="C-Code / C-Number" @update:model-value="(value) => form.c_number = cleanCNumber(String(value || ''))" />
+      </div>
+
+      <div class="space-y-1">
+        <label class="text-sm font-medium text-slate-700">Device Image (Optional)</label>
+        <div class="flex flex-col gap-2">
+          <input
+            ref="imageInputRef"
+            type="file"
+            accept="image/*"
+            class="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+            @change="handleImageSelect"
+          />
+          <p class="text-xs text-slate-500">Upload a clear image of the device for reference.</p>
+          <div v-if="imagePreviewUrl" class="flex flex-col gap-2">
+            <img :src="imagePreviewUrl" alt="Preview" class="h-32 w-auto rounded-md border border-slate-200 object-cover" />
+            <Button type="button" variant="outline" size="sm" @click="clearImage" class="w-fit">Clear Image</Button>
+          </div>
+        </div>
       </div>
 
       <div class="flex items-center gap-2 text-sm">

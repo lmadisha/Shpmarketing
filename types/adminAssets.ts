@@ -1,3 +1,13 @@
+export type MismatchActionEnum = "open" | "resolve" | "cancel" | "delete";
+
+export type FridgeImage = {
+  id: number | string; // BigInt returned as string from API
+  fridge_serial_number: string;
+  mismatch_action?: MismatchActionEnum | null;
+  created_at: string; // ISO timestamp
+  created_by?: number | null;
+};
+
 export type Fridge = {
   fridge_serial_number: string;
   iot_mac_address: string | null;
@@ -6,6 +16,7 @@ export type Fridge = {
   organisation_id?: number | null;
   latitude?: number | null;
   longitude?: number | null;
+  image_id?: number | string | null;
 };
 
 export type OrganisationOption = {
@@ -17,7 +28,7 @@ export type OrganisationOption = {
 export type MismatchStatus = "open" | "resolve" | "cancel" | "delete" | "all";
 
 export type Mismatch = {
-  id: number;
+  id: number | string; // BigInt returned as string from API
   fridge_serial_number: string;
   received_mac: string | null;
   received_c_number: string | null;
@@ -32,6 +43,7 @@ export type Mismatch = {
   resolution_note: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  image_id?: number | string | null;
 };
 
 export type AuditLogRow = {

@@ -60,6 +60,7 @@ CREATE TABLE frostlink.fridges (
   organisation_id INTEGER REFERENCES frostlink.organisation(id) ON DELETE SET NULL,
   latitude NUMERIC(9, 6),
   longitude NUMERIC(9, 6),
+  image_id INTEGER,
   CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
   CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
 );
@@ -79,8 +80,18 @@ CREATE TABLE frostlink.fridge_mismatches (
   sender_id INTEGER REFERENCES frostlink.users(id),
   latitude NUMERIC(9, 6),
   longitude NUMERIC(9, 6),
+  image_id INTEGER,
   CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90),
   CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)
+);
+
+CREATE TABLE frostlink.fridge_images (
+  id BIGSERIAL PRIMARY KEY,
+  fridge_serial_number VARCHAR(32) NOT NULL REFERENCES frostlink.fridges(fridge_serial_number) ON DELETE CASCADE,
+  image BYTEA NOT NULL,
+  mismatch_action frostlink.mismatch_action_enum,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by INTEGER REFERENCES frostlink.users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE frostlink.fridge_audit_log (
@@ -111,6 +122,11 @@ CREATE INDEX idx_fridge_audit_log_serial ON frostlink.fridge_audit_log (fridge_s
 CREATE INDEX idx_fridge_audit_log_source_table ON frostlink.fridge_audit_log (source_table);
 CREATE INDEX idx_fridge_audit_log_mismatch_id ON frostlink.fridge_audit_log (mismatch_id);
 CREATE INDEX idx_fridge_audit_log_organisation_id ON frostlink.fridge_audit_log (organisation_id);
+CREATE INDEX idx_fridge_images_fridge_serial_number ON frostlink.fridge_images (fridge_serial_number);
+CREATE INDEX idx_fridge_images_created_at ON frostlink.fridge_images (created_at DESC);
+CREATE INDEX idx_fridge_images_created_by ON frostlink.fridge_images (created_by);
+CREATE INDEX idx_fridges_image_id ON frostlink.fridges (image_id);
+CREATE INDEX idx_fridge_mismatches_image_id ON frostlink.fridge_mismatches (image_id);
 CREATE UNIQUE INDEX iot_mac_address_unique_non_null_non_empty
 ON frostlink.fridges (iot_mac_address)
 WHERE iot_mac_address IS NOT NULL AND iot_mac_address <> '';
