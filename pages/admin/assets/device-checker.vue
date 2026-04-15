@@ -44,11 +44,15 @@ function parsePenguinMacAddress(deviceName: string | null | undefined): string |
 const store = useAdminAssetsStore()
 const bluetoothNavigator = typeof navigator !== 'undefined' ? (navigator as BluetoothNavigator) : null
 const isSecureContextNow = typeof window !== 'undefined' && window.isSecureContext
+const browserUserAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+const isIosChrome = /CriOS/i.test(browserUserAgent)
 const bluetoothSupported = isSecureContextNow && Boolean(bluetoothNavigator?.bluetooth)
 const bluetoothUnavailableReason = !isSecureContextNow
   ? 'Bluetooth scan requires HTTPS or localhost.'
+  : isIosChrome && !bluetoothNavigator?.bluetooth
+    ? 'Bluetooth scan is not available in Chrome on iPhone. Use Safari, or paste the Penguin+ device name below.'
   : !bluetoothNavigator?.bluetooth
-    ? 'Bluetooth scan is only supported in Chromium-based browsers.'
+    ? 'Bluetooth scan is not available in this browser. Paste the Penguin+ device name below.'
     : ''
 
 const serials = ref<Fridge[]>([])
@@ -86,6 +90,11 @@ const bluetoothConfirm = ref<{ open: boolean; deviceName: string; macAddress: st
   open: false,
   deviceName: '',
   macAddress: '',
+})
+const bluetoothManualEntry = ref<{ open: boolean; deviceName: string; error: string | null }>({
+  open: false,
+  deviceName: '',
+  error: null,
 })
 
 definePageMeta({ middleware: 'auth' })
@@ -259,6 +268,22 @@ async function requestBluetoothMacAddress() {
   }
 }
 
+function openBluetoothManualEntry() {
+  bluetoothManualEntry.value = { open: true, deviceName: '', error: null }
+}
+
+function applyBluetoothDeviceName(deviceNameInput: string) {
+  const deviceName = String(deviceNameInput || '').trim()
+  const parsedMac = parsePenguinMacAddress(deviceName)
+  if (!deviceName || !parsedMac) {
+    bluetoothManualEntry.value.error = 'Enter a valid Penguin+ device name, for example Penguin+001122AABBCC.'
+    return
+  }
+  form.mac_address = parsedMac
+  bluetoothMessage.value = `Loaded MAC address from ${deviceName}.`
+  bluetoothManualEntry.value = { open: false, deviceName: '', error: null }
+}
+
 async function submitDeviceCheck() {
   error.value = null
   success.value = null
@@ -328,8 +353,13 @@ async function submitDeviceCheck() {
         <label class="text-sm font-medium text-slate-700">MAC Address</label>
         <div class="flex gap-2">
           <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
-          <Button type="button" variant="outline" :disabled="submitting || bluetoothBusy || !bluetoothSupported" @click="requestBluetoothMacAddress">
-            {{ bluetoothBusy ? 'Scanning...' : 'Scan via Bluetooth' }}
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="submitting || bluetoothBusy"
+            @click="bluetoothSupported ? requestBluetoothMacAddress() : openBluetoothManualEntry()"
+          >
+            {{ bluetoothSupported ? (bluetoothBusy ? 'Scanning...' : 'Scan via Bluetooth') : 'Paste Penguin+ Name' }}
           </Button>
         </div>
         <p class="text-xs text-slate-500">{{ bluetoothSupported ? 'Bluetooth scan only matches devices whose name starts with Penguin+.' : bluetoothUnavailableReason }}</p>
@@ -443,6 +473,22 @@ async function submitDeviceCheck() {
     <template #footer>
       <Button variant="outline" @click="bluetoothConfirm = { open: false, deviceName: '', macAddress: '' }">Cancel</Button>
       <Button @click="form.mac_address = bluetoothConfirm.macAddress; bluetoothMessage = `Loaded MAC address from ${bluetoothConfirm.deviceName}.`; bluetoothConfirm = { open: false, deviceName: '', macAddress: '' }">Use MAC Address</Button>
+    </template>
+  </ModalDialog>
+
+  <ModalDialog :open="bluetoothManualEntry.open" title="Paste Penguin+ Device Name" description="Paste the Bluetooth device name shown in iPhone Bluetooth settings." @close="bluetoothManualEntry = { open: false, deviceName: '', error: null }">
+    <div class="space-y-3">
+      <Input
+        :model-value="bluetoothManualEntry.deviceName"
+        placeholder="Penguin+001122AABBCC"
+        @update:model-value="(value) => { bluetoothManualEntry.error = null; bluetoothManualEntry.deviceName = String(value || '').trim() }"
+      />
+      <p class="text-xs text-slate-500">Expected format: <span class="font-mono">Penguin+001122AABBCC</span></p>
+      <p v-if="bluetoothManualEntry.error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{{ bluetoothManualEntry.error }}</p>
+    </div>
+    <template #footer>
+      <Button variant="outline" @click="bluetoothManualEntry = { open: false, deviceName: '', error: null }">Cancel</Button>
+      <Button @click="applyBluetoothDeviceName(bluetoothManualEntry.deviceName)">Use MAC Address</Button>
     </template>
   </ModalDialog>
 </template>
