@@ -17,6 +17,7 @@ export type Fridge = {
   latitude?: number | null;
   longitude?: number | null;
   image_id?: number | string | null;
+  placed: boolean;
 };
 
 export type OrganisationOption = {

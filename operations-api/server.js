@@ -154,6 +154,7 @@ const PERMISSION_FLAGS = Object.freeze([
   "mismatches.view",
   "history.view",
   "device_checker.submit",
+  "placement.submit",
 ]);
 
 const PERMISSION_POLICY = Object.freeze({
@@ -175,6 +176,7 @@ const PERMISSION_POLICY = Object.freeze({
       "mismatches.view",
       "history.view",
       "device_checker.submit",
+      "placement.submit",
     ],
   },
   Intermediate: {
@@ -182,6 +184,7 @@ const PERMISSION_POLICY = Object.freeze({
     grants: [
       "mismatches.view",
       "device_checker.submit",
+      "placement.submit",
     ],
   },
   Basic: {
@@ -2578,44 +2581,45 @@ app.post("/placements", requireAuth, requirePermission("placement.submit"), (req
 
     logAssetAction("placement:start", `serial=${serial} byUser=${req.user?.id || "unknown"}`);
 
-    const imageIds = await prisma.$transaction(async (tx) => {
+    const imageCount = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
 
       const requestedOrganisationScope = req.body?.organisation_id ?? req.query.organisation_id;
-      await resolveOrganisationMutationScope(tx, req.user, requestedOrganisationScope);
+      const scope = await resolveOrganisationMutationScope(tx, req.user, requestedOrganisationScope);
+
+      await tx.$executeRaw`
+        INSERT INTO frostlink.fridges (fridge_serial_number, iot_mac_address, c_number, organisation_id, placed, latitude, longitude)
+        VALUES (
+          ${serial},
+          ${mac || null},
+          ${cNum || null},
+          ${scope.effectiveOrganisationId ?? null},
+          true,
+          ${latitude ?? null},
+          ${longitude ?? null}
+        )
+        ON CONFLICT (fridge_serial_number) DO UPDATE SET placed = true
+      `;
 
       const files = Array.isArray(req.files) ? req.files : [];
-      const ids = [];
 
       for (const file of files) {
-        if (tx?.fridgeImage?.create) {
-          const fridgeImage = await tx.fridgeImage.create({
-            data: {
-              fridgeSerialNumber: serial,
-              image: file.buffer,
-              createdBy: req.user.id,
-            },
-          });
-          ids.push(fridgeImage.id);
-        } else {
-          logAssetAction("placement:image-storage-skipped", `serial=${serial} reason=missing-prisma-fridgeImage-delegate`);
-        }
+        await tx.$executeRaw`
+          INSERT INTO frostlink.fridge_placement (fridge_serial_number, image, created_by)
+          VALUES (${serial}, ${file.buffer}, ${req.user.id})
+        `;
       }
 
-      return ids;
+      return files.length;
     });
 
-    logAssetAction("placement:success", `serial=${serial} images=${imageIds.length}`);
+    logAssetAction("placement:success", `serial=${serial} images=${imageCount}`);
 
     return res.status(200).json({
       ok: true,
       result: "PLACED",
       serial_number: serial,
-      mac_address: mac || null,
-      c_number: cNum || null,
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      image_count: imageIds.length,
+      image_count: imageCount,
     });
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {

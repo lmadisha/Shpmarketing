@@ -75,7 +75,8 @@ model User {
   resolvedMismatches FridgeMismatch[] @relation("ResolvedBy")
   sentMismatches     FridgeMismatch[] @relation("SentBy")
   fridgeAuditLogs    FridgeAuditLog[]
-  createdFridgeImages FridgeImage[]   @relation("FridgeImageCreatedBy")
+  createdFridgeImages    FridgeImage[]    @relation("FridgeImageCreatedBy")
+  createdFridgePlacements FridgePlacement[] @relation("FridgePlacementCreatedBy")
 
   @@map("users")
   @@schema("frostlink")
@@ -91,10 +92,12 @@ model Fridge {
   latitude           Decimal?  @db.Decimal(9, 6)
   longitude          Decimal?  @db.Decimal(9, 6)
   image_id           BigInt?   @map("image_id") @db.BigInt
+  placed             Boolean   @default(false)
 
-  organisation Organisation?  @relation(fields: [organisationId], references: [id], onDelete: SetNull)
-  image        FridgeImage?   @relation("FridgeCurrentImage", fields: [image_id], references: [id], onDelete: SetNull)
-  images       FridgeImage[]  @relation("FridgeImageSourceFridge")
+  organisation Organisation?   @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  image        FridgeImage?    @relation("FridgeCurrentImage", fields: [image_id], references: [id], onDelete: SetNull)
+  images       FridgeImage[]   @relation("FridgeImageSourceFridge")
+  placements   FridgePlacement[]
 
   @@map("fridges")
   @@schema("frostlink")
@@ -161,5 +164,19 @@ model FridgeAuditLog {
   changedByUser User?         @relation(fields: [changedBy], references: [id])
 
   @@map("fridge_audit_log")
+  @@schema("frostlink")
+}
+
+model FridgePlacement {
+  id                 BigInt   @id @default(autoincrement())
+  fridgeSerialNumber String   @map("fridge_serial_number") @db.VarChar(32)
+  image              Bytes    @db.ByteA
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  createdBy          Int?     @map("created_by")
+
+  fridge        Fridge @relation(fields: [fridgeSerialNumber], references: [fridgeSerialNumber], onDelete: Cascade)
+  createdByUser User?  @relation("FridgePlacementCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("fridge_placement")
   @@schema("frostlink")
 }

@@ -11,6 +11,7 @@
     "deps:update": "npm update",
     "deps:audit": "npm audit",
     "deps:fix": "npm audit fix",
+    "migrate": "node migrate.js",
     "dev": "node server.js",
     "start": "node server.js"
   },

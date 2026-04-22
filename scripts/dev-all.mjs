@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,11 +45,24 @@ process.on("SIGTERM", () => {
   process.exit(143);
 });
 
+const apiDir = path.join(rootDir, "operations-api");
+
+console.log("[dev-all] Running database migrations...");
+const migrateResult = spawnSync(process.execPath, ["migrate.js"], {
+  cwd: apiDir,
+  stdio: "inherit",
+});
+
+if (migrateResult.status !== 0) {
+  console.error("[dev-all] Migration failed. Aborting.");
+  process.exit(migrateResult.status ?? 1);
+}
+
 startProcess(
   "operations-api",
   process.execPath,
   ["server.js"],
-  path.join(rootDir, "operations-api"),
+  apiDir,
 );
 
 startProcess(
@@ -59,7 +72,7 @@ startProcess(
     path.join(rootDir, "node_modules", "nuxt", "bin", "nuxt.mjs"),
     "dev",
     "--host",
-    "192.168.0.120",
+    "192.168.0.184",
     "--port",
     "5174",
   ],
