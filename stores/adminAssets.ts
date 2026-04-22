@@ -50,6 +50,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
   const canDeleteMismatches = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'mismatches.delete') : false)
   const canViewHistory = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'history.view') : false)
   const canSubmitDeviceCheck = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'device_checker.submit') : false)
+  const canSubmitPlacement = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'placement.submit') : false)
 
   // ── Organisation filter ────────────────────────────────────────────────────
   const organisationFilter = ref('')
@@ -724,7 +725,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     mutationOrganisationScopeValue, withMutationOrganisationScope,
     canCreateAssets, canViewAssets, canEditAssets, canDeleteAssets,
     canViewMismatches, canResolveMismatches, canDeleteMismatches,
-    canViewHistory, canSubmitDeviceCheck,
+    canViewHistory, canSubmitDeviceCheck, canSubmitPlacement,
 
     // Fridges
     fridges, fridgeLoading, fridgeError, searchTerm, loadFridges,

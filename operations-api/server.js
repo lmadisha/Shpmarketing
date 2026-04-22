@@ -2546,6 +2546,85 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
   }
 });
 
+app.post("/placements", requireAuth, requirePermission("placement.submit"), (req, res, next) => {
+  imageUpload.array("images", 10)(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File size exceeds 5MB limit' });
+      }
+      return res.status(400).json({ error: `File upload error: ${err.message}` });
+    }
+    if (err) {
+      return res.status(400).json({ error: err.message || 'File upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const serial = String(req.body?.serial_number || "").trim();
+    const mac = normalizeHexIdentifier(req.body?.mac_address);
+    const cNum = normalizeCNumber(req.body?.c_number);
+    const parsedLocation = parseLocationCoordinates(req.body);
+
+    if (!serial) {
+      return res.status(400).json({ error: "serial_number is required" });
+    }
+
+    if (!parsedLocation.isValid) {
+      return res.status(400).json(buildValidationErrorResponse(parsedLocation.errors));
+    }
+
+    const { latitude, longitude } = parsedLocation.values;
+
+    logAssetAction("placement:start", `serial=${serial} byUser=${req.user?.id || "unknown"}`);
+
+    const imageIds = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
+
+      const requestedOrganisationScope = req.body?.organisation_id ?? req.query.organisation_id;
+      await resolveOrganisationMutationScope(tx, req.user, requestedOrganisationScope);
+
+      const files = Array.isArray(req.files) ? req.files : [];
+      const ids = [];
+
+      for (const file of files) {
+        if (tx?.fridgeImage?.create) {
+          const fridgeImage = await tx.fridgeImage.create({
+            data: {
+              fridgeSerialNumber: serial,
+              image: file.buffer,
+              createdBy: req.user.id,
+            },
+          });
+          ids.push(fridgeImage.id);
+        } else {
+          logAssetAction("placement:image-storage-skipped", `serial=${serial} reason=missing-prisma-fridgeImage-delegate`);
+        }
+      }
+
+      return ids;
+    });
+
+    logAssetAction("placement:success", `serial=${serial} images=${imageIds.length}`);
+
+    return res.status(200).json({
+      ok: true,
+      result: "PLACED",
+      serial_number: serial,
+      mac_address: mac || null,
+      c_number: cNum || null,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
+      image_count: imageIds.length,
+    });
+  } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    return handleAssetError(res, "placement", error);
+  }
+});
+
 app.get("/mismatches", requireAuth, requirePermission("mismatches.view"), async (req, res) => {
   try {
     const rawStatus = String(req.query.status || "open").trim().toLowerCase();

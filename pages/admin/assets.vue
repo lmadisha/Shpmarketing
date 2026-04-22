@@ -104,6 +104,11 @@ const tabs = computed(() =>
       visible: store.canSubmitDeviceCheck,
     },
     {
+      label: "Placement",
+      to: "/admin/assets/placement",
+      visible: store.canSubmitPlacement,
+    },
+    {
       label: "History",
       to: "/admin/assets/history",
       visible: store.canViewHistory,

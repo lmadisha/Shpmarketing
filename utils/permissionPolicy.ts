@@ -22,6 +22,7 @@ export const PERMISSION_FLAGS = [
   "mismatches.view",
   "history.view",
   "device_checker.submit",
+  "placement.submit",
 ] as const;
 
 export type PermissionFlag = (typeof PERMISSION_FLAGS)[number];
@@ -60,6 +61,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
       "mismatches.view",
       "history.view",
       "device_checker.submit",
+      "placement.submit",
     ],
   },
   Intermediate: {
@@ -68,6 +70,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     grants: [
       "mismatches.view",
       "device_checker.submit",
+      "placement.submit",
     ],
   },
   Basic: {
