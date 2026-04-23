@@ -729,6 +729,118 @@ function buildSkippedDuplicateReportRow(row, existingRow, message) {
 }
 
 // ---------------------------------------------------------------------------
+// Audit log helpers
+// ---------------------------------------------------------------------------
+
+async function buildMismatchNoteMap(logs) {
+  const ids = [...new Set(
+    logs.filter((l) => l.mismatchId != null).map((l) => l.mismatchId),
+  )];
+  if (!ids.length) return {};
+  const mismatches = await prisma.fridgeMismatch.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, resolutionNote: true },
+  });
+  return Object.fromEntries(mismatches.map((m) => [String(m.id), m.resolutionNote ?? null]));
+}
+
+function extractDeletionReasonFromMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const metadataRecord = metadata;
+  const snakeCaseReason = metadataRecord.deletion_reason;
+  if (typeof snakeCaseReason === "string" && snakeCaseReason.trim()) {
+    return snakeCaseReason;
+  }
+
+  const camelCaseReason = metadataRecord.deletionReason;
+  if (typeof camelCaseReason === "string" && camelCaseReason.trim()) {
+    return camelCaseReason;
+  }
+
+  return null;
+}
+
+function resolveDeletionReason(log) {
+  if (typeof log?.deletionReason === "string" && log.deletionReason.trim()) {
+    return log.deletionReason;
+  }
+  return extractDeletionReasonFromMetadata(log?.metadata);
+}
+
+function isMissingDeletionReasonColumnError(error) {
+  const dbCode = String(error?.meta?.code || error?.code || "");
+  if (dbCode === "42703") {
+    return true;
+  }
+
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("deletion_reason") && message.includes("does not exist");
+}
+
+async function writeDeleteReasonToAuditLog(tx, fridgeSerialNumber, deletionReason) {
+  const reason = typeof deletionReason === "string" ? deletionReason.trim() : "";
+  if (!reason) {
+    return;
+  }
+
+  try {
+    await tx.$executeRaw`
+      UPDATE frostlink.fridge_audit_log
+      SET deletion_reason = ${reason}
+      WHERE fridge_serial_number = ${fridgeSerialNumber}
+        AND action_type = 'DELETE'
+        AND deletion_reason IS NULL
+    `;
+  } catch (error) {
+    if (!isMissingDeletionReasonColumnError(error)) {
+      throw error;
+    }
+
+    await tx.$executeRaw`
+      UPDATE frostlink.fridge_audit_log
+      SET metadata = CASE
+        WHEN metadata IS NULL THEN jsonb_build_object('deletion_reason', ${reason})
+        WHEN jsonb_typeof(metadata::jsonb) = 'object' THEN metadata::jsonb || jsonb_build_object('deletion_reason', ${reason})
+        ELSE metadata::jsonb
+      END
+      WHERE fridge_serial_number = ${fridgeSerialNumber}
+        AND action_type = 'DELETE'
+        AND (
+          metadata IS NULL
+          OR (
+            jsonb_typeof(metadata::jsonb) = 'object'
+            AND NOT (metadata::jsonb ? 'deletion_reason')
+          )
+        )
+    `;
+  }
+}
+
+function serializeAuditLogRow(log, mismatchNoteMap = {}) {
+  return {
+    log_id: log.logId,
+    fridge_serial_number: log.fridgeSerialNumber,
+    source_table: log.sourceTable,
+    action_type: log.actionType,
+    old_mac: log.oldMac,
+    new_mac: log.newMac,
+    old_c_num: log.oldCNum,
+    new_c_num: log.newCNum,
+    mismatch_id: log.mismatchId,
+    metadata: log.metadata,
+    deletion_reason: resolveDeletionReason(log),
+    resolution_note: log.mismatchId != null ? (mismatchNoteMap[String(log.mismatchId)] ?? null) : null,
+    organisation_id: log.organisationId,
+    changed_at: log.changedAt,
+    changed_by: log.changedBy,
+    changed_by_username: log.changedByUser?.username ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
@@ -2195,16 +2307,7 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, requirePermission("assets
 
       const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
       if (reason) {
-        await tx.fridgeAuditLog.updateMany({
-          where: {
-            fridgeSerialNumber: req.params.serialNumber,
-            actionType: "DELETE",
-            metadata: { equals: null },
-          },
-          data: {
-            metadata: { deletion_reason: reason },
-          },
-        });
+        await writeDeleteReasonToAuditLog(tx, req.params.serialNumber, reason);
       }
 
       return result;
@@ -2221,6 +2324,127 @@ app.delete("/deleteDevice/:serialNumber", requireAuth, requirePermission("assets
       return res.status(400).json({ error: error.message });
     }
     return handleAssetError(res, "delete-device", error);
+  }
+});
+
+app.post("/deleteDevice/bulk", requireAuth, requirePermission("assets.delete"), async (req, res) => {
+  try {
+    const serials = req.body?.serials;
+    if (!Array.isArray(serials) || serials.length === 0) {
+      return res.status(400).json({ error: "serials must be a non-empty array." });
+    }
+
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    logAssetAction("bulk-delete:start", `count=${serials.length} byUser=${req.user?.id || "unknown"}`);
+
+    const succeeded = [];
+    const notFound = [];
+    const errors = [];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
+      const scope = await resolveOrganisationMutationScope(tx, req.user, req.query.organisation_id);
+
+      for (const serial of serials) {
+        try {
+          const fridge = await tx.fridge.findFirst({
+            where: {
+              fridgeSerialNumber: serial,
+              ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+            },
+          });
+
+          if (!fridge) {
+            notFound.push(serial);
+            continue;
+          }
+
+          await tx.fridge.delete({ where: { fridgeSerialNumber: serial } });
+
+          if (reason) {
+            await writeDeleteReasonToAuditLog(tx, serial, reason);
+          }
+
+          succeeded.push(serial);
+        } catch (err) {
+          errors.push({ serial, message: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    });
+
+    logAssetAction("bulk-delete:success", `deleted=${succeeded.length} notFound=${notFound.length} errors=${errors.length}`);
+    return res.json({ succeeded, notFound, errors });
+  } catch (error) {
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    return handleAssetError(res, "bulk-delete", error);
+  }
+});
+
+app.post("/moveDevice/bulk", requireAuth, requirePermission("assets.edit"), async (req, res) => {
+  try {
+    const serials = req.body?.serials;
+    const targetOrgId = req.body?.organisation_id;
+
+    if (!Array.isArray(serials) || serials.length === 0) {
+      return res.status(400).json({ error: "serials must be a non-empty array." });
+    }
+    if (!targetOrgId || typeof targetOrgId !== "number") {
+      return res.status(400).json({ error: "organisation_id must be a valid number." });
+    }
+
+    logAssetAction("bulk-move:start", `count=${serials.length} targetOrg=${targetOrgId} byUser=${req.user?.id || "unknown"}`);
+
+    const succeeded = [];
+    const notFound = [];
+    const errors = [];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('myapp.current_user_id', ${String(req.user.id)}, false)`;
+      const scope = await resolveOrganisationMutationScope(tx, req.user, req.query.organisation_id);
+
+      const targetOrg = await tx.organisation.findUnique({ where: { id: targetOrgId } });
+      if (!targetOrg) {
+        throw Object.assign(new Error(`Organisation ${targetOrgId} not found.`), { code: "TARGET_ORG_NOT_FOUND" });
+      }
+
+      for (const serial of serials) {
+        try {
+          const fridge = await tx.fridge.findFirst({
+            where: {
+              fridgeSerialNumber: serial,
+              ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+            },
+          });
+
+          if (!fridge) {
+            notFound.push(serial);
+            continue;
+          }
+
+          await tx.fridge.update({
+            where: { fridgeSerialNumber: serial },
+            data: { organisationId: targetOrgId },
+          });
+
+          succeeded.push(serial);
+        } catch (err) {
+          errors.push({ serial, message: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    });
+
+    logAssetAction("bulk-move:success", `moved=${succeeded.length} notFound=${notFound.length} errors=${errors.length}`);
+    return res.json({ succeeded, notFound, errors });
+  } catch (error) {
+    if (error?.code === "TARGET_ORG_NOT_FOUND") {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    return handleAssetError(res, "bulk-move", error);
   }
 });
 
@@ -2243,24 +2467,11 @@ app.get("/auditLog/:serialNumber", requireAuth, requirePermission("history.view"
       orderBy: { changedAt: "desc" },
     });
 
+    const mismatchNoteMap = await buildMismatchNoteMap(logs);
+
     logAssetAction("device-history:success", `serial=${req.params.serialNumber || "unknown"} count=${logs.length}`);
 
-    return res.json(logs.map((log) => ({
-      log_id: log.logId,
-      fridge_serial_number: log.fridgeSerialNumber,
-      source_table: log.sourceTable,
-      action_type: log.actionType,
-      old_mac: log.oldMac,
-      new_mac: log.newMac,
-      old_c_num: log.oldCNum,
-      new_c_num: log.newCNum,
-      mismatch_id: log.mismatchId,
-      metadata: log.metadata,
-      organisation_id: log.organisationId,
-      changed_at: log.changedAt,
-      changed_by: log.changedBy,
-      changed_by_username: log.changedByUser?.username ?? null,
-    })));
+    return res.json(logs.map((log) => serializeAuditLogRow(log, mismatchNoteMap)));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
@@ -2284,24 +2495,11 @@ app.get("/auditLog", requireAuth, requirePermission("history.view"), async (req,
       orderBy: { changedAt: "desc" },
     });
 
+    const mismatchNoteMap = await buildMismatchNoteMap(logs);
+
     logAssetAction("audit-history:success", `count=${logs.length}`);
 
-    return res.json(logs.map((log) => ({
-      log_id: log.logId,
-      fridge_serial_number: log.fridgeSerialNumber,
-      source_table: log.sourceTable,
-      action_type: log.actionType,
-      old_mac: log.oldMac,
-      new_mac: log.newMac,
-      old_c_num: log.oldCNum,
-      new_c_num: log.newCNum,
-      mismatch_id: log.mismatchId,
-      metadata: log.metadata,
-      organisation_id: log.organisationId,
-      changed_at: log.changedAt,
-      changed_by: log.changedBy,
-      changed_by_username: log.changedByUser?.username ?? null,
-    })));
+    return res.json(logs.map((log) => serializeAuditLogRow(log, mismatchNoteMap)));
   } catch (error) {
     if (error?.code === "INVALID_ORGANISATION_FILTER" || error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });

@@ -116,6 +116,7 @@ CREATE TABLE frostlink.fridge_audit_log (
   new_c_num VARCHAR(32),
   mismatch_id BIGINT,
   metadata JSONB,
+  deletion_reason TEXT,
   organisation_id INTEGER REFERENCES frostlink.organisation(id) ON DELETE SET NULL,
   changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   changed_by INTEGER REFERENCES frostlink.users(id)

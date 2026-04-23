@@ -156,6 +156,7 @@ model FridgeAuditLog {
   newCNum            String?  @map("new_c_num") @db.VarChar(32)
   mismatchId         BigInt?  @map("mismatch_id")
   metadata           Json?
+  deletionReason     String?  @map("deletion_reason")
   organisationId     Int?     @map("organisation_id")
   changedAt          DateTime @default(now()) @map("changed_at") @db.Timestamptz()
   changedBy          Int?     @map("changed_by")
