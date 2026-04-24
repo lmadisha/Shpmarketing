@@ -37,11 +37,7 @@ const canUseBulkSelection = computed(
   () => store.canBulkDeleteAssets || (store.canManageOrganisations && store.isOrganisationFilterEnabled),
 );
 
-const inventoryStats = computed(() => ({
-  total: store.fridges.length,
-  verified: store.fridges.filter((f) => f.verified).length,
-  unverified: store.fridges.filter((f) => !f.verified).length,
-}));
+const inventoryStats = computed(() => store.inventoryScopeStats);
 
 async function exportInventory() {
   if (!store.canDownloadAssets) return;

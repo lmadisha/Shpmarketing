@@ -196,13 +196,38 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
 
   // ── Fridges ────────────────────────────────────────────────────────────────
   const fridges = ref<Fridge[]>([])
+  const inventoryScopeStats = ref({ total: 0, verified: 0, unverified: 0 })
   const fridgeLoading = ref(false)
   const fridgeError = ref('')
   const searchTerm = ref('')
 
-  async function loadFridges(query?: string) {
+  function buildInventoryScopeStats(rows: Fridge[]) {
+    const total = rows.length
+    const verified = rows.filter((row) => row.verified).length
+    return {
+      total,
+      verified,
+      unverified: total - verified,
+    }
+  }
+
+  async function refreshInventoryScopeStats() {
+    if (!canViewAssets.value) {
+      inventoryScopeStats.value = { total: 0, verified: 0, unverified: 0 }
+      return
+    }
+
+    const data = await adminRequest<Fridge[]>(
+      'loadFridges.summary',
+      withOrganisationFilter('/getFridges'),
+    )
+    inventoryScopeStats.value = buildInventoryScopeStats(Array.isArray(data) ? data : [])
+  }
+
+  async function loadFridges(query?: string, options: { refreshSummary?: boolean } = {}) {
     if (!canViewAssets.value) {
       fridges.value = []
+      inventoryScopeStats.value = { total: 0, verified: 0, unverified: 0 }
       fridgeError.value = 'You do not have permission to view fridge inventory.'
       return
     }
@@ -212,10 +237,17 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     selectedSerials.value = new Set()
     try {
       const term = (query ?? '').trim()
+      const shouldRefreshSummary = options.refreshSummary ?? term === ''
       const data = term
         ? await adminRequest<Fridge[]>('loadFridges.search', withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(term)}`))
         : await adminRequest<Fridge[]>('loadFridges.list', withOrganisationFilter('/getFridges'))
-      fridges.value = Array.isArray(data) ? data : []
+      const rows = Array.isArray(data) ? data : []
+      fridges.value = rows
+      if (!term) {
+        inventoryScopeStats.value = buildInventoryScopeStats(rows)
+      } else if (shouldRefreshSummary) {
+        await refreshInventoryScopeStats()
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not load fridge inventory.'
       fridgeError.value = message
@@ -375,7 +407,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
       )
       resolveModal.value = { open: false, row: null, note: '', submitting: false }
       if (canViewMismatches.value) await loadMismatches()
-      if (canViewAssets.value) await loadFridges(searchTerm.value)
+      if (canViewAssets.value) await loadFridges(searchTerm.value, { refreshSummary: true })
       if (canViewHistory.value) await loadAllHistory()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not resolve mismatch.'
@@ -495,7 +527,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
         body: JSON.stringify({ mac_address: mac, c_number: cNumber }),
       })
       cancelEdit()
-      if (canViewAssets.value) await loadFridges(searchTerm.value)
+      if (canViewAssets.value) await loadFridges(searchTerm.value, { refreshSummary: true })
       if (canViewHistory.value) await loadAllHistory()
     } catch {
       // fridgeError is set by adminRequest error handling
@@ -518,7 +550,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason || undefined }),
       })
-      if (canViewAssets.value) await loadFridges(searchTerm.value)
+      if (canViewAssets.value) await loadFridges(searchTerm.value, { refreshSummary: true })
       if (canViewHistory.value) await loadAllHistory()
     } catch {
       fridgeError.value = 'Could not delete fridge.'
@@ -586,7 +618,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
         },
       )
       clearSelection()
-      if (canViewAssets.value) await loadFridges(searchTerm.value)
+      if (canViewAssets.value) await loadFridges(searchTerm.value, { refreshSummary: true })
       if (canViewHistory.value) await loadAllHistory()
       return result
     } catch (error) {
@@ -616,7 +648,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
         },
       )
       clearSelection()
-      if (canViewAssets.value) await loadFridges(searchTerm.value)
+      if (canViewAssets.value) await loadFridges(searchTerm.value, { refreshSummary: true })
       if (canViewHistory.value) await loadAllHistory()
       return result
     } catch (error) {
@@ -845,9 +877,10 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     [organisationFilter, isOrganisationFilterEnabled, canViewAssets, canViewHistory, canViewMismatches],
     () => {
       if (canViewAssets.value) {
-        void loadFridges(searchTerm.value)
+        void loadFridges(searchTerm.value, { refreshSummary: true })
       } else {
         fridges.value = []
+        inventoryScopeStats.value = { total: 0, verified: 0, unverified: 0 }
         fridgeError.value = ''
       }
 
@@ -879,7 +912,7 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     canDownloadMismatches, canViewHistory, canDownloadHistory, canViewDeviceChecker, canSubmitDeviceCheck, canSubmitDeviceCheckScanOnly, canViewPlacement, canSubmitPlacement, canSubmitPlacementScanOnly, canManageOrganisations,
 
     // Fridges
-    fridges, fridgeLoading, fridgeError, searchTerm, loadFridges,
+    fridges, inventoryScopeStats, fridgeLoading, fridgeError, searchTerm, loadFridges,
     inventoryVerifiedFilter,
     inventorySort, toggleInventorySort, inventoryPage, safeInventoryPage,
     sortedFridgeRows, paginatedFridgeRows, inventoryTotalPages,
