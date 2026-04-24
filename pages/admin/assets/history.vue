@@ -67,13 +67,21 @@ function closeReason() {
   reasonModal.value = { open: false, entry: null }
 }
 
+function shouldShowReason(entry: AuditLogRow): boolean {
+  if (entry.deletion_reason) return true
+  return entry.action_type === 'MISMATCH_RESOLVE' || entry.action_type === 'MISMATCH_DELETE'
+}
+
 function getEntryReason(entry: AuditLogRow): string | null {
+  if (!shouldShowReason(entry)) return null
   return entry.deletion_reason || entry.resolution_note || null
 }
 
 function reasonLabel(entry: AuditLogRow): string {
   if (entry.deletion_reason) return 'Deletion Reason'
-  if (entry.resolution_note) return 'Resolution Note'
+  if (entry.action_type === 'MISMATCH_RESOLVE' || entry.action_type === 'MISMATCH_DELETE') {
+    return 'Resolution Note'
+  }
   return 'Note'
 }
 
