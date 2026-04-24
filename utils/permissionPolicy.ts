@@ -11,18 +11,35 @@ export const USER_PERMISSION_LEVELS = [
 export type PermissionLevel = (typeof USER_PERMISSION_LEVELS)[number];
 
 export const PERMISSION_FLAGS = [
-  "users.manage",
+  "workspace.view",
   "users.view",
+  "users.manage",
+  "users.assign_basic",
+  "users.assign_intermediate",
+  "users.assign_advanced",
+  "users.assign_admin",
+  "organisations.manage",
+  "profile.edit_details",
+  "organisation_asset_validation.manage",
   "assets.create",
   "assets.edit",
   "assets.delete",
+  "assets.bulk_add",
+  "assets.bulk_delete",
+  "assets.download",
   "assets.view",
   "mismatches.resolve",
   "mismatches.delete",
+  "mismatches.download",
   "mismatches.view",
   "history.view",
+  "history.download",
+  "device_checker.view",
   "device_checker.submit",
+  "device_checker.submit_scan_only",
+  "placement.view",
   "placement.submit",
+  "placement.submit_scan_only",
 ] as const;
 
 export type PermissionFlag = (typeof PERMISSION_FLAGS)[number];
@@ -44,44 +61,66 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     description: "Full administrative access.",
     dataScope: "all_orgs",
     canFilterOrganisation: true,
-    grants: [...PERMISSION_FLAGS],
+    inherits: ["Advanced"],
+    grants: [
+      "assets.bulk_delete",
+      "users.assign_admin",
+      "organisations.manage",
+    ],
   },
   Advanced: {
-    description: "Can manage asset operations and resolution workflows.",
+    description: "Can manage advanced asset operations and user administration.",
     dataScope: "own_org",
+    inherits: ["Intermediate"],
     grants: [
       "users.manage",
       "users.view",
-      "assets.create",
-      "assets.edit",
+      "assets.bulk_add",
       "assets.delete",
-      "assets.view",
       "mismatches.resolve",
       "mismatches.delete",
-      "mismatches.view",
-      "history.view",
-      "device_checker.submit",
-      "placement.submit",
+      "users.assign_intermediate",
+      "users.assign_advanced",
+      "profile.edit_details",
+      "organisation_asset_validation.manage",
     ],
   },
   Intermediate: {
-    description: "Operational user focused on checks and mismatch handling.",
+    description: "Operational user with field and limited workspace permissions.",
     dataScope: "own_org",
+    inherits: ["Basic"],
     grants: [
-      "mismatches.view",
+      "workspace.view",
+      "users.assign_basic",
+      "assets.create",
+      "assets.edit",
+      "assets.download",
+      "mismatches.download",
+      "history.download",
       "device_checker.submit",
       "placement.submit",
     ],
   },
   Basic: {
-    description: "Read-only access to inventory, mismatches, and history.",
+    description: "Read-only access to inventory, mismatches, and history. Can submit device checks and placements via scanner/Bluetooth only.",
     dataScope: "own_org",
     grants: [
       "assets.view",
       "mismatches.view",
       "history.view",
+      "device_checker.view",
+      "device_checker.submit_scan_only",
+      "placement.view",
+      "placement.submit_scan_only",
     ],
   },
+};
+
+export const ROLE_ASSIGNMENT_FLAG_BY_LEVEL: Record<PermissionLevel, PermissionFlag> = {
+  Basic: "users.assign_basic",
+  Intermediate: "users.assign_intermediate",
+  Advanced: "users.assign_advanced",
+  Admin: "users.assign_admin",
 };
 
 function resolveGrants(level: PermissionLevel, visited = new Set<PermissionLevel>()): Set<PermissionFlag> {
@@ -123,4 +162,8 @@ export function getPermissionLevelRank(level: PermissionLevel): number {
 
 export function canTargetPermissionLevel(actorLevel: PermissionLevel, targetLevel: PermissionLevel): boolean {
   return getPermissionLevelRank(targetLevel) >= getPermissionLevelRank(actorLevel);
+}
+
+export function getRoleAssignmentFlag(level: PermissionLevel): PermissionFlag {
+  return ROLE_ASSIGNMENT_FLAG_BY_LEVEL[level];
 }

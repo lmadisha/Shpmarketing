@@ -10,8 +10,38 @@ import { downloadExcel } from '~/utils/adminAssets'
 import type { MismatchSortKey } from '~/types/adminAssets'
 
 const store = useAdminAssetsStore()
+const exportingMismatches = ref(false)
 
 definePageMeta({ middleware: 'auth' })
+
+async function exportMismatches() {
+  if (!store.canDownloadMismatches) return
+  exportingMismatches.value = true
+  try {
+    const params = new URLSearchParams()
+    if (store.mismatchFilters.status) params.set('status', store.mismatchFilters.status)
+    if (store.mismatchFilters.serial.trim()) params.set('serial', store.mismatchFilters.serial.trim())
+    if (store.mismatchFilters.from) params.set('from', store.mismatchFilters.from)
+    if (store.mismatchFilters.to) params.set('to', store.mismatchFilters.to)
+    const basePath = `/exports/mismatches${params.toString() ? `?${params.toString()}` : ''}`
+    const payload = await store.adminRequest<{
+      sheet: string
+      columns: string[]
+      rows: Array<Array<string | number | null>>
+    }>('exportMismatches', store.withOrganisationFilter(basePath))
+
+    downloadExcel(
+      `mismatches_${new Date().toISOString().slice(0, 10)}.xls`,
+      payload.sheet || 'Mismatches',
+      payload.columns || ['Received At', 'Serial', 'Received MAC', 'Expected MAC', 'Received C-Number', 'Expected C-Number', 'Status', 'Resolved At', 'Resolved By', 'Note'],
+      Array.isArray(payload.rows) ? payload.rows : [],
+    )
+  } catch (error) {
+    store.mismatchError = error instanceof Error ? error.message : 'Could not export mismatches.'
+  } finally {
+    exportingMismatches.value = false
+  }
+}
 
 function renderSortDirection(key: MismatchSortKey) {
   if (store.mismatchSort.key !== key) return ArrowUpDown
@@ -70,13 +100,14 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="flex justify-end">
+      <div class="flex justify-end" v-if="store.canDownloadMismatches">
         <Button
           variant="outline"
-          @click="downloadExcel(`mismatches_${new Date().toISOString().slice(0, 10)}.xls`, 'Mismatches', ['Received At', 'Serial', 'Received MAC', 'Expected MAC', 'Received C-Number', 'Expected C-Number', 'Status', 'Resolved At', 'Resolved By', 'Note'], store.mismatchExportRows)"
+          :disabled="exportingMismatches"
+          @click="exportMismatches"
         >
           <Download class="h-4 w-4" />
-          Download Excel
+          {{ exportingMismatches ? 'Exporting...' : 'Download Excel' }}
         </Button>
       </div>
 

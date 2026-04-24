@@ -23,6 +23,7 @@ import ModalDialog from "~/components/ui/ModalDialog.vue";
 import AccessDeniedCard from "~/components/auth/AccessDeniedCard.vue";
 import {
   canTargetPermissionLevel,
+  getRoleAssignmentFlag,
   hasPermission,
   USER_PERMISSION_LEVELS,
   type PermissionLevel,
@@ -59,21 +60,23 @@ const isAdmin = computed(() => permissionLevel.value === "Admin");
 const forceOwnOrg = computed(() => !isAdmin.value && selfOrgId.value != null);
 const canViewUsers = computed(() =>
   permissionLevel.value
-    ? hasPermission(permissionLevel.value, "users.view")
+    ? hasPermission(permissionLevel.value, "workspace.view")
     : false,
 );
-const canManageUsers = computed(() =>
-  permissionLevel.value
-    ? hasPermission(permissionLevel.value, "users.manage")
-    : false,
-);
+
+function canAssignLevel(level: PermissionLevel) {
+  if (!permissionLevel.value) return false;
+  return hasPermission(permissionLevel.value, getRoleAssignmentFlag(level));
+}
+
 const visiblePermissionLevels = computed(() =>
   permissionLevel.value
     ? USER_PERMISSION_LEVELS.filter((level) =>
-        canTargetPermissionLevel(permissionLevel.value!, level),
+        canTargetPermissionLevel(permissionLevel.value!, level) && canAssignLevel(level),
       )
     : [],
 );
+const canManageUsers = computed(() => canViewUsers.value && visiblePermissionLevels.value.length > 0);
 
 const users = ref<WorkspaceUser[]>([]);
 const organisations = ref<OrganisationOption[]>([]);
@@ -135,7 +138,7 @@ async function loadUsers() {
     const data = await request<WorkspaceUser[]>(path);
     users.value = (Array.isArray(data) ? data : []).filter((user) =>
       permissionLevel.value
-        ? canTargetPermissionLevel(permissionLevel.value, user.permissions)
+        ? canTargetPermissionLevel(permissionLevel.value, user.permissions) && canAssignLevel(user.permissions)
         : false,
     );
   } catch (loadError) {

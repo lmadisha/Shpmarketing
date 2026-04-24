@@ -101,12 +101,12 @@ const tabs = computed(() =>
     {
       label: "Device Checker",
       to: "/admin/assets/device-checker",
-      visible: store.canSubmitDeviceCheck,
+      visible: store.canViewDeviceChecker,
     },
     {
       label: "Placement",
       to: "/admin/assets/placement",
-      visible: store.canSubmitPlacement,
+      visible: store.canViewPlacement,
     },
     {
       label: "History",

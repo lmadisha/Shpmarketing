@@ -31,12 +31,44 @@ import type { BulkOperationResult } from "~/types/adminAssets";
 const store = useAdminAssetsStore();
 const deleteConfirmSerial = ref<string | null>(null);
 const deleteReason = ref("");
+const exportingInventory = ref(false);
+
+const canUseBulkSelection = computed(
+  () => store.canBulkDeleteAssets || (store.canManageOrganisations && store.isOrganisationFilterEnabled),
+);
 
 const inventoryStats = computed(() => ({
   total: store.fridges.length,
   verified: store.fridges.filter((f) => f.verified).length,
   unverified: store.fridges.filter((f) => !f.verified).length,
 }));
+
+async function exportInventory() {
+  if (!store.canDownloadAssets) return;
+  exportingInventory.value = true;
+  try {
+    const params = new URLSearchParams();
+    if (store.searchTerm.trim()) params.set("searchTerm", store.searchTerm.trim());
+    if (store.inventoryVerifiedFilter !== "all") params.set("verified", store.inventoryVerifiedFilter);
+    const basePath = `/exports/fridges${params.toString() ? `?${params.toString()}` : ""}`;
+    const payload = await store.adminRequest<{
+      sheet: string;
+      columns: string[];
+      rows: Array<Array<string | number | null>>;
+    }>("exportInventory", store.withOrganisationFilter(basePath));
+
+    downloadExcel(
+      `fridges_${new Date().toISOString().slice(0, 10)}.xls`,
+      payload.sheet || "Inventory",
+      payload.columns || ["Serial Number", "MAC Address", "C-Number", "Verified"],
+      Array.isArray(payload.rows) ? payload.rows : [],
+    );
+  } catch (error) {
+    store.fridgeError = error instanceof Error ? error.message : "Could not export inventory.";
+  } finally {
+    exportingInventory.value = false;
+  }
+}
 
 // ── Bulk delete modal ───────────────────────────────────────────────────────
 const bulkDeleteOpen = ref(false);
@@ -216,18 +248,13 @@ onMounted(async () => {
           Reset
         </Button>
         <Button
+          v-if="store.canDownloadAssets"
           variant="outline"
-          @click="
-            downloadExcel(
-              `fridges_${new Date().toISOString().slice(0, 10)}.xls`,
-              'Inventory',
-              ['Serial Number', 'MAC Address', 'C-Number', 'Verified'],
-              store.inventoryExportRows,
-            )
-          "
+          :disabled="exportingInventory"
+          @click="exportInventory"
         >
           <Download class="h-4 w-4" />
-          Download Excel
+          {{ exportingInventory ? "Exporting..." : "Download Excel" }}
         </Button>
       </div>
 
@@ -246,7 +273,7 @@ onMounted(async () => {
         </span>
         <div class="flex flex-wrap gap-2">
           <Button
-            v-if="store.canDeleteAssets"
+            v-if="store.canBulkDeleteAssets"
             size="sm"
             variant="destructive"
             :disabled="store.bulkDeleting"
@@ -256,7 +283,7 @@ onMounted(async () => {
             Delete Selected
           </Button>
           <Button
-            v-if="store.canEditAssets && store.isOrganisationFilterEnabled"
+            v-if="store.canManageOrganisations && store.isOrganisationFilterEnabled"
             size="sm"
             variant="outline"
             :disabled="store.bulkMoving"
@@ -285,7 +312,7 @@ onMounted(async () => {
               class="text-left text-sm font-semibold tracking-wide text-slate-500"
             >
               <th
-                v-if="store.canDeleteAssets || store.canEditAssets"
+                v-if="canUseBulkSelection"
                 class="w-10 px-4 py-3"
               >
                 <input
@@ -344,7 +371,7 @@ onMounted(async () => {
               "
             >
               <td
-                v-if="store.canDeleteAssets || store.canEditAssets"
+                v-if="canUseBulkSelection"
                 class="px-4 py-3"
               >
                 <input
@@ -471,7 +498,7 @@ onMounted(async () => {
                       </Button>
                     </div>
                   </template>
-                  <Button
+                <Button
                     v-if="store.canDeleteAssets && !store.canEditAssets"
                     size="icon"
                     variant="ghost"
@@ -491,7 +518,7 @@ onMounted(async () => {
               v-if="!store.fridgeLoading && store.sortedFridgeRows.length === 0"
             >
               <td
-                :colspan="store.canDeleteAssets || store.canEditAssets ? 6 : 5"
+                :colspan="canUseBulkSelection ? 6 : 5"
                 class="px-4 py-10 text-center text-sm text-slate-500"
               >
                 <template v-if="store.inventoryVerifiedFilter !== 'all'">

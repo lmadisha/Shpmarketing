@@ -21,8 +21,40 @@ import { downloadExcel } from '~/utils/adminAssets'
 import type { AuditLogRow, HistorySortKey } from '~/types/adminAssets'
 
 const store = useAdminAssetsStore()
+const exportingHistory = ref(false)
 
 definePageMeta({ middleware: 'auth' })
+
+async function exportHistory() {
+  if (!store.canDownloadHistory) return
+  exportingHistory.value = true
+  try {
+    const params = new URLSearchParams()
+    if (store.historyFilters.action_type && store.historyFilters.action_type !== 'all') {
+      params.set('action_type', store.historyFilters.action_type)
+    }
+    if (store.historyFilters.serial.trim()) params.set('serial', store.historyFilters.serial.trim())
+    if (store.historyFilters.from) params.set('from', store.historyFilters.from)
+    if (store.historyFilters.to) params.set('to', store.historyFilters.to)
+    const basePath = `/exports/history${params.toString() ? `?${params.toString()}` : ''}`
+    const payload = await store.adminRequest<{
+      sheet: string
+      columns: string[]
+      rows: Array<Array<string | number | null>>
+    }>('exportHistory', store.withOrganisationFilter(basePath))
+
+    downloadExcel(
+      `history_${new Date().toISOString().slice(0, 10)}.xls`,
+      payload.sheet || 'History',
+      payload.columns || ['Changed At', 'Action', 'Serial', 'Old MAC', 'New MAC', 'Old C-Number', 'New C-Number', 'User', 'Reason'],
+      Array.isArray(payload.rows) ? payload.rows : [],
+    )
+  } catch (error) {
+    store.historyError = error instanceof Error ? error.message : 'Could not export history.'
+  } finally {
+    exportingHistory.value = false
+  }
+}
 
 // ── Reason detail modal ────────────────────────────────────────────────────
 const reasonModal = ref<{ open: boolean; entry: AuditLogRow | null }>({ open: false, entry: null })
@@ -150,16 +182,13 @@ onMounted(async () => {
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <Button
+            v-if="store.canDownloadHistory"
             variant="outline"
-            @click="downloadExcel(
-              `history_${new Date().toISOString().slice(0, 10)}.xls`,
-              'History',
-              ['Changed At', 'Action', 'Serial', 'Old MAC', 'New MAC', 'Old C-Number', 'New C-Number', 'User', 'Reason'],
-              store.historyExportRows,
-            )"
+            :disabled="exportingHistory"
+            @click="exportHistory"
           >
             <Download class="h-4 w-4" />
-            Download Excel
+            {{ exportingHistory ? "Exporting..." : "Download Excel" }}
           </Button>
           <Button variant="outline" :disabled="store.historyLoading" @click="store.loadAllHistory()">
             <RefreshCw class="h-4 w-4" :class="store.historyLoading ? 'animate-spin' : ''" />

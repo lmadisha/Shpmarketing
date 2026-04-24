@@ -44,15 +44,25 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     permissionLevel.value ? canFilterOrganisationByRole(permissionLevel.value) : false
   )
   const canCreateAssets = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'assets.create') : false)
+  const canBulkAddAssets = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'assets.bulk_add') : false)
   const canViewAssets = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'assets.view') : false)
   const canEditAssets = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'assets.edit') : false)
   const canDeleteAssets = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'assets.delete') : false)
+  const canBulkDeleteAssets = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'assets.bulk_delete') : false)
+  const canDownloadAssets = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'assets.download') : false)
   const canViewMismatches = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'mismatches.view') : false)
   const canResolveMismatches = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'mismatches.resolve') : false)
   const canDeleteMismatches = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'mismatches.delete') : false)
+  const canDownloadMismatches = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'mismatches.download') : false)
   const canViewHistory = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'history.view') : false)
+  const canDownloadHistory = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'history.download') : false)
+  const canViewDeviceChecker = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'device_checker.view') || hasPermission(permissionLevel.value, 'device_checker.submit') || hasPermission(permissionLevel.value, 'device_checker.submit_scan_only') : false)
   const canSubmitDeviceCheck = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'device_checker.submit') : false)
+  const canSubmitDeviceCheckScanOnly = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'device_checker.submit_scan_only') && !hasPermission(permissionLevel.value, 'device_checker.submit') : false)
+  const canViewPlacement = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'placement.view') || hasPermission(permissionLevel.value, 'placement.submit') || hasPermission(permissionLevel.value, 'placement.submit_scan_only') : false)
   const canSubmitPlacement = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'placement.submit') : false)
+  const canSubmitPlacementScanOnly = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'placement.submit_scan_only') && !hasPermission(permissionLevel.value, 'placement.submit') : false)
+  const canManageOrganisations = computed(() => permissionLevel.value ? hasPermission(permissionLevel.value, 'organisations.manage') : false)
 
   // ── Organisation filter ────────────────────────────────────────────────────
   const organisationFilter = ref('')
@@ -558,8 +568,8 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
   }
 
   async function bulkDeleteFridges(serials: string[], reason?: string): Promise<BulkOperationResult> {
-    if (!canDeleteAssets.value) {
-      fridgeError.value = 'You do not have permission to delete devices.'
+    if (!canBulkDeleteAssets.value) {
+      fridgeError.value = 'You do not have permission to bulk delete devices.'
       return { succeeded: [], notFound: [], errors: [] }
     }
 
@@ -588,8 +598,8 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
   }
 
   async function bulkMoveFridges(serials: string[], targetOrgId: number): Promise<BulkOperationResult> {
-    if (!canEditAssets.value) {
-      fridgeError.value = 'You do not have permission to edit devices.'
+    if (!canManageOrganisations.value) {
+      fridgeError.value = 'You do not have permission to reassign devices across organisations.'
       return { succeeded: [], notFound: [], errors: [] }
     }
 
@@ -864,9 +874,9 @@ export const useAdminAssetsStore = defineStore('adminAssets', () => {
     organisationOptions, organisationsLoading, withOrganisationFilter,
     selectedOrganisationId, effectiveOrganisationIdForMutations,
     mutationOrganisationScopeValue, withMutationOrganisationScope,
-    canCreateAssets, canViewAssets, canEditAssets, canDeleteAssets,
+    canCreateAssets, canBulkAddAssets, canViewAssets, canEditAssets, canDeleteAssets, canBulkDeleteAssets, canDownloadAssets,
     canViewMismatches, canResolveMismatches, canDeleteMismatches,
-    canViewHistory, canSubmitDeviceCheck, canSubmitPlacement,
+    canDownloadMismatches, canViewHistory, canDownloadHistory, canViewDeviceChecker, canSubmitDeviceCheck, canSubmitDeviceCheckScanOnly, canViewPlacement, canSubmitPlacement, canSubmitPlacementScanOnly, canManageOrganisations,
 
     // Fridges
     fridges, fridgeLoading, fridgeError, searchTerm, loadFridges,

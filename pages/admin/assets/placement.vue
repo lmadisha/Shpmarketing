@@ -6,8 +6,9 @@ import Button from '~/components/ui/Button.vue'
 import ModalDialog from '~/components/ui/ModalDialog.vue'
 import AccessDeniedCard from '~/components/auth/AccessDeniedCard.vue'
 import { cleanCNumber, cleanHex12 } from '~/utils/adminAssets'
-import { normalizeSerialCandidate } from '~/utils/serialLookup'
+import { findExactSerialMatch, normalizeSerialCandidate } from '~/utils/serialLookup'
 import { decodeSerialFromImageFile, startCameraSerialScan, type CameraScannerSession } from '~/utils/serialScanner'
+import type { Fridge } from '~/types/adminAssets'
 
 type PlacementForm = {
   serial_number: string
@@ -19,6 +20,14 @@ type PlacementSuccess = {
   result: 'PLACED'
   serial_number: string
   image_count: number
+}
+
+type ReassignmentConfirmState = {
+  open: boolean
+  existingSerial: string
+  existingCNumber: string
+  requestedCNumber: string
+  clearing: boolean
 }
 
 type BluetoothDeviceRequest = {
@@ -63,6 +72,13 @@ const imageInputRef = ref<HTMLInputElement | null>(null)
 const submitting = ref(false)
 const error = ref<string | null>(null)
 const success = ref<PlacementSuccess | null>(null)
+const reassignmentConfirm = ref<ReassignmentConfirmState>({
+  open: false,
+  existingSerial: '',
+  existingCNumber: '',
+  requestedCNumber: '',
+  clearing: false,
+})
 
 const locationLatitude = ref<number | null>(null)
 const locationLongitude = ref<number | null>(null)
@@ -204,6 +220,59 @@ function removeImage(index: number) {
   imagePreviews.value.splice(index, 1)
 }
 
+function resetReassignmentConfirm() {
+  reassignmentConfirm.value = {
+    open: false,
+    existingSerial: '',
+    existingCNumber: '',
+    requestedCNumber: '',
+    clearing: false,
+  }
+}
+
+async function findExistingFridge(serial: string) {
+  const normalizedSerial = normalizeSerialCandidate(serial)
+  if (!normalizedSerial) return null
+
+  const data = await store.adminRequest<Fridge[]>(
+    'placement:lookupFridge',
+    store.withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(normalizedSerial)}`),
+  )
+  const rows = Array.isArray(data) ? data : []
+  const matchedSerial = findExactSerialMatch(normalizedSerial, rows)
+  if (!matchedSerial) return null
+
+  return (
+    rows.find((row) => normalizeSerialCandidate(row.fridge_serial_number) === matchedSerial) ||
+    null
+  )
+}
+
+function queueReassignmentConfirmation(existingFridge: Fridge, requestedCNumber: string) {
+  reassignmentConfirm.value = {
+    open: true,
+    existingSerial: existingFridge.fridge_serial_number,
+    existingCNumber: cleanCNumber(String(existingFridge.c_number || '')),
+    requestedCNumber,
+    clearing: !requestedCNumber,
+  }
+}
+
+function buildPlacementFormData(confirmReassignment: boolean) {
+  const formData = new FormData()
+  formData.append('serial_number', form.serial_number)
+  formData.append('mac_address', form.mac_address)
+  formData.append('c_number', form.c_number)
+  formData.append('organisation_id', String(store.mutationOrganisationScopeValue))
+  if (confirmReassignment) formData.append('confirm_reassignment', 'true')
+  if (locationLatitude.value != null) formData.append('latitude', String(locationLatitude.value))
+  if (locationLongitude.value != null) formData.append('longitude', String(locationLongitude.value))
+  for (const img of placementImages.value) {
+    formData.append('images', img)
+  }
+  return formData
+}
+
 async function requestBluetoothMacAddress() {
   error.value = null
   success.value = null
@@ -245,26 +314,36 @@ function applyBluetoothDeviceName(deviceNameInput: string) {
   bluetoothManualEntry.value = { open: false, deviceName: '', error: null }
 }
 
-async function submitPlacement() {
+async function submitPlacement(confirmReassignment = false) {
   error.value = null
   success.value = null
-  submitting.value = true
   try {
-    const formData = new FormData()
-    formData.append('serial_number', form.serial_number)
-    formData.append('mac_address', form.mac_address)
-    formData.append('c_number', form.c_number)
-    formData.append('organisation_id', String(store.mutationOrganisationScopeValue))
-    if (locationLatitude.value != null) formData.append('latitude', String(locationLatitude.value))
-    if (locationLongitude.value != null) formData.append('longitude', String(locationLongitude.value))
-    for (const img of placementImages.value) {
-      formData.append('images', img)
+    form.serial_number = normalizeSerialCandidate(form.serial_number)
+    form.c_number = cleanCNumber(form.c_number)
+
+    if (!form.serial_number) {
+      error.value = 'Serial number is required.'
+      return
     }
+
+    if (!confirmReassignment) {
+      const existingFridge = await findExistingFridge(form.serial_number)
+      const existingCNumber = cleanCNumber(String(existingFridge?.c_number || ''))
+      const requestedCNumber = cleanCNumber(form.c_number)
+
+      if (existingFridge && existingCNumber && existingCNumber !== requestedCNumber) {
+        queueReassignmentConfirmation(existingFridge, requestedCNumber)
+        return
+      }
+    }
+
+    submitting.value = true
     const result = await store.adminRequest<PlacementSuccess>(
       'placement:submit',
       store.withMutationOrganisationScope('/placements'),
-      { method: 'POST', body: formData },
+      { method: 'POST', body: buildPlacementFormData(confirmReassignment) },
     )
+    resetReassignmentConfirm()
     success.value = result
     form.serial_number = ''
     form.mac_address = ''
@@ -281,10 +360,27 @@ async function submitPlacement() {
 
 <template>
   <AccessDeniedCard
-    v-if="!store.canSubmitPlacement"
+    v-if="!store.canViewPlacement"
     title="Placement access denied"
-    description="You do not have permission to submit placements."
+    description="You do not have permission to view the Placement tab."
   />
+
+  <Card v-else-if="!store.canSubmitPlacement && !store.canSubmitPlacementScanOnly" class="max-w-2xl">
+    <div class="border-b border-slate-200 p-5">
+      <div class="flex items-center gap-2">
+        <MapPin class="h-4 w-4 text-[#006aea]" />
+        <h2 class="text-lg font-semibold text-slate-900">Placement</h2>
+      </div>
+    </div>
+    <div class="space-y-2 p-5">
+      <p class="text-sm text-slate-700">
+        You have view-only access to this tab.
+      </p>
+      <p class="text-sm text-slate-500">
+        Manual entry and placement submission are available for Intermediate, Advanced, and Admin roles.
+      </p>
+    </div>
+  </Card>
 
   <Card v-else class="max-w-2xl">
     <div class="border-b border-slate-200 p-5">
@@ -305,15 +401,17 @@ async function submitPlacement() {
         </div>
         <Input
           :model-value="form.serial_number"
-          placeholder="Serial number"
+          :placeholder="store.canSubmitPlacementScanOnly ? (form.serial_number || 'Scan a barcode to set serial') : 'Serial number'"
+          :disabled="store.canSubmitPlacementScanOnly"
           @update:model-value="(value) => { form.serial_number = String(value || '').trim().toUpperCase() }"
         />
+        <p v-if="store.canSubmitPlacementScanOnly" class="text-xs text-amber-600">Serial number must be set via barcode scan.</p>
       </div>
 
       <div class="space-y-1">
         <label class="text-sm font-medium text-slate-700">MAC Address</label>
         <div class="flex gap-2">
-          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
+          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" :disabled="store.canSubmitPlacementScanOnly" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
           <Button
             type="button"
             variant="outline"
@@ -324,6 +422,7 @@ async function submitPlacement() {
           </Button>
         </div>
         <p class="text-xs text-slate-500">{{ bluetoothSupported ? 'Bluetooth scan only matches devices whose name starts with Penguin+.' : bluetoothUnavailableReason }}</p>
+        <p v-if="store.canSubmitPlacementScanOnly" class="text-xs text-amber-600">MAC address must be set via Bluetooth scan.</p>
         <p v-if="bluetoothMessage" class="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{{ bluetoothMessage }}</p>
       </div>
 
@@ -382,7 +481,7 @@ async function submitPlacement() {
         Placement recorded for {{ success.serial_number }}{{ success.image_count ? ` with ${success.image_count} image${success.image_count !== 1 ? 's' : ''}` : '' }}.
       </p>
 
-      <Button :disabled="submitting || !form.serial_number" @click="submitPlacement">
+      <Button :disabled="submitting || !form.serial_number" @click="submitPlacement()">
         {{ submitting ? 'Submitting...' : `Submit Placement${form.serial_number ? ` for ${form.serial_number}` : ''}` }}
       </Button>
     </div>
@@ -457,6 +556,38 @@ async function submitPlacement() {
     <template #footer>
       <Button variant="outline" @click="bluetoothManualEntry = { open: false, deviceName: '', error: null }">Cancel</Button>
       <Button @click="applyBluetoothDeviceName(bluetoothManualEntry.deviceName)">Use MAC Address</Button>
+    </template>
+  </ModalDialog>
+
+  <ModalDialog
+    :open="reassignmentConfirm.open"
+    title="Confirm Fridge Reassignment"
+    :description="reassignmentConfirm.clearing ? 'This will remove the current customer assignment from the fridge.' : 'This will move the fridge to a different customer.'"
+    @close="resetReassignmentConfirm()"
+  >
+    <div class="space-y-3 text-sm text-slate-700">
+      <p>
+        Fridge <span class="font-mono font-medium">{{ reassignmentConfirm.existingSerial }}</span>
+        belongs to customer <span class="font-medium">{{ reassignmentConfirm.existingCNumber }}</span>.
+      </p>
+      <p v-if="reassignmentConfirm.clearing">
+        Are you sure you want to remove the customer assignment from this fridge?
+      </p>
+      <p v-else>
+        Are you sure you want to move it to customer <span class="font-medium">{{ reassignmentConfirm.requestedCNumber }}</span>?
+      </p>
+      <p class="text-xs text-slate-500">
+        If the MAC address or C-number changes, the fridge will be marked unverified.
+      </p>
+    </div>
+    <template #footer>
+      <Button variant="outline" :disabled="submitting" @click="resetReassignmentConfirm()">No</Button>
+      <Button
+        :disabled="submitting"
+        @click="resetReassignmentConfirm(); submitPlacement(true)"
+      >
+        {{ submitting ? 'Submitting...' : 'Yes' }}
+      </Button>
     </template>
   </ModalDialog>
 </template>

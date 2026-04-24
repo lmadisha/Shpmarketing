@@ -317,10 +317,27 @@ async function submitDeviceCheck() {
 
 <template>
   <AccessDeniedCard
-    v-if="!store.canSubmitDeviceCheck"
+    v-if="!store.canViewDeviceChecker"
     title="Device Checker access denied"
-    description="You do not have permission to run device checks."
+    description="You do not have permission to view the Device Checker tab."
   />
+
+  <Card v-else-if="!store.canSubmitDeviceCheck && !store.canSubmitDeviceCheckScanOnly" class="max-w-2xl">
+    <div class="border-b border-slate-200 p-5">
+      <div class="flex items-center gap-2">
+        <Search class="h-4 w-4 text-[#006aea]" />
+        <h2 class="text-lg font-semibold text-slate-900">Device Checker</h2>
+      </div>
+    </div>
+    <div class="space-y-2 p-5">
+      <p class="text-sm text-slate-700">
+        You have view-only access to this tab.
+      </p>
+      <p class="text-sm text-slate-500">
+        Manual entry and submission are available for Intermediate, Advanced, and Admin roles.
+      </p>
+    </div>
+  </Card>
 
   <Card v-else class="max-w-2xl">
     <div class="border-b border-slate-200 p-5">
@@ -341,18 +358,20 @@ async function submitDeviceCheck() {
         </div>
         <Select
           v-model="form.fridge_serial_number"
-          searchable
+          :searchable="!store.canSubmitDeviceCheckScanOnly"
           search-placeholder="Search serial number..."
-          :placeholder="serialsLoading ? 'Loading serials...' : 'Select a serial number'"
+          :placeholder="store.canSubmitDeviceCheckScanOnly ? (form.fridge_serial_number || 'Scan a barcode to set serial') : (serialsLoading ? 'Loading serials...' : 'Select a serial number')"
           :options="serials.map(f => ({ value: f.fridge_serial_number, label: f.fridge_serial_number }))"
+          :disabled="store.canSubmitDeviceCheckScanOnly"
           @search="(q) => { serialQuery = q }"
         />
+        <p v-if="store.canSubmitDeviceCheckScanOnly" class="text-xs text-amber-600">Serial number must be set via barcode scan.</p>
       </div>
 
       <div class="space-y-1">
         <label class="text-sm font-medium text-slate-700">MAC Address</label>
         <div class="flex gap-2">
-          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
+          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" :disabled="store.canSubmitDeviceCheckScanOnly" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
           <Button
             type="button"
             variant="outline"
@@ -363,6 +382,7 @@ async function submitDeviceCheck() {
           </Button>
         </div>
         <p class="text-xs text-slate-500">{{ bluetoothSupported ? 'Bluetooth scan only matches devices whose name starts with Penguin+.' : bluetoothUnavailableReason }}</p>
+        <p v-if="store.canSubmitDeviceCheckScanOnly" class="text-xs text-amber-600">MAC address must be set via Bluetooth scan.</p>
         <p v-if="bluetoothMessage" class="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{{ bluetoothMessage }}</p>
       </div>
 

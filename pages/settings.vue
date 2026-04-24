@@ -29,6 +29,11 @@ const canViewTotalUnits = computed(() =>
     ? hasPermission(authStore.session.user.permissions, "assets.view")
     : false,
 );
+const canEditProfile = computed(() =>
+  authStore.session?.user.permissions
+    ? hasPermission(authStore.session.user.permissions, "profile.edit_details")
+    : false,
+);
 
 const totalUnits = ref<number | null>(null);
 
@@ -191,20 +196,23 @@ onMounted(() => {
             <p v-if="profileSaveSuccess" class="text-sm text-emerald-600">
               {{ profileSaveSuccess }}
             </p>
+            <p v-if="!canEditProfile" class="text-sm text-amber-700">
+              Profile detail edits are available for Advanced and Admin roles.
+            </p>
 
             <div class="grid gap-4 md:grid-cols-2">
               <div class="space-y-1">
                 <Label for="first-name">First Name</Label>
-                <Input id="first-name" v-model="profileForm.first_name" />
+                <Input id="first-name" v-model="profileForm.first_name" :disabled="!canEditProfile" />
               </div>
               <div class="space-y-1">
                 <Label for="last-name">Last Name</Label>
-                <Input id="last-name" v-model="profileForm.last_name" />
+                <Input id="last-name" v-model="profileForm.last_name" :disabled="!canEditProfile" />
               </div>
             </div>
             <div class="space-y-1">
               <Label for="email">Email</Label>
-              <Input id="email" v-model="profileForm.username" type="email" />
+              <Input id="email" v-model="profileForm.username" type="email" :disabled="!canEditProfile" />
             </div>
             <div class="grid gap-4 md:grid-cols-2">
               <div class="space-y-1">
@@ -226,7 +234,7 @@ onMounted(() => {
             </div>
             <div class="flex gap-2">
               <Button
-                :disabled="profileSaving || profileLoading"
+                :disabled="profileSaving || profileLoading || !canEditProfile"
                 @click="submitProfileUpdate"
                 >{{ profileSaving ? "Saving..." : "Save Profile" }}</Button
               >
