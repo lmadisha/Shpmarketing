@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canTargetPermissionLevel,
   getRoleAssignmentFlag,
   hasPermission,
   listPermissions,
@@ -43,5 +44,13 @@ describe("permission policy alignment", () => {
     expect(hasPermission("Advanced", "users.assign_admin")).toBe(false);
     expect(hasPermission("Admin", "organisations.manage")).toBe(true);
     expect(hasPermission("Admin", "users.assign_admin")).toBe(true);
+  });
+
+  it("restricts same-level workspace targeting to admins only", () => {
+    expect(canTargetPermissionLevel("Intermediate", "Intermediate")).toBe(false);
+    expect(canTargetPermissionLevel("Advanced", "Advanced")).toBe(false);
+    expect(canTargetPermissionLevel("Advanced", "Intermediate")).toBe(true);
+    expect(canTargetPermissionLevel("Advanced", "Basic")).toBe(true);
+    expect(canTargetPermissionLevel("Admin", "Admin")).toBe(true);
   });
 });

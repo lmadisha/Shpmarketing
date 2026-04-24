@@ -58,7 +58,7 @@ type PermissionRolePolicy = {
 
 export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = {
   Admin: {
-    description: "Full administrative access.",
+    description: "Full administrative access, including peer-admin workspace management.",
     dataScope: "all_orgs",
     canFilterOrganisation: true,
     inherits: ["Advanced"],
@@ -69,7 +69,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     ],
   },
   Advanced: {
-    description: "Can manage advanced asset operations and user administration.",
+    description: "Can manage advanced asset operations and workspace users below Advanced.",
     dataScope: "own_org",
     inherits: ["Intermediate"],
     grants: [
@@ -86,7 +86,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     ],
   },
   Intermediate: {
-    description: "Operational user with field and limited workspace permissions.",
+    description: "Operational user with workspace access limited to Basic users.",
     dataScope: "own_org",
     inherits: ["Basic"],
     grants: [
@@ -161,7 +161,14 @@ export function getPermissionLevelRank(level: PermissionLevel): number {
 }
 
 export function canTargetPermissionLevel(actorLevel: PermissionLevel, targetLevel: PermissionLevel): boolean {
-  return getPermissionLevelRank(targetLevel) >= getPermissionLevelRank(actorLevel);
+  const actorRank = getPermissionLevelRank(actorLevel);
+  const targetRank = getPermissionLevelRank(targetLevel);
+
+  if (actorLevel === "Admin") {
+    return targetRank >= actorRank;
+  }
+
+  return targetRank > actorRank;
 }
 
 export function getRoleAssignmentFlag(level: PermissionLevel): PermissionFlag {

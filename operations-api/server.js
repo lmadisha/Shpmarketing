@@ -205,9 +205,9 @@ const PERMISSION_FLAGS = Object.freeze([
 
 // Role access policy:
 // Basic: read-only operational visibility.
-// Intermediate: broader field operations + limited workspace access (Basic users only).
-// Advanced: asset admin + mismatch resolution + org validation management.
-// Admin: full cross-organisation access.
+// Intermediate: broader field operations + workspace access for Basic users only.
+// Advanced: asset admin + mismatch resolution + org validation management for lower roles only.
+// Admin: full cross-organisation access, including peer-admin workspace management.
 const PERMISSION_POLICY = Object.freeze({
   Admin: {
     inherits: ["Advanced"],
@@ -282,7 +282,14 @@ function getPermissionLevelRank(level) {
 }
 
 function canTargetRole(actorLevel, targetLevel) {
-  return getPermissionLevelRank(targetLevel) >= getPermissionLevelRank(actorLevel);
+  const actorRank = getPermissionLevelRank(actorLevel);
+  const targetRank = getPermissionLevelRank(targetLevel);
+
+  if (actorLevel === "Admin") {
+    return targetRank >= actorRank;
+  }
+
+  return targetRank > actorRank;
 }
 
 const ROLE_ASSIGNMENT_PERMISSION = Object.freeze({
@@ -1342,6 +1349,9 @@ app.post("/users", requireAuth, requirePermission("workspace.view"), async (req,
     const normalizedPermission = normalizePermission(permissions);
     if (!normalizedPermission) {
       return res.status(400).json({ error: "Invalid permissions value" });
+    }
+    if (!canTargetRole(req.user.permissions, normalizedPermission)) {
+      return res.status(403).json({ error: "You do not have permission to manage this role." });
     }
     if (!canAssignPermissionLevel(req.user, normalizedPermission)) {
       return res.status(403).json({ error: "You do not have permission to assign this role." });
