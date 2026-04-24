@@ -94,9 +94,9 @@ const tabs = computed(() =>
       visible: store.canCreateAssets,
     },
     {
-      label: "Mismatches",
-      to: "/admin/assets/mismatches",
-      visible: store.canViewMismatches,
+      label: "Placement",
+      to: "/admin/assets/placement",
+      visible: store.canViewPlacement,
     },
     {
       label: "Device Checker",
@@ -104,9 +104,9 @@ const tabs = computed(() =>
       visible: store.canViewDeviceChecker,
     },
     {
-      label: "Placement",
-      to: "/admin/assets/placement",
-      visible: store.canViewPlacement,
+      label: "Mismatches",
+      to: "/admin/assets/mismatches",
+      visible: store.canViewMismatches,
     },
     {
       label: "History",

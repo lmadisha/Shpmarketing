@@ -23,6 +23,31 @@ function serializePermission(p) {
   return p.replace(/_/g, " ");
 }
 
+const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(value) {
+  return SIMPLE_EMAIL_REGEX.test(String(value || "").trim().toLowerCase());
+}
+
+function buildFullName(firstName, lastName) {
+  return [firstName, lastName].filter(Boolean).join(" ") || null;
+}
+
+function serializeWorkspaceUser(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    full_name: user.fullName,
+    first_name: user.firstName ?? null,
+    last_name: user.lastName ?? null,
+    permissions: serializePermission(user.permissions),
+    is_active: user.isActive,
+    created_at: user.createdAt,
+    organisation_id: user.organisationId,
+    organisation_name: user.organisation?.name ?? null,
+  };
+}
+
 // BigInt JSON serialization support
 // Prisma returns BigInt for BIGSERIAL columns; JSON.stringify does not handle BigInt natively.
 const origStringify = JSON.stringify;
@@ -1119,7 +1144,7 @@ app.put("/profile", requireAuth, requirePermission("profile.edit_details"), asyn
     const lastNameInput = String(req.body?.last_name ?? "").trim();
     const firstName = firstNameInput || null;
     const lastName = lastNameInput || null;
-    const fullName = [firstName, lastName].filter(Boolean).join(" ") || null;
+    const fullName = buildFullName(firstName, lastName);
 
     if (!username) {
       return res.status(400).json({ error: "Email is required" });
@@ -1273,6 +1298,8 @@ app.get("/users", requireAuth, requirePermission("workspace.view"), async (req, 
         id: true,
         username: true,
         fullName: true,
+        firstName: true,
+        lastName: true,
         permissions: true,
         isActive: true,
         createdAt: true,
@@ -1284,16 +1311,7 @@ app.get("/users", requireAuth, requirePermission("workspace.view"), async (req, 
 
     const rows = users
       .filter((u) => canManageTargetUser(req.user, u.permissions))
-      .map((u) => ({
-        id: u.id,
-        username: u.username,
-        full_name: u.fullName,
-        permissions: serializePermission(u.permissions),
-        is_active: u.isActive,
-        created_at: u.createdAt,
-        organisation_id: u.organisationId,
-        organisation_name: u.organisation?.name ?? null,
-      }));
+      .map((u) => serializeWorkspaceUser(u));
 
     return res.json(rows);
   } catch (error) {
@@ -1310,9 +1328,14 @@ app.get("/users", requireAuth, requirePermission("workspace.view"), async (req, 
 
 app.post("/users", requireAuth, requirePermission("workspace.view"), async (req, res) => {
   try {
-    const { username, password, full_name, permissions, organisation_id } = req.body;
+    const { username, password, permissions, organisation_id } = req.body;
+    const firstNameInput = String(req.body?.first_name ?? "").trim();
+    const lastNameInput = String(req.body?.last_name ?? "").trim();
+    const firstName = firstNameInput || null;
+    const lastName = lastNameInput || null;
+    const fullName = buildFullName(firstName, lastName);
 
-    if (!username || !password || !full_name || !permissions) {
+    if (!username || !password || !permissions) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
@@ -1325,6 +1348,25 @@ app.post("/users", requireAuth, requirePermission("workspace.view"), async (req,
     }
 
     const email = String(username).trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+    if (email.length > 50) {
+      return res.status(400).json({ error: "Email must be 50 characters or fewer" });
+    }
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: "Enter a valid email address" });
+    }
+    if (!firstNameInput) {
+      return res.status(400).json({ error: "First name is required" });
+    }
+    if (firstNameInput.length > 100) {
+      return res.status(400).json({ error: "First name must be 100 characters or fewer" });
+    }
+    if (lastNameInput.length > 100) {
+      return res.status(400).json({ error: "Last name must be 100 characters or fewer" });
+    }
+
     const passwordHash = await bcrypt.hash(String(password), 12);
     const scope = await resolveOrganisationScope(prisma, req.user, null);
     let organisationId = organisation_id == null ? null : Number(organisation_id);
@@ -1354,7 +1396,9 @@ app.post("/users", requireAuth, requirePermission("workspace.view"), async (req,
       data: {
         username: email,
         passwordHash,
-        fullName: String(full_name).trim(),
+        firstName,
+        lastName,
+        fullName,
         permissions: normalizedPermission,
         isActive: true,
         organisationId,
@@ -1363,6 +1407,8 @@ app.post("/users", requireAuth, requirePermission("workspace.view"), async (req,
         id: true,
         username: true,
         fullName: true,
+        firstName: true,
+        lastName: true,
         permissions: true,
         isActive: true,
         createdAt: true,
@@ -1379,16 +1425,91 @@ app.post("/users", requireAuth, requirePermission("workspace.view"), async (req,
       appUrl,
     }).catch((emailErr) => console.error("[email] Welcome email failed:", emailErr));
 
-    return res.json({
-      id: created.id,
-      username: created.username,
-      full_name: created.fullName,
-      permissions: serializePermission(created.permissions),
-      is_active: created.isActive,
-      created_at: created.createdAt,
-      organisation_id: created.organisationId,
-    });
+    return res.json(serializeWorkspaceUser(created));
   } catch (error) {
+    if (error.code === "P2002" || error.code === "23505") {
+      return res.status(409).json({ error: "That email/username already exists" });
+    }
+    if (error?.code === "USER_ORGANISATION_REQUIRED") {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error(error);
+    return res.status(500).json({ error: "Server Error" });
+  }
+});
+
+app.put("/users/:id/details", requireAuth, requirePermission("workspace.view"), async (req, res) => {
+  try {
+    const targetId = Number(req.params.id);
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return res.status(400).json({ error: "Invalid user id" });
+    }
+
+    const username = String(req.body?.username || "").trim().toLowerCase();
+    const firstNameInput = String(req.body?.first_name ?? "").trim();
+    const lastNameInput = String(req.body?.last_name ?? "").trim();
+    const firstName = firstNameInput || null;
+    const lastName = lastNameInput || null;
+    const fullName = buildFullName(firstName, lastName);
+
+    if (!username) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+    if (username.length > 50) {
+      return res.status(400).json({ error: "Email must be 50 characters or fewer" });
+    }
+    if (!isValidEmail(username)) {
+      return res.status(400).json({ error: "Enter a valid email address" });
+    }
+    if (!firstNameInput) {
+      return res.status(400).json({ error: "First name is required" });
+    }
+    if (firstNameInput.length > 100) {
+      return res.status(400).json({ error: "First name must be 100 characters or fewer" });
+    }
+    if (lastNameInput.length > 100) {
+      return res.status(400).json({ error: "Last name must be 100 characters or fewer" });
+    }
+
+    const scope = await resolveOrganisationScope(prisma, req.user, null);
+    const target = await prisma.user.findFirst({
+      where: {
+        id: targetId,
+        ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
+      },
+      select: { id: true, permissions: true },
+    });
+
+    if (!target) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!canManageTargetUser(req.user, target.permissions)) {
+      return res.status(403).json({ error: "You do not have permission to modify this user." });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: targetId },
+      data: { username, firstName, lastName, fullName },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        firstName: true,
+        lastName: true,
+        permissions: true,
+        isActive: true,
+        createdAt: true,
+        organisationId: true,
+        organisation: { select: { name: true } },
+      },
+    });
+
+    return res.json(serializeWorkspaceUser(updated));
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "User not found" });
+    }
     if (error.code === "P2002" || error.code === "23505") {
       return res.status(409).json({ error: "That email/username already exists" });
     }
@@ -1440,6 +1561,8 @@ app.put("/users/:id/permissions", requireAuth, requirePermission("workspace.view
         id: true,
         username: true,
         fullName: true,
+        firstName: true,
+        lastName: true,
         permissions: true,
         isActive: true,
         createdAt: true,
@@ -1447,15 +1570,7 @@ app.put("/users/:id/permissions", requireAuth, requirePermission("workspace.view
       },
     });
 
-    return res.json({
-      id: updated.id,
-      username: updated.username,
-      full_name: updated.fullName,
-      permissions: serializePermission(updated.permissions),
-      is_active: updated.isActive,
-      created_at: updated.createdAt,
-      organisation_id: updated.organisationId,
-    });
+    return res.json(serializeWorkspaceUser(updated));
   } catch (error) {
     if (error.code === "P2025") {
       return res.status(404).json({ error: "User not found" });
@@ -1507,6 +1622,8 @@ app.put("/users/:id/organisation", requireAuth, requirePermission("organisations
         id: true,
         username: true,
         fullName: true,
+        firstName: true,
+        lastName: true,
         permissions: true,
         isActive: true,
         createdAt: true,
@@ -1515,16 +1632,7 @@ app.put("/users/:id/organisation", requireAuth, requirePermission("organisations
       },
     });
 
-    return res.json({
-      id: updated.id,
-      username: updated.username,
-      full_name: updated.fullName,
-      permissions: serializePermission(updated.permissions),
-      is_active: updated.isActive,
-      created_at: updated.createdAt,
-      organisation_id: updated.organisationId,
-      organisation_name: updated.organisation?.name ?? null,
-    });
+    return res.json(serializeWorkspaceUser(updated));
   } catch (error) {
     if (error.code === "P2025") {
       return res.status(404).json({ error: "User not found" });
@@ -1633,6 +1741,8 @@ app.put("/users/:id/active", requireAuth, requirePermission("workspace.view"), a
         id: true,
         username: true,
         fullName: true,
+        firstName: true,
+        lastName: true,
         permissions: true,
         isActive: true,
         createdAt: true,
@@ -1640,15 +1750,7 @@ app.put("/users/:id/active", requireAuth, requirePermission("workspace.view"), a
       },
     });
 
-    return res.json({
-      id: user.id,
-      username: user.username,
-      full_name: user.fullName,
-      permissions: serializePermission(user.permissions),
-      is_active: user.isActive,
-      created_at: user.createdAt,
-      organisation_id: user.organisationId,
-    });
+    return res.json(serializeWorkspaceUser(user));
   } catch (error) {
     if (error?.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
