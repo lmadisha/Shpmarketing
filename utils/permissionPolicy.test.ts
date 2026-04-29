@@ -15,7 +15,7 @@ describe("permission policy alignment", () => {
     expect(getRoleAssignmentFlag("Admin")).toBe("users.assign_admin");
   });
 
-  it("keeps Basic as read-only/view-only operations", () => {
+  it("keeps Basic as limited-submission role (view + scan-only submit)", () => {
     const basicPermissions = new Set(listPermissions("Basic"));
     expect(basicPermissions).toEqual(
       new Set([
@@ -23,7 +23,9 @@ describe("permission policy alignment", () => {
         "mismatches.view",
         "history.view",
         "device_checker.view",
+        "device_checker.submit_scan_only",
         "placement.view",
+        "placement.submit_scan_only",
       ]),
     );
   });
