@@ -4,6 +4,8 @@ import {
   getRoleAssignmentFlag,
   hasPermission,
   listPermissions,
+  PERMISSION_FLAGS,
+  PERMISSION_POLICY,
   type PermissionLevel,
 } from "./permissionPolicy";
 
@@ -54,5 +56,16 @@ describe("permission policy alignment", () => {
     expect(canTargetPermissionLevel("Advanced", "Intermediate")).toBe(true);
     expect(canTargetPermissionLevel("Advanced", "Basic")).toBe(true);
     expect(canTargetPermissionLevel("Admin", "Admin")).toBe(true);
+  });
+
+  it("grants no flag that is not registered in PERMISSION_FLAGS", () => {
+    for (const [level, rule] of Object.entries(PERMISSION_POLICY)) {
+      for (const grant of rule.grants) {
+        expect(
+          (PERMISSION_FLAGS as readonly string[]).includes(grant),
+          `${level} directly grants unregistered flag "${grant}"`,
+        ).toBe(true);
+      }
+    }
   });
 });
