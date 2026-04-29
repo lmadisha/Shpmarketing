@@ -199,8 +199,10 @@ const PERMISSION_FLAGS = Object.freeze([
   "history.download",
   "device_checker.view",
   "device_checker.submit",
+  "device_checker.submit_scan_only",
   "placement.view",
   "placement.submit",
+  "placement.submit_scan_only",
 ]);
 
 // Role access policy:
