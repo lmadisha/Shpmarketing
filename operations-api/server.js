@@ -255,7 +255,9 @@ const PERMISSION_POLICY = Object.freeze({
       "mismatches.view",
       "history.view",
       "device_checker.view",
+      "device_checker.submit_scan_only",
       "placement.view",
+      "placement.submit_scan_only",
     ],
   },
 });
@@ -2855,6 +2857,8 @@ app.get("/exports/mismatches", requireAuth, requirePermission("mismatches.downlo
   }
 });
 
+// Uses API key auth (requireMobileKey), not JWT. Basic users with submit_scan_only
+// reach this route via mobile device, not via JWT-guarded routes.
 app.post("/mobile/verify", requireMobileKey, async (req, res) => {
   try {
     const fridge_serial_number = String(req.body?.fridge_serial_number || "").trim();
