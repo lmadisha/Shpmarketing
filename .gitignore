@@ -44,6 +44,8 @@ Thumbs.db
 
 # Backups
 *.sql
+!operations-api/migrations/
+!operations-api/migrations/*.sql
 *.sql.gz
 backup*
 *.bak
