@@ -23,6 +23,7 @@ import ModalDialog from "~/components/ui/ModalDialog.vue";
 import AccessDeniedCard from "~/components/auth/AccessDeniedCard.vue";
 import {
   canTargetPermissionLevel,
+  getRoleAssignmentFlag,
   hasPermission,
   USER_PERMISSION_LEVELS,
   type PermissionLevel,
@@ -34,6 +35,8 @@ type WorkspaceUser = {
   id: number;
   username: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   permissions: PermissionLevel;
   is_active: boolean;
   created_at: string;
@@ -59,21 +62,23 @@ const isAdmin = computed(() => permissionLevel.value === "Admin");
 const forceOwnOrg = computed(() => !isAdmin.value && selfOrgId.value != null);
 const canViewUsers = computed(() =>
   permissionLevel.value
-    ? hasPermission(permissionLevel.value, "users.view")
+    ? hasPermission(permissionLevel.value, "workspace.view")
     : false,
 );
-const canManageUsers = computed(() =>
-  permissionLevel.value
-    ? hasPermission(permissionLevel.value, "users.manage")
-    : false,
-);
+
+function canAssignLevel(level: PermissionLevel) {
+  if (!permissionLevel.value) return false;
+  return hasPermission(permissionLevel.value, getRoleAssignmentFlag(level));
+}
+
 const visiblePermissionLevels = computed(() =>
   permissionLevel.value
     ? USER_PERMISSION_LEVELS.filter((level) =>
-        canTargetPermissionLevel(permissionLevel.value!, level),
+        canTargetPermissionLevel(permissionLevel.value!, level) && canAssignLevel(level),
       )
     : [],
 );
+const canManageUsers = computed(() => canViewUsers.value && visiblePermissionLevels.value.length > 0);
 
 const users = ref<WorkspaceUser[]>([]);
 const organisations = ref<OrganisationOption[]>([]);
@@ -88,7 +93,8 @@ const createUserOpen = ref(false);
 const createError = ref("");
 const createSubmitting = ref(false);
 const createForm = reactive({
-  full_name: "",
+  first_name: "",
+  last_name: "",
   username: "",
   password: "",
   permissions: "Basic" as PermissionLevel,
@@ -113,10 +119,52 @@ const newPassword = ref("");
 const passwordSaving = ref(false);
 const passwordError = ref("");
 
+const detailsTarget = ref<WorkspaceUser | null>(null);
+const detailsForm = reactive({
+  username: "",
+  first_name: "",
+  last_name: "",
+});
+const detailsSaving = ref(false);
+const detailsError = ref("");
+
 const organisationTarget = ref<WorkspaceUser | null>(null);
 const nextOrganisationId = ref("");
 const organisationMoveSaving = ref(false);
 const organisationMoveError = ref("");
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(value: string) {
+  return EMAIL_REGEX.test(value.trim().toLowerCase());
+}
+
+const createEmailError = computed(() => {
+  const email = createForm.username.trim();
+  if (!email) return "";
+  return isValidEmail(email) ? "" : "Enter a valid email address.";
+});
+
+const detailsEmailError = computed(() => {
+  const email = detailsForm.username.trim();
+  if (!email) return "";
+  return isValidEmail(email) ? "" : "Enter a valid email address.";
+});
+
+function resetCreateForm(permission: PermissionLevel = "Basic") {
+  createForm.first_name = "";
+  createForm.last_name = "";
+  createForm.username = "";
+  createForm.password = "";
+  createForm.permissions = permission;
+  createForm.organisation_id = forceOwnOrg.value ? String(selfOrgId.value || "") : "";
+  createError.value = "";
+}
+
+function closeCreateUser() {
+  createUserOpen.value = false;
+  resetCreateForm();
+}
 
 async function loadUsers() {
   if (!canViewUsers.value) {
@@ -135,7 +183,7 @@ async function loadUsers() {
     const data = await request<WorkspaceUser[]>(path);
     users.value = (Array.isArray(data) ? data : []).filter((user) =>
       permissionLevel.value
-        ? canTargetPermissionLevel(permissionLevel.value, user.permissions)
+        ? canTargetPermissionLevel(permissionLevel.value, user.permissions) && canAssignLevel(user.permissions)
         : false,
     );
   } catch (loadError) {
@@ -187,13 +235,28 @@ const usersByPermission = computed(() => {
 });
 
 function openCreateUser(defaultPermission?: PermissionLevel) {
-  if (defaultPermission) createForm.permissions = defaultPermission;
-  if (forceOwnOrg.value)
-    createForm.organisation_id = String(selfOrgId.value || "");
+  resetCreateForm(defaultPermission ?? "Basic");
   createUserOpen.value = true;
 }
 
 async function submitCreateUser() {
+  const email = createForm.username.trim().toLowerCase();
+  const firstName = createForm.first_name.trim();
+  const lastName = createForm.last_name.trim();
+
+  if (!firstName) {
+    createError.value = "First name is required.";
+    return;
+  }
+  if (!email) {
+    createError.value = "Email is required.";
+    return;
+  }
+  if (createEmailError.value) {
+    createError.value = createEmailError.value;
+    return;
+  }
+
   createSubmitting.value = true;
   createError.value = "";
   try {
@@ -211,22 +274,16 @@ async function submitCreateUser() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        full_name: createForm.full_name.trim(),
-        username: createForm.username.trim(),
+        first_name: firstName,
+        last_name: lastName,
+        username: email,
         password: createForm.password,
         permissions: createForm.permissions,
         organisation_id: forceOwnOrg.value ? selfOrgId.value : organisationId,
       }),
     });
 
-    createUserOpen.value = false;
-    createForm.full_name = "";
-    createForm.username = "";
-    createForm.password = "";
-    createForm.permissions = "Basic";
-    createForm.organisation_id = forceOwnOrg.value
-      ? String(selfOrgId.value || "")
-      : "";
+    closeCreateUser();
     await loadUsers();
   } catch (submitError) {
     createError.value =
@@ -235,6 +292,81 @@ async function submitCreateUser() {
         : "Could not create user.";
   } finally {
     createSubmitting.value = false;
+  }
+}
+
+function openUserDetails(user: WorkspaceUser) {
+  detailsTarget.value = user;
+  detailsForm.username = user.username || "";
+  detailsForm.first_name = user.first_name || "";
+  detailsForm.last_name = user.last_name || "";
+  detailsError.value = "";
+}
+
+function closeUserDetails() {
+  detailsTarget.value = null;
+  detailsForm.username = "";
+  detailsForm.first_name = "";
+  detailsForm.last_name = "";
+  detailsError.value = "";
+}
+
+async function submitUserDetails() {
+  if (!detailsTarget.value) return;
+
+  const email = detailsForm.username.trim().toLowerCase();
+  const firstName = detailsForm.first_name.trim();
+  const lastName = detailsForm.last_name.trim();
+
+  if (!email) {
+    detailsError.value = "Email is required.";
+    return;
+  }
+  if (detailsEmailError.value) {
+    detailsError.value = detailsEmailError.value;
+    return;
+  }
+  if (!firstName) {
+    detailsError.value = "First name is required.";
+    return;
+  }
+
+  detailsSaving.value = true;
+  detailsError.value = "";
+  try {
+    const updated = await request<WorkspaceUser>(
+      `/users/${detailsTarget.value.id}/details`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: email,
+          first_name: firstName,
+          last_name: lastName,
+        }),
+      },
+    );
+
+    if (authStore.session && authStore.session.user.id === updated.id) {
+      authStore.setSession({
+        ...authStore.session,
+        user: {
+          ...authStore.session.user,
+          username: updated.username,
+          full_name: updated.full_name,
+        },
+      });
+    }
+
+    closeUserDetails();
+    await loadUsers();
+  } catch (submitError) {
+    detailsError.value =
+      submitError instanceof Error
+        ? submitError.message
+        : "Could not update user details.";
+  } finally {
+    detailsSaving.value = false;
   }
 }
 
@@ -424,9 +556,7 @@ watch(
 );
 
 onMounted(() => {
-  createForm.organisation_id = forceOwnOrg.value
-    ? String(selfOrgId.value || "")
-    : "";
+  resetCreateForm();
 });
 
 const levelIconMap: Record<string, Component> = {
@@ -668,6 +798,14 @@ function getLevelIcon(level: string): Component {
                         <Button
                           size="sm"
                           variant="outline"
+                          @click="openUserDetails(user)"
+                        >
+                          <User class="h-4 w-4" />
+                          Name
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           @click="
                             permissionTarget = user;
                             nextPermission = user.permissions;
@@ -734,19 +872,25 @@ function getLevelIcon(level: string): Component {
       :open="createUserOpen"
       title="Create User"
       description="Create a new workspace user."
-      @close="
-        createUserOpen = false;
-        createForm.permissions = 'Basic';
-      "
+      @close="closeCreateUser()"
     >
       <div class="space-y-3">
-        <div class="space-y-1">
-          <Label for="create-full-name">Full Name</Label>
-          <Input id="create-full-name" v-model="createForm.full_name" />
+        <div class="grid gap-3 md:grid-cols-2">
+          <div class="space-y-1">
+            <Label for="create-first-name">First Name</Label>
+            <Input id="create-first-name" v-model="createForm.first_name" />
+          </div>
+          <div class="space-y-1">
+            <Label for="create-last-name">Last Name</Label>
+            <Input id="create-last-name" v-model="createForm.last_name" />
+          </div>
         </div>
         <div class="space-y-1">
           <Label for="create-email">Email</Label>
           <Input id="create-email" v-model="createForm.username" type="email" />
+          <p v-if="createEmailError" class="text-sm text-red-600">
+            {{ createEmailError }}
+          </p>
         </div>
         <div class="space-y-1">
           <Label for="create-password">Password</Label>
@@ -783,11 +927,47 @@ function getLevelIcon(level: string): Component {
         <p v-if="createError" class="text-sm text-red-600">{{ createError }}</p>
       </div>
       <template #footer>
-        <Button variant="outline" @click="createUserOpen = false"
+        <Button variant="outline" @click="closeCreateUser()"
           >Cancel</Button
         >
         <Button :disabled="createSubmitting" @click="submitCreateUser">{{
           createSubmitting ? "Creating..." : "Create User"
+        }}</Button>
+      </template>
+    </ModalDialog>
+
+    <ModalDialog
+      :open="Boolean(detailsTarget)"
+      title="Edit User Details"
+      description="Update this user's email, first name, and last name."
+      @close="closeUserDetails()"
+    >
+      <div class="space-y-3">
+        <div class="space-y-1">
+          <Label for="details-email">Email</Label>
+          <Input id="details-email" v-model="detailsForm.username" type="email" />
+          <p v-if="detailsEmailError" class="text-sm text-red-600">
+            {{ detailsEmailError }}
+          </p>
+        </div>
+        <div class="grid gap-3 md:grid-cols-2">
+          <div class="space-y-1">
+            <Label for="details-first-name">First Name</Label>
+            <Input id="details-first-name" v-model="detailsForm.first_name" />
+          </div>
+          <div class="space-y-1">
+            <Label for="details-last-name">Last Name</Label>
+            <Input id="details-last-name" v-model="detailsForm.last_name" />
+          </div>
+        </div>
+        <p v-if="detailsError" class="text-sm text-red-600">
+          {{ detailsError }}
+        </p>
+      </div>
+      <template #footer>
+        <Button variant="outline" @click="closeUserDetails()">Cancel</Button>
+        <Button :disabled="detailsSaving" @click="submitUserDetails">{{
+          detailsSaving ? "Saving..." : "Save"
         }}</Button>
       </template>
     </ModalDialog>

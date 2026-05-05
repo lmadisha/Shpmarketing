@@ -57,7 +57,10 @@ const canAccessAssetManager = computed(() =>
           "assets.create",
           "assets.view",
           "mismatches.view",
+          "device_checker.view",
           "device_checker.submit",
+          "placement.view",
+          "placement.submit",
           "history.view",
         ] as const
       ).some((flag) => hasPermission(permissionLevel.value!, flag))
@@ -66,7 +69,7 @@ const canAccessAssetManager = computed(() =>
 
 const canAccessWorkspace = computed(() =>
   permissionLevel.value
-    ? hasPermission(permissionLevel.value, "users.view")
+    ? hasPermission(permissionLevel.value, "workspace.view")
     : false,
 );
 

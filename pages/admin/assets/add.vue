@@ -156,6 +156,10 @@ async function submitCreate() {
 }
 
 async function previewBulkUpload() {
+  if (!store.canBulkAddAssets) {
+    bulkMessage.value = "You do not have permission to bulk add devices.";
+    return;
+  }
   if (!bulkFile.value) {
     bulkMessage.value = "Please choose a CSV or Excel file first.";
     return;
@@ -190,6 +194,10 @@ async function previewBulkUpload() {
 }
 
 async function submitBulkUpload() {
+  if (!store.canBulkAddAssets) {
+    bulkMessage.value = "You do not have permission to bulk add devices.";
+    return;
+  }
   if (!bulkFile.value) {
     bulkMessage.value = "Please choose a CSV or Excel file first.";
     return;
@@ -238,6 +246,10 @@ async function submitBulkUpload() {
 }
 
 async function submitBulkUpdate() {
+  if (!store.canBulkAddAssets) {
+    bulkUpdateResult.value = "You do not have permission to bulk add devices.";
+    return;
+  }
   if (!bulkSkippedRows.value.length) return;
   bulkUpdating.value = true;
   bulkUpdateResult.value = "";
@@ -369,7 +381,11 @@ async function submitBulkUpdate() {
         </p>
       </div>
       <div class="space-y-4 p-5">
-        <div class="flex flex-col gap-3 md:flex-row md:items-center">
+        <p v-if="!store.canBulkAddAssets" class="text-sm text-amber-700">
+          Bulk add and bulk update are available for Advanced and Admin roles.
+        </p>
+
+        <div v-else class="flex flex-col gap-3 md:flex-row md:items-center">
           <input
             type="file"
             accept=".csv,.xls,.xlsx"

@@ -25,6 +25,7 @@
     "@zxing/browser": "^0.1.5",
     "chart.js": "^4.4.0",
     "class-variance-authority": "0.7.1",
+    "claude": "^0.1.1",
     "clsx": "2.1.1",
     "date-fns": "3.6.0",
     "embla-carousel-vue": "^8.0.0",

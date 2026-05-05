@@ -21,6 +21,10 @@ function getDurationMs(startedAt: number) {
 }
 
 function buildNetworkErrorMessage(url: string) {
+  if (url.startsWith("https://") && /:5001(\/|$)/.test(url)) {
+    return `Cannot reach the operations API at ${url}. The dev API on port 5001 usually serves HTTP, not HTTPS. Try http://<your-lan-ip>:5001.`;
+  }
+
   return `Cannot reach the operations API at ${url}. Check that the API server is running and reachable from the browser.`;
 }
 

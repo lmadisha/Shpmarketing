@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { Camera, ScanLine, Search, Upload } from 'lucide-vue-next'
+import { Camera, MapPin, ScanLine, Upload } from 'lucide-vue-next'
 import Card from '~/components/ui/Card.vue'
 import Input from '~/components/ui/Input.vue'
-import Select from '~/components/ui/Select.vue'
 import Button from '~/components/ui/Button.vue'
 import ModalDialog from '~/components/ui/ModalDialog.vue'
 import AccessDeniedCard from '~/components/auth/AccessDeniedCard.vue'
@@ -11,17 +10,24 @@ import { findExactSerialMatch, normalizeSerialCandidate } from '~/utils/serialLo
 import { decodeSerialFromImageFile, startCameraSerialScan, type CameraScannerSession } from '~/utils/serialScanner'
 import type { Fridge } from '~/types/adminAssets'
 
-type DeviceCheckForm = {
-  fridge_serial_number: string
+type PlacementForm = {
+  serial_number: string
   mac_address: string
   c_number: string
-  image?: File | null
 }
 
-type DeviceCheckSuccess = {
-  result: 'VERIFIED' | 'MISMATCH_CREATED'
-  id?: number
-  fridge_serial_number: string
+type PlacementSuccess = {
+  result: 'PLACED'
+  serial_number: string
+  image_count: number
+}
+
+type ReassignmentConfirmState = {
+  open: boolean
+  existingSerial: string
+  existingCNumber: string
+  requestedCNumber: string
+  clearing: boolean
 }
 
 type BluetoothDeviceRequest = {
@@ -55,24 +61,29 @@ const bluetoothUnavailableReason = !isSecureContextNow
     ? 'Bluetooth scan is not available in this browser. Paste the Penguin+ device name below.'
     : ''
 
-const serials = ref<Fridge[]>([])
-const serialsLoading = ref(false)
-const serialQuery = ref('')
-const serialRequestId = ref(0)
-const form = reactive<DeviceCheckForm>({
-  fridge_serial_number: '',
+const form = reactive<PlacementForm>({
+  serial_number: '',
   mac_address: '',
   c_number: '',
-  image: null,
 })
+const placementImages = ref<File[]>([])
+const imagePreviews = ref<string[]>([])
+const imageInputRef = ref<HTMLInputElement | null>(null)
 const submitting = ref(false)
 const error = ref<string | null>(null)
-const success = ref<DeviceCheckSuccess | null>(null)
-const imagePreviewUrl = ref<string | null>(null)
-const imageInputRef = ref<HTMLInputElement | null>(null)
+const success = ref<PlacementSuccess | null>(null)
+const reassignmentConfirm = ref<ReassignmentConfirmState>({
+  open: false,
+  existingSerial: '',
+  existingCNumber: '',
+  requestedCNumber: '',
+  clearing: false,
+})
+
 const locationLatitude = ref<number | null>(null)
 const locationLongitude = ref<number | null>(null)
 const locationStatus = ref<'pending' | 'granted' | 'denied' | 'unavailable'>('pending')
+
 const scannerOpen = ref(false)
 const scannerMode = ref<'camera' | 'upload'>('camera')
 const scannerError = ref<string | null>(null)
@@ -84,6 +95,7 @@ const cameraRestartKey = ref(0)
 const cameraVideoRef = ref<HTMLVideoElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const cameraSession = ref<CameraScannerSession | null>(null)
+
 const bluetoothBusy = ref(false)
 const bluetoothMessage = ref<string | null>(null)
 const bluetoothConfirm = ref<{ open: boolean; deviceName: string; macAddress: string }>({
@@ -98,32 +110,6 @@ const bluetoothManualEntry = ref<{ open: boolean; deviceName: string; error: str
 })
 
 definePageMeta({ middleware: 'auth' })
-
-async function loadSerials() {
-  const requestId = ++serialRequestId.value
-  serialsLoading.value = true
-  try {
-    const query = serialQuery.value.trim()
-    const data = query
-      ? await store.adminRequest<Fridge[]>('loadDcSerials.search', store.withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(query)}`))
-      : await store.adminRequest<Fridge[]>('loadDcSerials.list', store.withOrganisationFilter('/getFridges'))
-    if (serialRequestId.value !== requestId) return
-    serials.value = Array.isArray(data) ? data : []
-  } catch {
-    if (serialRequestId.value !== requestId) return
-    serials.value = []
-    error.value = 'Could not load serial numbers.'
-  } finally {
-    if (serialRequestId.value === requestId) serialsLoading.value = false
-  }
-}
-
-watch(serialQuery, () => {
-  window.clearTimeout((loadSerials as unknown as { _timer?: number })._timer)
-  ;(loadSerials as unknown as { _timer?: number })._timer = window.setTimeout(() => {
-    void loadSerials()
-  }, 200)
-})
 
 function requestLocation() {
   if (!navigator.geolocation) {
@@ -144,36 +130,25 @@ function requestLocation() {
 }
 
 onMounted(() => {
-  void loadSerials()
   requestLocation()
 })
 
 async function handleScannedSerial(candidate: string) {
-  const normalizedCandidate = normalizeSerialCandidate(candidate)
-  if (!normalizedCandidate) {
+  const normalized = normalizeSerialCandidate(candidate)
+  if (!normalized) {
     scannerError.value = 'Could not read a valid serial number from barcode.'
     scannerInfo.value = 'Try scanning again or use image upload.'
     return
   }
   scannerMatching.value = true
   scannerError.value = null
-  scannerInfo.value = `Detected ${normalizedCandidate}. Validating...`
+  scannerInfo.value = `Detected ${normalized}. Applying...`
   try {
-    const data = await store.adminRequest<Fridge[]>('deviceCheck:scanLookup', store.withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(normalizedCandidate)}`))
-    const matched = findExactSerialMatch(normalizedCandidate, Array.isArray(data) ? data : [])
-    if (!matched) {
-      scannerError.value = `Scanned serial ${normalizedCandidate} was not found in inventory.`
-      scannerInfo.value = 'Scan again, upload another image, or select from the dropdown.'
-      return
-    }
     error.value = null
     success.value = null
-    form.fridge_serial_number = matched
-    serialQuery.value = matched
-    scannerInfo.value = `Serial ${matched} selected.`
+    form.serial_number = normalized
+    scannerInfo.value = `Serial ${normalized} set.`
     scannerOpen.value = false
-  } catch (scanError) {
-    scannerError.value = scanError instanceof Error ? scanError.message : 'Could not validate scanned serial.'
   } finally {
     scannerMatching.value = false
   }
@@ -226,21 +201,76 @@ async function handleImageScanFile(event: Event) {
   }
 }
 
-function handleImageSelect(event: Event) {
-  const file = ((event.target as HTMLInputElement).files || [])[0]
-  if (!file) return
-  form.image = file
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    imagePreviewUrl.value = e.target?.result as string
+function handleImagesSelect(event: Event) {
+  const files = Array.from((event.target as HTMLInputElement).files || [])
+  if (!files.length) return
+  for (const file of files) {
+    placementImages.value.push(file)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      imagePreviews.value.push(e.target?.result as string)
+    }
+    reader.readAsDataURL(file)
   }
-  reader.readAsDataURL(file)
+  if (imageInputRef.value) imageInputRef.value.value = ''
 }
 
-function clearImage() {
-  form.image = null
-  imagePreviewUrl.value = null
-  if (imageInputRef.value) imageInputRef.value.value = ''
+function removeImage(index: number) {
+  placementImages.value.splice(index, 1)
+  imagePreviews.value.splice(index, 1)
+}
+
+function resetReassignmentConfirm() {
+  reassignmentConfirm.value = {
+    open: false,
+    existingSerial: '',
+    existingCNumber: '',
+    requestedCNumber: '',
+    clearing: false,
+  }
+}
+
+async function findExistingFridge(serial: string) {
+  const normalizedSerial = normalizeSerialCandidate(serial)
+  if (!normalizedSerial) return null
+
+  const data = await store.adminRequest<Fridge[]>(
+    'placement:lookupFridge',
+    store.withOrganisationFilter(`/searchFridges?searchTerm=${encodeURIComponent(normalizedSerial)}`),
+  )
+  const rows = Array.isArray(data) ? data : []
+  const matchedSerial = findExactSerialMatch(normalizedSerial, rows)
+  if (!matchedSerial) return null
+
+  return (
+    rows.find((row) => normalizeSerialCandidate(row.fridge_serial_number) === matchedSerial) ||
+    null
+  )
+}
+
+function queueReassignmentConfirmation(existingFridge: Fridge, requestedCNumber: string) {
+  reassignmentConfirm.value = {
+    open: true,
+    existingSerial: existingFridge.fridge_serial_number,
+    existingCNumber: cleanCNumber(String(existingFridge.c_number || '')),
+    requestedCNumber,
+    clearing: !requestedCNumber,
+  }
+}
+
+function buildPlacementFormData(confirmReassignment: boolean) {
+  const formData = new FormData()
+  formData.append('serial_number', form.serial_number)
+  formData.append('mac_address', form.mac_address)
+  formData.append('c_number', form.c_number)
+  formData.append('organisation_id', String(store.mutationOrganisationScopeValue))
+  if (confirmReassignment) formData.append('confirm_reassignment', 'true')
+  if (locationLatitude.value != null) formData.append('latitude', String(locationLatitude.value))
+  if (locationLongitude.value != null) formData.append('longitude', String(locationLongitude.value))
+  for (const img of placementImages.value) {
+    formData.append('images', img)
+  }
+  return formData
 }
 
 async function requestBluetoothMacAddress() {
@@ -284,29 +314,42 @@ function applyBluetoothDeviceName(deviceNameInput: string) {
   bluetoothManualEntry.value = { open: false, deviceName: '', error: null }
 }
 
-async function submitDeviceCheck() {
+async function submitPlacement(confirmReassignment = false) {
   error.value = null
   success.value = null
-  submitting.value = true
   try {
-    const formData = new FormData()
-    formData.append('fridge_serial_number', form.fridge_serial_number)
-    formData.append('mac_address', form.mac_address)
-    formData.append('c_number', form.c_number)
-    formData.append('organisation_id', String(store.mutationOrganisationScopeValue))
-    if (locationLatitude.value != null) formData.append('latitude', String(locationLatitude.value))
-    if (locationLongitude.value != null) formData.append('longitude', String(locationLongitude.value))
-    if (form.image) formData.append('image', form.image)
+    form.serial_number = normalizeSerialCandidate(form.serial_number)
+    form.c_number = cleanCNumber(form.c_number)
 
-    const result = await store.adminRequest<DeviceCheckSuccess>('deviceCheck:submit', store.withMutationOrganisationScope('/mismatches/manual'), {
-      method: 'POST',
-      body: formData,
-    })
+    if (!form.serial_number) {
+      error.value = 'Serial number is required.'
+      return
+    }
+
+    if (!confirmReassignment) {
+      const existingFridge = await findExistingFridge(form.serial_number)
+      const existingCNumber = cleanCNumber(String(existingFridge?.c_number || ''))
+      const requestedCNumber = cleanCNumber(form.c_number)
+
+      if (existingFridge && existingCNumber && existingCNumber !== requestedCNumber) {
+        queueReassignmentConfirmation(existingFridge, requestedCNumber)
+        return
+      }
+    }
+
+    submitting.value = true
+    const result = await store.adminRequest<PlacementSuccess>(
+      'placement:submit',
+      store.withMutationOrganisationScope('/placements'),
+      { method: 'POST', body: buildPlacementFormData(confirmReassignment) },
+    )
+    resetReassignmentConfirm()
     success.value = result
-    form.fridge_serial_number = ''
+    form.serial_number = ''
     form.mac_address = ''
     form.c_number = ''
-    clearImage()
+    placementImages.value = []
+    imagePreviews.value = []
   } catch (submitError) {
     error.value = submitError instanceof Error ? submitError.message : 'Submission failed.'
   } finally {
@@ -317,16 +360,16 @@ async function submitDeviceCheck() {
 
 <template>
   <AccessDeniedCard
-    v-if="!store.canViewDeviceChecker"
-    title="Device Checker access denied"
-    description="You do not have permission to view the Device Checker tab."
+    v-if="!store.canViewPlacement"
+    title="Placement access denied"
+    description="You do not have permission to view the Placement tab."
   />
 
-  <Card v-else-if="!store.canSubmitDeviceCheck && !store.canSubmitDeviceCheckScanOnly" class="max-w-2xl">
+  <Card v-else-if="!store.canSubmitPlacement && !store.canSubmitPlacementScanOnly" class="max-w-2xl">
     <div class="border-b border-slate-200 p-5">
       <div class="flex items-center gap-2">
-        <Search class="h-4 w-4 text-[#006aea]" />
-        <h2 class="text-lg font-semibold text-slate-900">Device Checker</h2>
+        <MapPin class="h-4 w-4 text-[#006aea]" />
+        <h2 class="text-lg font-semibold text-slate-900">Placement</h2>
       </div>
     </div>
     <div class="space-y-2 p-5">
@@ -334,7 +377,7 @@ async function submitDeviceCheck() {
         You have view-only access to this tab.
       </p>
       <p class="text-sm text-slate-500">
-        Manual entry and submission are available for Intermediate, Advanced, and Admin roles.
+        Manual entry and placement submission are available for Intermediate, Advanced, and Admin roles.
       </p>
     </div>
   </Card>
@@ -342,10 +385,10 @@ async function submitDeviceCheck() {
   <Card v-else class="max-w-2xl">
     <div class="border-b border-slate-200 p-5">
       <div class="flex items-center gap-2">
-        <Search class="h-4 w-4 text-[#006aea]" />
-        <h2 class="text-lg font-semibold text-slate-900">Device Checker</h2>
+        <MapPin class="h-4 w-4 text-[#006aea]" />
+        <h2 class="text-lg font-semibold text-slate-900">Placement</h2>
       </div>
-      <p class="mt-1 text-sm text-slate-600">Submit a manual device check to verify or flag a mismatch.</p>
+      <p class="mt-1 text-sm text-slate-600">Record a new unit placement with serial number, MAC address, and images.</p>
     </div>
     <div class="space-y-4 p-5">
       <div class="space-y-1">
@@ -356,22 +399,19 @@ async function submitDeviceCheck() {
             Scan Serial
           </Button>
         </div>
-        <Select
-          v-model="form.fridge_serial_number"
-          :searchable="!store.canSubmitDeviceCheckScanOnly"
-          search-placeholder="Search serial number..."
-          :placeholder="store.canSubmitDeviceCheckScanOnly ? (form.fridge_serial_number || 'Scan a barcode to set serial') : (serialsLoading ? 'Loading serials...' : 'Select a serial number')"
-          :options="serials.map(f => ({ value: f.fridge_serial_number, label: f.fridge_serial_number }))"
-          :disabled="store.canSubmitDeviceCheckScanOnly"
-          @search="(q) => { serialQuery = q }"
+        <Input
+          :model-value="form.serial_number"
+          :placeholder="store.canSubmitPlacementScanOnly ? (form.serial_number || 'Scan a barcode to set serial') : 'Serial number'"
+          :disabled="store.canSubmitPlacementScanOnly"
+          @update:model-value="(value) => { form.serial_number = String(value || '').trim().toUpperCase() }"
         />
-        <p v-if="store.canSubmitDeviceCheckScanOnly" class="text-xs text-amber-600">Serial number must be set via barcode scan.</p>
+        <p v-if="store.canSubmitPlacementScanOnly" class="text-xs text-amber-600">Serial number must be set via barcode scan.</p>
       </div>
 
       <div class="space-y-1">
         <label class="text-sm font-medium text-slate-700">MAC Address</label>
         <div class="flex gap-2">
-          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" :disabled="store.canSubmitDeviceCheckScanOnly" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
+          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" :disabled="store.canSubmitPlacementScanOnly" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
           <Button
             type="button"
             variant="outline"
@@ -382,7 +422,7 @@ async function submitDeviceCheck() {
           </Button>
         </div>
         <p class="text-xs text-slate-500">{{ bluetoothSupported ? 'Bluetooth scan only matches devices whose name starts with Penguin+.' : bluetoothUnavailableReason }}</p>
-        <p v-if="store.canSubmitDeviceCheckScanOnly" class="text-xs text-amber-600">MAC address must be set via Bluetooth scan.</p>
+        <p v-if="store.canSubmitPlacementScanOnly" class="text-xs text-amber-600">MAC address must be set via Bluetooth scan.</p>
         <p v-if="bluetoothMessage" class="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{{ bluetoothMessage }}</p>
       </div>
 
@@ -392,19 +432,26 @@ async function submitDeviceCheck() {
       </div>
 
       <div class="space-y-1">
-        <label class="text-sm font-medium text-slate-700">Device Image (Optional)</label>
-        <div class="flex flex-col gap-2">
-          <input
-            ref="imageInputRef"
-            type="file"
-            accept="image/*"
-            class="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
-            @change="handleImageSelect"
-          />
-          <p class="text-xs text-slate-500">Upload a clear image of the device for reference.</p>
-          <div v-if="imagePreviewUrl" class="flex flex-col gap-2">
-            <img :src="imagePreviewUrl" alt="Preview" class="h-32 w-auto rounded-md border border-slate-200 object-cover" />
-            <Button type="button" variant="outline" size="sm" @click="clearImage" class="w-fit">Clear Image</Button>
+        <label class="text-sm font-medium text-slate-700">Device Images (Optional)</label>
+        <input
+          ref="imageInputRef"
+          type="file"
+          accept="image/*"
+          multiple
+          class="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+          @change="handleImagesSelect"
+        />
+        <p class="text-xs text-slate-500">Select one or more images of the device. You can add more after each selection.</p>
+        <div v-if="imagePreviews.length" class="flex flex-wrap gap-2 pt-1">
+          <div v-for="(preview, i) in imagePreviews" :key="i" class="relative">
+            <img :src="preview" alt="Preview" class="h-20 w-20 rounded-md border border-slate-200 object-cover" />
+            <button
+              type="button"
+              class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-white hover:bg-red-600"
+              @click="removeImage(i)"
+            >
+              <span class="text-xs leading-none">✕</span>
+            </button>
           </div>
         </div>
       </div>
@@ -431,11 +478,11 @@ async function submitDeviceCheck() {
 
       <p v-if="error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{{ error }}</p>
       <p v-if="success" class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-        {{ success.result === 'VERIFIED' ? `${success.fridge_serial_number} matched and was marked verified.` : `Mismatch #${success.id} submitted for ${success.fridge_serial_number}.` }}
+        Placement recorded for {{ success.serial_number }}{{ success.image_count ? ` with ${success.image_count} image${success.image_count !== 1 ? 's' : ''}` : '' }}.
       </p>
 
-      <Button :disabled="submitting || !form.fridge_serial_number" @click="submitDeviceCheck">
-        {{ submitting ? 'Submitting...' : `Submit ${form.fridge_serial_number || 'Check'}` }}
+      <Button :disabled="submitting || !form.serial_number" @click="submitPlacement()">
+        {{ submitting ? 'Submitting...' : `Submit Placement${form.serial_number ? ` for ${form.serial_number}` : ''}` }}
       </Button>
     </div>
   </Card>
@@ -475,7 +522,7 @@ async function submitDeviceCheck() {
 
       <p class="text-sm text-slate-500">{{ scannerInfo }}</p>
       <p v-if="scannerError" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{{ scannerError }}</p>
-      <p v-if="scannerMatching || scannerDecodingImage" class="text-sm text-blue-700">{{ scannerDecodingImage ? 'Decoding image...' : 'Validating scanned serial...' }}</p>
+      <p v-if="scannerMatching || scannerDecodingImage" class="text-sm text-blue-700">{{ scannerDecodingImage ? 'Decoding image...' : 'Applying scanned serial...' }}</p>
     </div>
   </ModalDialog>
 
@@ -509,6 +556,38 @@ async function submitDeviceCheck() {
     <template #footer>
       <Button variant="outline" @click="bluetoothManualEntry = { open: false, deviceName: '', error: null }">Cancel</Button>
       <Button @click="applyBluetoothDeviceName(bluetoothManualEntry.deviceName)">Use MAC Address</Button>
+    </template>
+  </ModalDialog>
+
+  <ModalDialog
+    :open="reassignmentConfirm.open"
+    title="Confirm Fridge Reassignment"
+    :description="reassignmentConfirm.clearing ? 'This will remove the current customer assignment from the fridge.' : 'This will move the fridge to a different customer.'"
+    @close="resetReassignmentConfirm()"
+  >
+    <div class="space-y-3 text-sm text-slate-700">
+      <p>
+        Fridge <span class="font-mono font-medium">{{ reassignmentConfirm.existingSerial }}</span>
+        belongs to customer <span class="font-medium">{{ reassignmentConfirm.existingCNumber }}</span>.
+      </p>
+      <p v-if="reassignmentConfirm.clearing">
+        Are you sure you want to remove the customer assignment from this fridge?
+      </p>
+      <p v-else>
+        Are you sure you want to move it to customer <span class="font-medium">{{ reassignmentConfirm.requestedCNumber }}</span>?
+      </p>
+      <p class="text-xs text-slate-500">
+        If the MAC address or C-number changes, the fridge will be marked unverified.
+      </p>
+    </div>
+    <template #footer>
+      <Button variant="outline" :disabled="submitting" @click="resetReassignmentConfirm()">No</Button>
+      <Button
+        :disabled="submitting"
+        @click="resetReassignmentConfirm(); submitPlacement(true)"
+      >
+        {{ submitting ? 'Submitting...' : 'Yes' }}
+      </Button>
     </template>
   </ModalDialog>
 </template>

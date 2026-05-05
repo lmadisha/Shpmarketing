@@ -27,10 +27,13 @@ npm run test
 ```bash
 cd operations-api
 npm install
+npm run migrate
 npm run dev
 npm run lint
 npm run test
 ```
+
+`npm run migrate` applies any pending SQL migrations to the database. Run this before starting the API whenever migrations have been added. Safe to run repeatedly — already-applied migrations are skipped.
 
 ## Environment
 

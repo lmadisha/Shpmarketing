@@ -94,14 +94,19 @@ const tabs = computed(() =>
       visible: store.canCreateAssets,
     },
     {
-      label: "Mismatches",
-      to: "/admin/assets/mismatches",
-      visible: store.canViewMismatches,
+      label: "Placement",
+      to: "/admin/assets/placement",
+      visible: store.canViewPlacement,
     },
     {
       label: "Device Checker",
       to: "/admin/assets/device-checker",
-      visible: store.canSubmitDeviceCheck,
+      visible: store.canViewDeviceChecker,
+    },
+    {
+      label: "Mismatches",
+      to: "/admin/assets/mismatches",
+      visible: store.canViewMismatches,
     },
     {
       label: "History",

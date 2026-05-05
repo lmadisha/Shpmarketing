@@ -17,6 +17,7 @@ export type Fridge = {
   latitude?: number | null;
   longitude?: number | null;
   image_id?: number | string | null;
+  placed: boolean;
 };
 
 export type OrganisationOption = {
@@ -46,19 +47,23 @@ export type Mismatch = {
   image_id?: number | string | null;
 };
 
+export type HistoryActionType =
+  | "INSERT"
+  | "UPDATE"
+  | "VERIFY"
+  | "UNVERIFY"
+  | "DELETE"
+  | "MISMATCH_INSERT"
+  | "MISMATCH_UPDATE"
+  | "MISMATCH_RESOLVE"
+  | "MISMATCH_DELETE";
+
+export type HistoryActionFilter = HistoryActionType | "all";
+
 export type AuditLogRow = {
   log_id: number;
   fridge_serial_number: string;
-  action_type:
-    | "INSERT"
-    | "UPDATE"
-    | "VERIFY"
-    | "UNVERIFY"
-    | "DELETE"
-    | "MISMATCH_INSERT"
-    | "MISMATCH_UPDATE"
-    | "MISMATCH_RESOLVE"
-    | "MISMATCH_DELETE";
+  action_type: HistoryActionType;
   old_mac: string | null;
   new_mac: string | null;
   old_c_num: string | null;
@@ -66,6 +71,9 @@ export type AuditLogRow = {
   changed_at: string;
   changed_by: number | null;
   changed_by_username: string | null;
+  deletion_reason?: string | null;
+  resolution_note?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type BulkPreviewRow = {
@@ -73,6 +81,12 @@ export type BulkPreviewRow = {
   fridge_serial_number: string;
   mac_address: string | null;
   c_number: string | null;
+};
+
+export type BulkOperationResult = {
+  succeeded: string[];
+  notFound: string[];
+  errors: { serial: string; message: string }[];
 };
 
 export type SortDirection = "asc" | "desc";

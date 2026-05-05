@@ -1,7 +1,16 @@
 const nodemailer = require("nodemailer");
 
 function createSesTransporter() {
-  const { SESClient, SendRawEmailCommand } = require("@aws-sdk/client-ses");
+  let SESv2Client;
+  let SendEmailCommand;
+  try {
+    ({ SESv2Client, SendEmailCommand } = require("@aws-sdk/client-sesv2"));
+  } catch (error) {
+    throw new Error(
+      "EMAIL_PROVIDER=ses requires @aws-sdk/client-sesv2. Install it in operations-api dependencies.",
+      { cause: error },
+    );
+  }
 
   const sesConfig = { region: process.env.AWS_REGION || "us-east-1" };
 
@@ -13,8 +22,8 @@ function createSesTransporter() {
   }
   // If AWS_ACCESS_KEY_ID is absent, SDK uses default credential chain (IAM role)
 
-  const ses = new SESClient(sesConfig);
-  return nodemailer.createTransport({ SES: { ses, aws: { SendRawEmailCommand } } });
+  const sesClient = new SESv2Client(sesConfig);
+  return nodemailer.createTransport({ SES: { sesClient, SendEmailCommand } });
 }
 
 function createTransporter() {
