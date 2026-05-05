@@ -13,7 +13,9 @@
     "deps:fix": "npm audit fix",
     "migrate": "node migrate.js",
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate:deploy": "node run-migrations.js",
+    "start:with-migrations": "npm run migrate:deploy && node server.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

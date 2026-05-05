@@ -17,4 +17,4 @@ ENV PORT=5001
 
 EXPOSE 5001
 
-CMD ["node", "server.js"]
+CMD ["npm", "run", "start:with-migrations"]

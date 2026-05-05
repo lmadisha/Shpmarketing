@@ -58,6 +58,7 @@ pipelines:
               cd /home/docker/frostlink
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:uat
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:uat
+              FRONTEND_TAG=uat OPS_API_TAG=uat docker compose --env-file /home/docker/frostlink/.env.uat -f /home/docker/frostlink/docker-compose.uat.yml run --rm operations-api npm run migrate:deploy
               FRONTEND_TAG=uat OPS_API_TAG=uat docker compose --env-file /home/docker/frostlink/.env.uat -f /home/docker/frostlink/docker-compose.uat.yml up -d --no-build
               EOSSH
 
@@ -114,6 +115,7 @@ pipelines:
               cd /home/docker/frostlink
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:prod
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:prod
+              FRONTEND_TAG=prod OPS_API_TAG=prod docker compose --env-file /home/docker/frostlink/.env.prod -f /home/docker/frostlink/docker-compose.prod.yml run --rm operations-api npm run migrate:deploy
               FRONTEND_TAG=prod OPS_API_TAG=prod docker compose --env-file /home/docker/frostlink/.env.prod -f /home/docker/frostlink/docker-compose.prod.yml up -d --no-build
               EOSSH
 
