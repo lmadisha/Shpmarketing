@@ -1,0 +1,2 @@
+ALTER TABLE frostlink.fridges
+  ADD COLUMN placed BOOLEAN NOT NULL DEFAULT FALSE;
