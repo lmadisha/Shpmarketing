@@ -9,6 +9,10 @@ export default defineNuxtConfig({
 
   ssr: false,
 
+  experimental: {
+    viteEnvironmentApi: true,
+  },
+
   devServer: {
     https: true,
   },

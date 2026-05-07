@@ -1,12 +1,12 @@
-require("./env");
+require("dotenv").config();
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { Client } = require("pg");
 
-const MIGRATIONS_DIR = path.join(__dirname, "database", "migrations");
-const MIGRATION_TABLE = "public.frostlink_migrations";
-const LOCK_KEY = 813245901;
+const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+const MIGRATION_TABLE = "public.analytics_migrations";
+const LOCK_KEY = 813245902;
 const MAX_CONNECT_ATTEMPTS = Number(process.env.MIGRATION_CONNECT_RETRIES || 30);
 const CONNECT_RETRY_DELAY_MS = Number(process.env.MIGRATION_CONNECT_RETRY_DELAY_MS || 2000);
 const DIRECTION = process.argv.includes("--down") ? "down" : "up";
@@ -63,11 +63,15 @@ async function ensureMigrationTable(client) {
 }
 
 async function listMigrationFiles() {
-  const entries = await fs.readdir(MIGRATIONS_DIR, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b));
+  try {
+    const entries = await fs.readdir(MIGRATIONS_DIR, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
 }
 
 async function getAppliedMigrations(client) {
@@ -75,7 +79,6 @@ async function getAppliedMigrations(client) {
     const result = await client.query(`SELECT file_name, checksum FROM ${MIGRATION_TABLE}`);
     return new Map(result.rows.map((row) => [row.file_name, row.checksum]));
   } catch (err) {
-    // Table might not exist yet on first run
     if (err.message.includes("does not exist")) {
       return new Map();
     }
@@ -96,13 +99,11 @@ async function applyMigration(client, fileName) {
       [fileName],
     );
   } catch (err) {
-    // If direction column doesn't exist, query without it (for old schema)
     if (err.message.includes('column "direction" does not exist')) {
       existing = await client.query(
         `SELECT checksum FROM ${MIGRATION_TABLE} WHERE file_name = $1`,
         [fileName],
       );
-      // Add direction field for compatibility
       if (existing.rowCount > 0) {
         existing.rows[0].direction = 'up';
       }
@@ -128,12 +129,7 @@ async function applyMigration(client, fileName) {
   }
 
   console.log(`[migrations] running ${DIRECTION}: ${fileName}`);
-  try {
-    await client.query("SET search_path TO frostlink, public");
-    await client.query(sql);
-  } catch (err) {
-    throw new Error(`Failed to execute ${DIRECTION} for ${fileName}: ${err.message}`);
-  }
+  await client.query(sql);
 
   if (DIRECTION === "up") {
     if (existing.rowCount > 0) {
@@ -148,7 +144,6 @@ async function applyMigration(client, fileName) {
       );
     }
   } else {
-    // On rollback, remove the migration record to allow re-applying it later
     await client.query(
       `DELETE FROM ${MIGRATION_TABLE} WHERE file_name = $1`,
       [fileName],
@@ -177,9 +172,9 @@ async function run() {
       return;
     }
 
-    console.log(`[migrations] direction: ${DIRECTION}`);
     const applied = await getAppliedMigrations(client);
     console.log(`[migrations] discovered ${files.length} migration file(s), ${applied.size} already recorded.`);
+    console.log(`[migrations] direction: ${DIRECTION}`);
 
     if (DIRECTION === "down") {
       files = files.reverse();
