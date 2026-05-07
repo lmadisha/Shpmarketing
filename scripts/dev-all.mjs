@@ -48,7 +48,7 @@ process.on("SIGTERM", () => {
 const apiDir = path.join(rootDir, "operations-api");
 
 console.log("[dev-all] Running database migrations...");
-const migrateResult = spawnSync(process.execPath, ["migrate.js"], {
+const migrateResult = spawnSync(process.execPath, ["run-migrations.js"], {
   cwd: apiDir,
   stdio: "inherit",
 });
@@ -72,7 +72,7 @@ startProcess(
     path.join(rootDir, "node_modules", "nuxt", "bin", "nuxt.mjs"),
     "dev",
     "--host",
-    "192.168.0.184",
+    "192.168.1.144",
     "--port",
     "5174",
   ],

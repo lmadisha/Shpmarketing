@@ -1,0 +1,14 @@
+{
+  "name": "shpmarketing-analytics-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "migrate:deploy": "node run-migrations.js",
+    "migrate:down": "node run-migrations.js --down"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.1"
+  }
+}
