@@ -29,6 +29,8 @@ export default defineNuxtConfig({
         'class-variance-authority',
         'clsx',
         'tailwind-merge',
+        'lucide-vue-next',
+        '@vueuse/core',
       ]
     }
   },
