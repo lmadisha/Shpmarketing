@@ -3193,8 +3193,8 @@ app.post("/placements", requireAuth, requirePermission("placement.submit"), (req
         await tx.fridge.update({
           where: { fridgeSerialNumber: serial },
           data: {
-            iotMacAddress: nextMac,
-            cNumber: incomingCNumber,
+            // Only update if a MAC is provided (nextMac is not null), otherwise keep existing
+            iotMacAddress: nextMac || existingFridge.iotMacAddress, cNumber: incomingCNumber,
             placed: true,
             latitude,
             longitude,

@@ -24,6 +24,13 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: {
+      include: [
+        'class-variance-authority',
+        'clsx',
+        'tailwind-merge',
+      ]
+    }
   },
 
   runtimeConfig: {
