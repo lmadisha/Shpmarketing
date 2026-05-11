@@ -7,7 +7,7 @@ export default defineConfig({
       ".nuxt/**",
       ".output/**",
       "dist/**",
-      "node_modules/**",
+      "**/node_modules/**",
       "operations-api/**",
     ],
     environment: "node",
