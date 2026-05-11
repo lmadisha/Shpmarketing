@@ -32,6 +32,12 @@ describe("permission policy alignment", () => {
     );
   });
 
+  it("describes Basic placement as serial-scan-only without MAC capture", () => {
+    expect(PERMISSION_POLICY.Basic.description).toContain("Bluetooth");
+    expect(PERMISSION_POLICY.Basic.description).toContain("serial barcode");
+    expect(PERMISSION_POLICY.Basic.description).toContain("without MAC entry");
+  });
+
   it("gives Intermediate workspace access limited to basic-role assignment", () => {
     const level: PermissionLevel = "Intermediate";
     expect(hasPermission(level, "workspace.view")).toBe(true);

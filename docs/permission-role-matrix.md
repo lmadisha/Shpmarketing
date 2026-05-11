@@ -1,6 +1,6 @@
 # FrostLink Permission Role Matrix
 
-Last updated: 2026-04-23
+Last updated: 2026-05-11
 
 This document is the backend-aligned role/permission snapshot implemented in `operations-api/server.js`.
 
@@ -25,6 +25,7 @@ This document is the backend-aligned role/permission snapshot implemented in `op
 | `device_checker.submit` | No | Yes | Yes | Yes |
 | `placement.view` | Yes | Yes | Yes | Yes |
 | `placement.submit` | No | Yes | Yes | Yes |
+| `placement.submit_scan_only` | Yes | Yes | Yes | Yes |
 | `workspace.view` | No | Yes | Yes | Yes |
 | `users.assign_basic` | No | Yes | Yes | Yes |
 | `users.assign_intermediate` | No | No | Yes | Yes |
@@ -73,7 +74,7 @@ This document is the backend-aligned role/permission snapshot implemented in `op
 | `GET /auditLog` | `history.view` |
 | `GET /mismatches` | `mismatches.view` |
 | `POST /mismatches/manual` | `device_checker.submit` |
-| `POST /placements` | `placement.submit` |
+| `POST /placements` | any of `placement.submit`, `placement.submit_scan_only` |
 | `GET /exports/fridges` | `assets.download` |
 | `GET /exports/history` | `history.download` |
 | `GET /exports/mismatches` | `mismatches.download` |

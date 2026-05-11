@@ -301,7 +301,7 @@ async function submitPlacement(confirmReassignment = false) {
         <MapPin class="h-4 w-4 text-[#006aea]" />
         <h2 class="text-lg font-semibold text-slate-900">Placement</h2>
       </div>
-      <p class="mt-1 text-sm text-slate-600">Record a new unit placement with serial number and images.</p>
+      <p class="mt-1 text-sm text-slate-600">Record a new unit placement with serial number and images. MAC address is not captured on this screen.</p>
     </div>
     <div class="space-y-4 p-5">
       <div class="space-y-1">
@@ -318,7 +318,7 @@ async function submitPlacement(confirmReassignment = false) {
             :disabled="store.canSubmitPlacementScanOnly"
             @update:model-value="(value) => { form.serial_number = String(value || '').trim().toUpperCase() }"
         />
-        <p v-if="store.canSubmitPlacementScanOnly" class="text-xs text-amber-600">Serial number must be set via barcode scan.</p>
+        <p v-if="store.canSubmitPlacementScanOnly" class="text-xs text-amber-600">Serial number must be set via barcode scan. This screen does not capture a MAC address.</p>
       </div>
 
       <div class="space-y-1">

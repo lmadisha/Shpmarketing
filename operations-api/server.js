@@ -3098,7 +3098,7 @@ app.post("/mismatches/manual", requireAuth, requirePermission("device_checker.su
   }
 });
 
-app.post("/placements", requireAuth, requirePermission("placement.submit"), (req, res, next) => {
+app.post("/placements", requireAuth, requireAnyPermission(["placement.submit", "placement.submit_scan_only"]), (req, res, next) => {
   imageUpload.array("images", 10)(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {

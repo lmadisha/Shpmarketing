@@ -102,7 +102,7 @@ export const PERMISSION_POLICY: Record<PermissionLevel, PermissionRolePolicy> = 
     ],
   },
   Basic: {
-    description: "Read-only access to inventory, mismatches, and history. Can submit device checks and placements via scanner/Bluetooth only.",
+    description: "Read-only access to inventory, mismatches, and history. Device checks use Bluetooth/MAC capture. Placements use serial barcode scan only, without MAC entry on this screen.",
     dataScope: "own_org",
     grants: [
       "assets.view",
