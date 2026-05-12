@@ -9,6 +9,10 @@ export default defineNuxtConfig({
 
   ssr: false,
 
+  experimental: {
+    viteEnvironmentApi: true,
+  },
+
   devServer: {
     https: true,
   },
@@ -20,6 +24,15 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()],
+    optimizeDeps: {
+      include: [
+        'class-variance-authority',
+        'clsx',
+        'tailwind-merge',
+        'lucide-vue-next',
+        '@vueuse/core',
+      ]
+    }
   },
 
   runtimeConfig: {

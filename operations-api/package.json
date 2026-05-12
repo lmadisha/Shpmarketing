@@ -14,7 +14,9 @@
     "migrate": "node migrate.js",
     "dev": "node server.js",
     "start": "node server.js",
-    "migrate:deploy": "node run-migrations.js",
+    "migrate:deploy": "node run-migrations.js && node database/post-migrate.js",
+    "migrate:down": "node run-migrations.js --down && node database/post-migrate.js",
+    "schema:extract": "node database/extract-schema.js",
     "start:with-migrations": "npm run migrate:deploy && node server.js"
   },
   "devDependencies": {

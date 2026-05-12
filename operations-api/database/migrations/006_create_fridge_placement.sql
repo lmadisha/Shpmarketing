@@ -1,3 +1,5 @@
+-- Description: Create fridge_placement table
+-- UP
 CREATE TABLE IF NOT EXISTS frostlink.fridge_placement (
   id                   BIGSERIAL PRIMARY KEY,
   fridge_serial_number VARCHAR(32) NOT NULL
@@ -13,3 +15,6 @@ CREATE INDEX IF NOT EXISTS idx_fridge_placement_serial
 
 CREATE INDEX IF NOT EXISTS idx_fridge_placement_created_at
   ON frostlink.fridge_placement (created_at DESC);
+
+-- DOWN
+DROP TABLE IF EXISTS frostlink.fridge_placement CASCADE;

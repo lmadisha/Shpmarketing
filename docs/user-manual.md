@@ -93,10 +93,10 @@ Admin users get organisation filtering in Asset Manager.
 Basic users can open this tab in read-only mode but cannot submit checks.
 
 #### 4.1.5 Placement
-- Tab visibility: `placement.view` or `placement.submit`
-- Submission permission: `placement.submit` (Intermediate+)
+- Tab visibility: `placement.view`, `placement.submit`, or `placement.submit_scan_only`
+- Submission permission: `placement.submit` (Intermediate+) or `placement.submit_scan_only` (Basic scan-only flow)
 
-Basic users can open this tab in read-only mode but cannot submit placements.
+Basic users can submit placements only after scanning a serial barcode. The Placement tab no longer captures a MAC address.
 
 #### 4.1.6 History
 - View permission: `history.view`
@@ -153,7 +153,7 @@ Access: All authenticated users
 | Admin | All organisations | Full access, including organisation management and all role assignments |
 | Advanced | Own organisation | Asset management, mismatch resolution, profile edit, validation settings, assign up to Advanced |
 | Intermediate | Own organisation | Field operations + workspace access for Basic-user management only |
-| Basic | Own organisation | Read-only asset/mismatch/history plus view-only checker/placement tabs |
+| Basic | Own organisation | Read-only asset/mismatch/history plus serial-scan-only placement submission |
 
 ### 5.2 Permission Flags by Role
 

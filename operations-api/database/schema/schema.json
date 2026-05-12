@@ -1,0 +1,1611 @@
+{
+  "timestamp": "2026-05-07T09:39:36.120Z",
+  "types": {
+    "_fridge_audit_log": [
+      {
+        "typname": "_fridge_audit_log",
+        "enumlabel": null
+      }
+    ],
+    "_fridge_images": [
+      {
+        "typname": "_fridge_images",
+        "enumlabel": null
+      }
+    ],
+    "_fridge_mismatches": [
+      {
+        "typname": "_fridge_mismatches",
+        "enumlabel": null
+      }
+    ],
+    "_fridge_placement": [
+      {
+        "typname": "_fridge_placement",
+        "enumlabel": null
+      }
+    ],
+    "_fridges": [
+      {
+        "typname": "_fridges",
+        "enumlabel": null
+      }
+    ],
+    "_mismatch_action_enum": [
+      {
+        "typname": "_mismatch_action_enum",
+        "enumlabel": null
+      }
+    ],
+    "_organisation": [
+      {
+        "typname": "_organisation",
+        "enumlabel": null
+      }
+    ],
+    "_organisation_asset_validation_rules": [
+      {
+        "typname": "_organisation_asset_validation_rules",
+        "enumlabel": null
+      }
+    ],
+    "_schema_migrations": [
+      {
+        "typname": "_schema_migrations",
+        "enumlabel": null
+      }
+    ],
+    "_user_permission_enum": [
+      {
+        "typname": "_user_permission_enum",
+        "enumlabel": null
+      }
+    ],
+    "_users": [
+      {
+        "typname": "_users",
+        "enumlabel": null
+      }
+    ],
+    "fridge_audit_log": [
+      {
+        "typname": "fridge_audit_log",
+        "enumlabel": null
+      }
+    ],
+    "fridge_images": [
+      {
+        "typname": "fridge_images",
+        "enumlabel": null
+      }
+    ],
+    "fridge_mismatches": [
+      {
+        "typname": "fridge_mismatches",
+        "enumlabel": null
+      }
+    ],
+    "fridge_placement": [
+      {
+        "typname": "fridge_placement",
+        "enumlabel": null
+      }
+    ],
+    "fridges": [
+      {
+        "typname": "fridges",
+        "enumlabel": null
+      }
+    ],
+    "mismatch_action_enum": [
+      {
+        "typname": "mismatch_action_enum",
+        "enumlabel": "cancel"
+      },
+      {
+        "typname": "mismatch_action_enum",
+        "enumlabel": "delete"
+      },
+      {
+        "typname": "mismatch_action_enum",
+        "enumlabel": "open"
+      },
+      {
+        "typname": "mismatch_action_enum",
+        "enumlabel": "resolve"
+      }
+    ],
+    "organisation": [
+      {
+        "typname": "organisation",
+        "enumlabel": null
+      }
+    ],
+    "organisation_asset_validation_rules": [
+      {
+        "typname": "organisation_asset_validation_rules",
+        "enumlabel": null
+      }
+    ],
+    "schema_migrations": [
+      {
+        "typname": "schema_migrations",
+        "enumlabel": null
+      }
+    ],
+    "user_permission_enum": [
+      {
+        "typname": "user_permission_enum",
+        "enumlabel": "Admin"
+      },
+      {
+        "typname": "user_permission_enum",
+        "enumlabel": "Advanced"
+      },
+      {
+        "typname": "user_permission_enum",
+        "enumlabel": "Basic"
+      },
+      {
+        "typname": "user_permission_enum",
+        "enumlabel": "Intermediate"
+      },
+      {
+        "typname": "user_permission_enum",
+        "enumlabel": "__deprecated_factory"
+      },
+      {
+        "typname": "user_permission_enum",
+        "enumlabel": "__deprecated_outlet"
+      }
+    ],
+    "users": [
+      {
+        "typname": "users",
+        "enumlabel": null
+      }
+    ]
+  },
+  "tables": [
+    {
+      "tablename": "fridge_audit_log",
+      "comment": null
+    },
+    {
+      "tablename": "fridge_images",
+      "comment": null
+    },
+    {
+      "tablename": "fridge_mismatches",
+      "comment": null
+    },
+    {
+      "tablename": "fridge_placement",
+      "comment": null
+    },
+    {
+      "tablename": "fridges",
+      "comment": null
+    },
+    {
+      "tablename": "organisation",
+      "comment": null
+    },
+    {
+      "tablename": "organisation_asset_validation_rules",
+      "comment": null
+    },
+    {
+      "tablename": "schema_migrations",
+      "comment": null
+    },
+    {
+      "tablename": "schema_migrations",
+      "comment": null
+    },
+    {
+      "tablename": "users",
+      "comment": null
+    }
+  ],
+  "columns": {
+    "fridge_audit_log": [
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "log_id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.fridge_audit_log_log_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "fridge_serial_number",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "action_type",
+        "data_type": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "old_mac",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "new_mac",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "old_c_num",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "new_c_num",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "changed_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "YES",
+        "column_default": "CURRENT_TIMESTAMP",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "changed_by",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "source_table",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": "'fridges'::text",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "mismatch_id",
+        "data_type": "bigint",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "deletion_reason",
+        "data_type": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "column_name": "organisation_id",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      }
+    ],
+    "fridge_images": [
+      {
+        "table_name": "fridge_images",
+        "column_name": "id",
+        "data_type": "bigint",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.fridge_images_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_images",
+        "column_name": "fridge_serial_number",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_images",
+        "column_name": "image",
+        "data_type": "bytea",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_images",
+        "column_name": "mismatch_action",
+        "data_type": "USER-DEFINED",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_images",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_images",
+        "column_name": "created_by",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      }
+    ],
+    "fridge_mismatches": [
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "id",
+        "data_type": "bigint",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.fridge_mismatches_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "received_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "fridge_serial_number",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "received_mac",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "received_c_number",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "db_mac",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "db_c_number",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "status",
+        "data_type": "USER-DEFINED",
+        "is_nullable": "NO",
+        "column_default": "'open'::frostlink.mismatch_action_enum",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "resolved_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "resolved_by",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "resolution_note",
+        "data_type": "text",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "sender_id",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "latitude",
+        "data_type": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "longitude",
+        "data_type": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "column_name": "image_id",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      }
+    ],
+    "fridge_placement": [
+      {
+        "table_name": "fridge_placement",
+        "column_name": "id",
+        "data_type": "bigint",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.fridge_placement_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "column_name": "fridge_serial_number",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "column_name": "image",
+        "data_type": "bytea",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP",
+        "comment": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "column_name": "created_by",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      }
+    ],
+    "fridges": [
+      {
+        "table_name": "fridges",
+        "column_name": "fridge_serial_number",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "iot_mac_address",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "c_number",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "verified",
+        "data_type": "boolean",
+        "is_nullable": "YES",
+        "column_default": "false",
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "verified_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "organisation_id",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "latitude",
+        "data_type": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "longitude",
+        "data_type": "numeric",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "image_id",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "fridges",
+        "column_name": "placed",
+        "data_type": "boolean",
+        "is_nullable": "NO",
+        "column_default": "false",
+        "comment": null
+      }
+    ],
+    "organisation": [
+      {
+        "table_name": "organisation",
+        "column_name": "id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.organisation_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "organisation",
+        "column_name": "name",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "organisation",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "YES",
+        "column_default": "CURRENT_TIMESTAMP",
+        "comment": null
+      },
+      {
+        "table_name": "organisation",
+        "column_name": "domin",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      }
+    ],
+    "organisation_asset_validation_rules": [
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "column_name": "organisation_id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "column_name": "serial_min_length",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "column_name": "serial_max_length",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "column_name": "mac_min_length",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "column_name": "mac_max_length",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "column_name": "c_number_min_length",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "column_name": "c_number_max_length",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      }
+    ],
+    "schema_migrations": [
+      {
+        "table_name": "schema_migrations",
+        "column_name": "id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.schema_migrations_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.schema_migrations_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": "nextval('schema_migrations_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": "nextval('schema_migrations_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "name",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "name",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "name",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "name",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "applied_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "applied_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "applied_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "comment": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "column_name": "applied_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "NO",
+        "column_default": "now()",
+        "comment": null
+      }
+    ],
+    "users": [
+      {
+        "table_name": "users",
+        "column_name": "id",
+        "data_type": "integer",
+        "is_nullable": "NO",
+        "column_default": "nextval('frostlink.users_id_seq'::regclass)",
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "username",
+        "data_type": "character varying",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "password_hash",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "full_name",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "is_active",
+        "data_type": "boolean",
+        "is_nullable": "YES",
+        "column_default": "true",
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone",
+        "is_nullable": "YES",
+        "column_default": "CURRENT_TIMESTAMP",
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "permissions",
+        "data_type": "USER-DEFINED",
+        "is_nullable": "NO",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "organisation_id",
+        "data_type": "integer",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "first_name",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      },
+      {
+        "table_name": "users",
+        "column_name": "last_name",
+        "data_type": "character varying",
+        "is_nullable": "YES",
+        "column_default": null,
+        "comment": null
+      }
+    ]
+  },
+  "constraints": {
+    "fridge_audit_log": [
+      {
+        "table_name": "fridge_audit_log",
+        "constraint_name": "24762_16425_10_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "constraint_name": "24762_16425_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "constraint_name": "fridge_audit_log_changed_by_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "changed_by"
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "constraint_name": "fridge_audit_log_organisation_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "organisation_id"
+      },
+      {
+        "table_name": "fridge_audit_log",
+        "constraint_name": "fridge_audit_log_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "log_id"
+      }
+    ],
+    "fridge_images": [
+      {
+        "table_name": "fridge_images",
+        "constraint_name": "24762_24773_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_images",
+        "constraint_name": "24762_24773_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_images",
+        "constraint_name": "24762_24773_3_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_images",
+        "constraint_name": "24762_24773_5_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_images",
+        "constraint_name": "fridge_images_created_by_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "created_by"
+      },
+      {
+        "table_name": "fridge_images",
+        "constraint_name": "fridge_images_fridge_serial_number_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "fridge_serial_number"
+      },
+      {
+        "table_name": "fridge_images",
+        "constraint_name": "fridge_images_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "id"
+      }
+    ],
+    "fridge_mismatches": [
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "24762_16406_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "24762_16406_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "24762_16406_3_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "24762_16406_8_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "fridge_mismatches_image_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "image_id"
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "fridge_mismatches_latitude_range_chk",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "fridge_mismatches_longitude_range_chk",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "fridge_mismatches_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "id"
+      },
+      {
+        "table_name": "fridge_mismatches",
+        "constraint_name": "fridge_mismatches_resolved_by_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "resolved_by"
+      }
+    ],
+    "fridge_placement": [
+      {
+        "table_name": "fridge_placement",
+        "constraint_name": "24762_49397_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "constraint_name": "24762_49397_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "constraint_name": "24762_49397_3_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "constraint_name": "24762_49397_4_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridge_placement",
+        "constraint_name": "fridge_placement_created_by_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "created_by"
+      },
+      {
+        "table_name": "fridge_placement",
+        "constraint_name": "fridge_placement_fridge_serial_number_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "fridge_serial_number"
+      },
+      {
+        "table_name": "fridge_placement",
+        "constraint_name": "fridge_placement_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "id"
+      }
+    ],
+    "fridges": [
+      {
+        "table_name": "fridges",
+        "constraint_name": "24762_16397_11_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridges",
+        "constraint_name": "24762_16397_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridges",
+        "constraint_name": "fridges_image_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "image_id"
+      },
+      {
+        "table_name": "fridges",
+        "constraint_name": "fridges_iot_mac_address_key",
+        "constraint_type": "UNIQUE",
+        "column_name": "iot_mac_address"
+      },
+      {
+        "table_name": "fridges",
+        "constraint_name": "fridges_latitude_range_chk",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridges",
+        "constraint_name": "fridges_longitude_range_chk",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "fridges",
+        "constraint_name": "fridges_organisation_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "organisation_id"
+      },
+      {
+        "table_name": "fridges",
+        "constraint_name": "fridges_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "fridge_serial_number"
+      }
+    ],
+    "organisation": [
+      {
+        "table_name": "organisation",
+        "constraint_name": "24762_16452_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation",
+        "constraint_name": "24762_16452_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation",
+        "constraint_name": "organisation_name_key",
+        "constraint_type": "UNIQUE",
+        "column_name": "name"
+      },
+      {
+        "table_name": "organisation",
+        "constraint_name": "organisation_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "id"
+      }
+    ],
+    "organisation_asset_validation_rules": [
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "24762_49371_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "24762_49371_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "24762_49371_3_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "24762_49371_4_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "24762_49371_5_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "24762_49371_6_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "24762_49371_7_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_c_number_max_length_check",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_c_number_min_length_check",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_check",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_check1",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_check2",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_mac_max_length_check",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_mac_min_length_check",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_organisation_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "organisation_id"
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "organisation_id"
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_serial_max_length_check",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "organisation_asset_validation_rules",
+        "constraint_name": "organisation_asset_validation_rules_serial_min_length_check",
+        "constraint_type": "CHECK",
+        "column_name": null
+      }
+    ],
+    "schema_migrations": [
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "24762_32975_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "24762_32975_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "24762_32975_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "24762_32975_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "24762_32975_3_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "24762_32975_3_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "schema_migrations_name_key",
+        "constraint_type": "UNIQUE",
+        "column_name": "name"
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "schema_migrations_name_key",
+        "constraint_type": "UNIQUE",
+        "column_name": "name"
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "schema_migrations_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "id"
+      },
+      {
+        "table_name": "schema_migrations",
+        "constraint_name": "schema_migrations_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "id"
+      }
+    ],
+    "users": [
+      {
+        "table_name": "users",
+        "constraint_name": "24762_16385_1_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "24762_16385_2_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "24762_16385_3_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "24762_16385_7_not_null",
+        "constraint_type": "CHECK",
+        "column_name": null
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "users_organisation_id_fkey",
+        "constraint_type": "FOREIGN KEY",
+        "column_name": "organisation_id"
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "users_pkey",
+        "constraint_type": "PRIMARY KEY",
+        "column_name": "id"
+      },
+      {
+        "table_name": "users",
+        "constraint_name": "users_username_key",
+        "constraint_type": "UNIQUE",
+        "column_name": "username"
+      }
+    ]
+  },
+  "indexes": {
+    "fridge_audit_log": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_audit_log",
+        "indexname": "fridge_audit_log_pkey",
+        "indexdef": "CREATE UNIQUE INDEX fridge_audit_log_pkey ON frostlink.fridge_audit_log USING btree (log_id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_audit_log",
+        "indexname": "idx_fridge_audit_log_mismatch_id",
+        "indexdef": "CREATE INDEX idx_fridge_audit_log_mismatch_id ON frostlink.fridge_audit_log USING btree (mismatch_id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_audit_log",
+        "indexname": "idx_fridge_audit_log_serial",
+        "indexdef": "CREATE INDEX idx_fridge_audit_log_serial ON frostlink.fridge_audit_log USING btree (fridge_serial_number)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_audit_log",
+        "indexname": "idx_fridge_audit_log_source_table",
+        "indexdef": "CREATE INDEX idx_fridge_audit_log_source_table ON frostlink.fridge_audit_log USING btree (source_table)"
+      }
+    ],
+    "fridge_images": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_images",
+        "indexname": "fridge_images_pkey",
+        "indexdef": "CREATE UNIQUE INDEX fridge_images_pkey ON frostlink.fridge_images USING btree (id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_images",
+        "indexname": "idx_fridge_images_created_at",
+        "indexdef": "CREATE INDEX idx_fridge_images_created_at ON frostlink.fridge_images USING btree (created_at DESC)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_images",
+        "indexname": "idx_fridge_images_created_by",
+        "indexdef": "CREATE INDEX idx_fridge_images_created_by ON frostlink.fridge_images USING btree (created_by)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_images",
+        "indexname": "idx_fridge_images_fridge_serial_number",
+        "indexdef": "CREATE INDEX idx_fridge_images_fridge_serial_number ON frostlink.fridge_images USING btree (fridge_serial_number)"
+      }
+    ],
+    "fridge_mismatches": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_mismatches",
+        "indexname": "fridge_mismatches_pkey",
+        "indexdef": "CREATE UNIQUE INDEX fridge_mismatches_pkey ON frostlink.fridge_mismatches USING btree (id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_mismatches",
+        "indexname": "idx_fridge_mismatches_image_id",
+        "indexdef": "CREATE INDEX idx_fridge_mismatches_image_id ON frostlink.fridge_mismatches USING btree (image_id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_mismatches",
+        "indexname": "idx_fridge_mismatches_received_at",
+        "indexdef": "CREATE INDEX idx_fridge_mismatches_received_at ON frostlink.fridge_mismatches USING btree (received_at DESC)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_mismatches",
+        "indexname": "idx_fridge_mismatches_serial",
+        "indexdef": "CREATE INDEX idx_fridge_mismatches_serial ON frostlink.fridge_mismatches USING btree (fridge_serial_number)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_mismatches",
+        "indexname": "idx_fridge_mismatches_status",
+        "indexdef": "CREATE INDEX idx_fridge_mismatches_status ON frostlink.fridge_mismatches USING btree (status)"
+      }
+    ],
+    "fridge_placement": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_placement",
+        "indexname": "fridge_placement_pkey",
+        "indexdef": "CREATE UNIQUE INDEX fridge_placement_pkey ON frostlink.fridge_placement USING btree (id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_placement",
+        "indexname": "idx_fridge_placement_created_at",
+        "indexdef": "CREATE INDEX idx_fridge_placement_created_at ON frostlink.fridge_placement USING btree (created_at DESC)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridge_placement",
+        "indexname": "idx_fridge_placement_serial",
+        "indexdef": "CREATE INDEX idx_fridge_placement_serial ON frostlink.fridge_placement USING btree (fridge_serial_number)"
+      }
+    ],
+    "fridges": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridges",
+        "indexname": "fridges_iot_mac_address_key",
+        "indexdef": "CREATE UNIQUE INDEX fridges_iot_mac_address_key ON frostlink.fridges USING btree (iot_mac_address)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridges",
+        "indexname": "fridges_pkey",
+        "indexdef": "CREATE UNIQUE INDEX fridges_pkey ON frostlink.fridges USING btree (fridge_serial_number)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridges",
+        "indexname": "idx_fridges_image_id",
+        "indexdef": "CREATE INDEX idx_fridges_image_id ON frostlink.fridges USING btree (image_id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "fridges",
+        "indexname": "idx_fridges_organisation_id",
+        "indexdef": "CREATE INDEX idx_fridges_organisation_id ON frostlink.fridges USING btree (organisation_id)"
+      }
+    ],
+    "organisation": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "organisation",
+        "indexname": "idx_organisation_domin_unique",
+        "indexdef": "CREATE UNIQUE INDEX idx_organisation_domin_unique ON frostlink.organisation USING btree (lower((domin)::text)) WHERE (domin IS NOT NULL)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "organisation",
+        "indexname": "organisation_name_key",
+        "indexdef": "CREATE UNIQUE INDEX organisation_name_key ON frostlink.organisation USING btree (name)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "organisation",
+        "indexname": "organisation_pkey",
+        "indexdef": "CREATE UNIQUE INDEX organisation_pkey ON frostlink.organisation USING btree (id)"
+      }
+    ],
+    "organisation_asset_validation_rules": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "organisation_asset_validation_rules",
+        "indexname": "organisation_asset_validation_rules_pkey",
+        "indexdef": "CREATE UNIQUE INDEX organisation_asset_validation_rules_pkey ON frostlink.organisation_asset_validation_rules USING btree (organisation_id)"
+      }
+    ],
+    "schema_migrations": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "schema_migrations",
+        "indexname": "schema_migrations_name_key",
+        "indexdef": "CREATE UNIQUE INDEX schema_migrations_name_key ON frostlink.schema_migrations USING btree (name)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "schema_migrations",
+        "indexname": "schema_migrations_pkey",
+        "indexdef": "CREATE UNIQUE INDEX schema_migrations_pkey ON frostlink.schema_migrations USING btree (id)"
+      }
+    ],
+    "users": [
+      {
+        "schemaname": "frostlink",
+        "tablename": "users",
+        "indexname": "idx_users_organisation_id",
+        "indexdef": "CREATE INDEX idx_users_organisation_id ON frostlink.users USING btree (organisation_id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "users",
+        "indexname": "users_pkey",
+        "indexdef": "CREATE UNIQUE INDEX users_pkey ON frostlink.users USING btree (id)"
+      },
+      {
+        "schemaname": "frostlink",
+        "tablename": "users",
+        "indexname": "users_username_key",
+        "indexdef": "CREATE UNIQUE INDEX users_username_key ON frostlink.users USING btree (username)"
+      }
+    ]
+  },
+  "triggers": {
+    "fridge_mismatches": [
+      {
+        "event_object_table": "fridge_mismatches",
+        "trigger_name": "trg_fridge_mismatch_audit",
+        "event_manipulation": "INSERT",
+        "action_timing": "AFTER"
+      },
+      {
+        "event_object_table": "fridge_mismatches",
+        "trigger_name": "trg_fridge_mismatch_audit",
+        "event_manipulation": "DELETE",
+        "action_timing": "AFTER"
+      },
+      {
+        "event_object_table": "fridge_mismatches",
+        "trigger_name": "trg_fridge_mismatch_audit",
+        "event_manipulation": "UPDATE",
+        "action_timing": "AFTER"
+      }
+    ],
+    "fridges": [
+      {
+        "event_object_table": "fridges",
+        "trigger_name": "trg_fridge_audit",
+        "event_manipulation": "INSERT",
+        "action_timing": "AFTER"
+      },
+      {
+        "event_object_table": "fridges",
+        "trigger_name": "trg_fridge_audit",
+        "event_manipulation": "DELETE",
+        "action_timing": "AFTER"
+      },
+      {
+        "event_object_table": "fridges",
+        "trigger_name": "trg_fridge_audit",
+        "event_manipulation": "UPDATE",
+        "action_timing": "AFTER"
+      }
+    ]
+  },
+  "functions": [
+    {
+      "proname": "log_fridge_changes",
+      "definition": "CREATE OR REPLACE FUNCTION frostlink.log_fridge_changes()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nDECLARE\n  current_user_id_text TEXT;\nBEGIN\n  current_user_id_text := current_setting('myapp.current_user_id', true);\n\n  IF (TG_OP = 'UPDATE') THEN\n    INSERT INTO frostlink.fridge_audit_log (\n      fridge_serial_number, source_table, action_type,\n      old_mac, new_mac, old_c_num, new_c_num,\n      organisation_id, changed_by, metadata\n    ) VALUES (\n      OLD.fridge_serial_number, 'fridges',\n      CASE\n        WHEN OLD.verified = false AND NEW.verified = true THEN 'VERIFY'\n        WHEN OLD.verified = true AND NEW.verified = false THEN 'UNVERIFY'\n        ELSE 'UPDATE'\n      END,\n      OLD.iot_mac_address, NEW.iot_mac_address,\n      OLD.c_number, NEW.c_number,\n      COALESCE(NEW.organisation_id, OLD.organisation_id),\n      NULLIF(current_user_id_text, '')::integer,\n      CASE\n        WHEN OLD.verified IS DISTINCT FROM NEW.verified THEN\n          jsonb_build_object('old_verified', OLD.verified, 'new_verified', NEW.verified)\n        ELSE NULL\n      END\n    );\n  ELSIF (TG_OP = 'INSERT') THEN\n    INSERT INTO frostlink.fridge_audit_log (\n      fridge_serial_number, source_table, action_type,\n      new_mac, new_c_num, organisation_id, changed_by\n    ) VALUES (\n      NEW.fridge_serial_number, 'fridges', 'INSERT',\n      NEW.iot_mac_address, NEW.c_number,\n      NEW.organisation_id,\n      NULLIF(current_user_id_text, '')::integer\n    );\n  ELSIF (TG_OP = 'DELETE') THEN\n    INSERT INTO frostlink.fridge_audit_log (\n      fridge_serial_number, source_table, action_type,\n      old_mac, old_c_num, organisation_id, changed_by\n    ) VALUES (\n      OLD.fridge_serial_number, 'fridges', 'DELETE',\n      OLD.iot_mac_address, OLD.c_number,\n      OLD.organisation_id,\n      NULLIF(current_user_id_text, '')::integer\n    );\n  END IF;\n\n  RETURN NULL;\nEND;\n$function$\n"
+    },
+    {
+      "proname": "log_fridge_mismatch_changes",
+      "definition": "CREATE OR REPLACE FUNCTION frostlink.log_fridge_mismatch_changes()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nDECLARE\n  current_user_id_text TEXT;\n  audit_organisation_id INTEGER;\n  mismatch_action_type TEXT;\nBEGIN\n  current_user_id_text := current_setting('myapp.current_user_id', true);\n\n  IF (TG_OP = 'INSERT') THEN\n    SELECT organisation_id INTO audit_organisation_id\n    FROM frostlink.fridges\n    WHERE fridge_serial_number = NEW.fridge_serial_number\n    LIMIT 1;\n\n    INSERT INTO frostlink.fridge_audit_log (\n      fridge_serial_number, source_table, mismatch_id, action_type,\n      new_mac, new_c_num, organisation_id, changed_by, metadata\n    ) VALUES (\n      NEW.fridge_serial_number, 'fridge_mismatches', NEW.id, 'MISMATCH_INSERT',\n      NEW.received_mac, NEW.received_c_number, audit_organisation_id,\n      NULLIF(current_user_id_text, '')::integer,\n      jsonb_build_object(\n        'status', NEW.status, 'db_mac', NEW.db_mac,\n        'db_c_number', NEW.db_c_number, 'resolved_at', NEW.resolved_at,\n        'resolved_by', NEW.resolved_by, 'resolution_note', NEW.resolution_note\n      )\n    );\n  ELSIF (TG_OP = 'UPDATE') THEN\n    SELECT organisation_id INTO audit_organisation_id\n    FROM frostlink.fridges\n    WHERE fridge_serial_number = COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number)\n    LIMIT 1;\n\n    mismatch_action_type := CASE LOWER(COALESCE(NEW.status::text, ''))\n      WHEN 'resolve' THEN 'MISMATCH_RESOLVE'\n      WHEN 'delete' THEN 'MISMATCH_DELETE'\n      ELSE 'MISMATCH_UPDATE'\n    END;\n\n    INSERT INTO frostlink.fridge_audit_log (\n      fridge_serial_number, source_table, mismatch_id, action_type,\n      old_mac, new_mac, old_c_num, new_c_num,\n      organisation_id, changed_by, metadata\n    ) VALUES (\n      COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number),\n      'fridge_mismatches', COALESCE(NEW.id, OLD.id), mismatch_action_type,\n      OLD.received_mac, NEW.received_mac,\n      OLD.received_c_number, NEW.received_c_number,\n      audit_organisation_id,\n      NULLIF(current_user_id_text, '')::integer,\n      jsonb_build_object(\n        'old_status', OLD.status, 'new_status', NEW.status,\n        'old_db_mac', OLD.db_mac, 'new_db_mac', NEW.db_mac,\n        'old_db_c_number', OLD.db_c_number, 'new_db_c_number', NEW.db_c_number,\n        'resolved_at', NEW.resolved_at, 'resolved_by', NEW.resolved_by,\n        'resolution_note', NEW.resolution_note\n      )\n    );\n  ELSIF (TG_OP = 'DELETE') THEN\n    SELECT organisation_id INTO audit_organisation_id\n    FROM frostlink.fridges\n    WHERE fridge_serial_number = OLD.fridge_serial_number\n    LIMIT 1;\n\n    INSERT INTO frostlink.fridge_audit_log (\n      fridge_serial_number, source_table, mismatch_id, action_type,\n      old_mac, old_c_num, organisation_id, changed_by, metadata\n    ) VALUES (\n      OLD.fridge_serial_number, 'fridge_mismatches', OLD.id, 'MISMATCH_DELETE',\n      OLD.received_mac, OLD.received_c_number, audit_organisation_id,\n      NULLIF(current_user_id_text, '')::integer,\n      jsonb_build_object(\n        'status', OLD.status, 'db_mac', OLD.db_mac,\n        'db_c_number', OLD.db_c_number, 'resolved_at', OLD.resolved_at,\n        'resolved_by', OLD.resolved_by, 'resolution_note', OLD.resolution_note\n      )\n    );\n  END IF;\n\n  RETURN NULL;\nEND;\n$function$\n"
+    }
+  ]
+}
