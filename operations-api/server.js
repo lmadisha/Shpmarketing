@@ -13,6 +13,7 @@ const {
   normalizeHexIdentifier,
   normalizeCNumber,
   parseLocationCoordinates,
+  toNullableAssetIdentifier,
   validateAssetIdentifiers,
   validateOrganisationAssetValidationPayload,
 } = require("./asset-validation");
@@ -1779,6 +1780,8 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
     const fridge_serial_number = normalizeHexIdentifier(req.body?.fridge_serial_number);
     const mac_address = normalizeHexIdentifier(req.body?.mac_address);
     const c_number = normalizeCNumber(req.body?.c_number);
+    const nullableMacAddress = toNullableAssetIdentifier(mac_address);
+    const nullableCNumber = toNullableAssetIdentifier(c_number);
     logAssetAction("create-device:start", `serial=${fridge_serial_number || "unknown"} byUser=${req.user?.id || "unknown"}`);
 
     const result = await prisma.$transaction(async (tx) => {
@@ -1814,8 +1817,8 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
       return await tx.fridge.create({
         data: {
           fridgeSerialNumber: fridge_serial_number,
-          iotMacAddress: mac_address || "",
-          cNumber: c_number || "",
+          iotMacAddress: nullableMacAddress,
+          cNumber: nullableCNumber,
           organisationId,
         },
       });
@@ -1826,6 +1829,11 @@ app.post("/newDevice", requireAuth, requirePermission("assets.create"), async (r
   } catch (error) {
     if (error.code === "VALIDATION_ERROR") {
       return res.status(400).json(buildValidationErrorResponse(error.validationErrors));
+    }
+    if (error.code === "P2002" || error.code === "23505") {
+      return res.status(400).json({
+        error: "A fridge with the same serial number or MAC address already exists.",
+      });
     }
     if (error.code === "USER_ORGANISATION_REQUIRED") {
       return res.status(400).json({ error: error.message });
@@ -2120,8 +2128,12 @@ app.post("/newDevice/bulk/update", requireAuth, requirePermission("assets.bulk_a
           continue;
         }
 
-        const macChanged = (mac || "") !== (fridge.iotMacAddress || "");
-        const cNumberChanged = (cNumber || "") !== (fridge.cNumber || "");
+        const nextMac = toNullableAssetIdentifier(mac);
+        const nextCNumber = toNullableAssetIdentifier(cNumber);
+        const currentMac = toNullableAssetIdentifier(fridge.iotMacAddress);
+        const currentCNumber = toNullableAssetIdentifier(fridge.cNumber);
+        const macChanged = nextMac !== currentMac;
+        const cNumberChanged = nextCNumber !== currentCNumber;
 
         if (!macChanged && !cNumberChanged) {
           skipped.push({ serial, reason: "NO_CHANGES", message: "No changes to apply." });
@@ -2133,8 +2145,8 @@ app.post("/newDevice/bulk/update", requireAuth, requirePermission("assets.bulk_a
         const result = await prisma.fridge.update({
           where: { fridgeSerialNumber: serial },
           data: {
-            iotMacAddress: mac || "",
-            cNumber: cNumber || "",
+            iotMacAddress: nextMac,
+            cNumber: nextCNumber,
             ...(shouldUnverify ? { verified: false, verifiedAt: null } : {}),
           },
         });
@@ -2326,11 +2338,11 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
       }
 
       const nextMac = Object.prototype.hasOwnProperty.call(req.body || {}, "mac_address")
-        ? normalizeHexIdentifier(req.body?.mac_address)
-        : String(fridge.iotMacAddress || "");
+        ? toNullableAssetIdentifier(normalizeHexIdentifier(req.body?.mac_address))
+        : toNullableAssetIdentifier(fridge.iotMacAddress);
       const nextCNumber = Object.prototype.hasOwnProperty.call(req.body || {}, "c_number")
-        ? normalizeCNumber(req.body?.c_number)
-        : String(fridge.cNumber || "");
+        ? toNullableAssetIdentifier(normalizeCNumber(req.body?.c_number))
+        : toNullableAssetIdentifier(fridge.cNumber);
 
       const rules = await getOrganisationAssetValidationRules(tx, fridge.organisationId);
       const validationErrors = validateAssetIdentifiers(
@@ -2344,8 +2356,8 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
         throw err;
       }
 
-      const macChanged = (nextMac || "") !== (fridge.iotMacAddress || "");
-      const cNumberChanged = (nextCNumber || "") !== (fridge.cNumber || "");
+      const macChanged = nextMac !== toNullableAssetIdentifier(fridge.iotMacAddress);
+      const cNumberChanged = nextCNumber !== toNullableAssetIdentifier(fridge.cNumber);
       const shouldUnverify = fridge.verified && (macChanged || cNumberChanged);
 
       return await tx.fridge.update({
@@ -2354,8 +2366,8 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
           ...(scope.effectiveOrganisationId != null ? { organisationId: scope.effectiveOrganisationId } : {}),
         },
         data: {
-          iotMacAddress: nextMac || "",
-          cNumber: nextCNumber || "",
+          iotMacAddress: nextMac,
+          cNumber: nextCNumber,
           ...(shouldUnverify ? { verified: false, verifiedAt: null } : {}),
         },
       });
@@ -3116,7 +3128,8 @@ app.post("/placements", requireAuth, requireAnyPermission(["placement.submit", "
     const serial = normalizeHexIdentifier(req.body?.serial_number);
     const mac = normalizeHexIdentifier(req.body?.mac_address);
     const cNum = normalizeCNumber(req.body?.c_number);
-    const nextMac = mac || null;
+    const nextMac = toNullableAssetIdentifier(mac);
+    const nextCNumber = toNullableAssetIdentifier(cNum);
     const confirmReassignment = String(req.body?.confirm_reassignment || "").trim().toLowerCase() === "true";
     const parsedLocation = parseLocationCoordinates(req.body);
 
@@ -3163,7 +3176,7 @@ app.post("/placements", requireAuth, requireAnyPermission(["placement.submit", "
           data: {
             fridgeSerialNumber: serial,
             iotMacAddress: nextMac,
-            cNumber: cNum || "",
+            cNumber: nextCNumber,
             organisationId: scope.effectiveOrganisationId,
             placed: true,
             latitude,
@@ -3171,11 +3184,11 @@ app.post("/placements", requireAuth, requireAnyPermission(["placement.submit", "
           },
         });
       } else {
-        const currentCNumber = normalizeCNumber(existingFridge.cNumber);
-        const incomingCNumber = cNum || "";
+        const currentCNumber = toNullableAssetIdentifier(normalizeCNumber(existingFridge.cNumber));
+        const incomingCNumber = nextCNumber;
         const cNumberChanged = incomingCNumber !== currentCNumber;
         const currentMac = existingFridge.iotMacAddress
-          ? normalizeHexIdentifier(existingFridge.iotMacAddress)
+          ? toNullableAssetIdentifier(normalizeHexIdentifier(existingFridge.iotMacAddress))
           : null;
         const macChanged = nextMac !== currentMac;
         const requiresReassignmentConfirmation = Boolean(currentCNumber) && cNumberChanged;

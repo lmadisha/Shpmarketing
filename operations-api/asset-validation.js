@@ -24,6 +24,15 @@ function normalizeCNumber(value) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function toNullableAssetIdentifier(value) {
+  if (value == null) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized === "" ? null : normalized;
+}
+
 function hasProvidedValue(value) {
   if (value == null) {
     return false;
@@ -225,6 +234,7 @@ module.exports = {
   normalizeHexIdentifier,
   normalizeCNumber,
   parseLocationCoordinates,
+  toNullableAssetIdentifier,
   validateAssetIdentifiers,
   validateOrganisationAssetValidationPayload,
 };
