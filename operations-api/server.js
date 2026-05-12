@@ -2130,8 +2130,8 @@ app.post("/newDevice/bulk/update", requireAuth, requirePermission("assets.bulk_a
 
         const nextMac = toNullableAssetIdentifier(mac);
         const nextCNumber = toNullableAssetIdentifier(cNumber);
-        const currentMac = toNullableAssetIdentifier(fridge.iotMacAddress);
-        const currentCNumber = toNullableAssetIdentifier(fridge.cNumber);
+        const currentMac = toNullableAssetIdentifier(normalizeHexIdentifier(fridge.iotMacAddress));
+        const currentCNumber = toNullableAssetIdentifier(normalizeCNumber(fridge.cNumber));
         const macChanged = nextMac !== currentMac;
         const cNumberChanged = nextCNumber !== currentCNumber;
 
@@ -2356,8 +2356,8 @@ app.put("/updateDevice/:serialNumber", requireAuth, requirePermission("assets.ed
         throw err;
       }
 
-      const macChanged = nextMac !== toNullableAssetIdentifier(fridge.iotMacAddress);
-      const cNumberChanged = nextCNumber !== toNullableAssetIdentifier(fridge.cNumber);
+      const macChanged = nextMac !== toNullableAssetIdentifier(normalizeHexIdentifier(fridge.iotMacAddress));
+      const cNumberChanged = nextCNumber !== toNullableAssetIdentifier(normalizeCNumber(fridge.cNumber));
       const shouldUnverify = fridge.verified && (macChanged || cNumberChanged);
 
       return await tx.fridge.update({
