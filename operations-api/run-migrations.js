@@ -1,8 +1,11 @@
 require("./env");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const crypto = require("node:crypto");
 const { Client } = require("pg");
+const {
+  checksumMigrationContent,
+  matchesMigrationChecksum,
+} = require("./database/migration-checksum");
 
 const MIGRATIONS_DIR = path.join(__dirname, "database", "migrations");
 const MIGRATION_TABLE = "public.frostlink_migrations";
@@ -13,10 +16,6 @@ const DIRECTION = process.argv.includes("--down") ? "down" : "up";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function checksum(content) {
-  return crypto.createHash("sha256").update(content).digest("hex");
 }
 
 function parseMigrationFile(content) {
@@ -86,7 +85,7 @@ async function getAppliedMigrations(client) {
 async function applyMigration(client, fileName) {
   const fullPath = path.join(MIGRATIONS_DIR, fileName);
   const content = await fs.readFile(fullPath, "utf8");
-  const fileChecksum = checksum(content);
+  const fileChecksum = checksumMigrationContent(content);
   const { up, down } = parseMigrationFile(content);
 
   let existing;
@@ -113,10 +112,17 @@ async function applyMigration(client, fileName) {
 
   if (existing.rowCount > 0) {
     const row = existing.rows[0];
-    if (row.checksum !== fileChecksum) {
+    if (!matchesMigrationChecksum(row.checksum, content)) {
       throw new Error(`Migration ${fileName} already applied with different checksum.`);
     }
     if (row.direction === DIRECTION) {
+      if (row.checksum !== fileChecksum) {
+        await client.query(
+          `UPDATE ${MIGRATION_TABLE} SET checksum = $1, applied_at = now() WHERE file_name = $2`,
+          [fileChecksum, fileName],
+        );
+        console.log(`[migrations] normalized checksum: ${fileName}`);
+      }
       console.log(`[migrations] already ${DIRECTION}: ${fileName}`);
       return;
     }
