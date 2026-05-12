@@ -147,9 +147,11 @@ async function submitCreate() {
     createResult.value = "Fridge added successfully.";
     if (store.canViewAssets) await store.loadFridges(store.searchTerm);
     if (store.canViewHistory) await store.loadAllHistory();
-  } catch {
+  } catch (error) {
     createResult.value =
-      "Could not add fridge. Check duplicates and try again.";
+      error instanceof Error
+        ? error.message
+        : "Could not add fridge. Check duplicates and try again.";
   } finally {
     creating.value = false;
   }
