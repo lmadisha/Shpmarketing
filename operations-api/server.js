@@ -3190,7 +3190,8 @@ app.post("/placements", requireAuth, requireAnyPermission(["placement.submit", "
         const currentMac = existingFridge.iotMacAddress
           ? toNullableAssetIdentifier(normalizeHexIdentifier(existingFridge.iotMacAddress))
           : null;
-        const macChanged = nextMac !== currentMac;
+        const persistedMac = nextMac ?? currentMac;
+        const macChanged = persistedMac !== currentMac;
         const requiresReassignmentConfirmation = Boolean(currentCNumber) && cNumberChanged;
 
         if (requiresReassignmentConfirmation && !confirmReassignment) {
@@ -3206,7 +3207,7 @@ app.post("/placements", requireAuth, requireAnyPermission(["placement.submit", "
         await tx.fridge.update({
           where: { fridgeSerialNumber: serial },
           data: {
-            iotMacAddress: nextMac, cNumber: incomingCNumber,
+            iotMacAddress: nextMac ?? existingFridge.iotMacAddress, cNumber: incomingCNumber,
             placed: true,
             latitude,
             longitude,

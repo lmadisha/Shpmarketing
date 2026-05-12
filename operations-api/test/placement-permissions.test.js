@@ -14,3 +14,15 @@ test("POST /placements accepts full and scan-only placement permissions", () => 
     /app\.post\("\/placements",\s*requireAuth,\s*requireAnyPermission\(\["placement\.submit", "placement\.submit_scan_only"\]\)/,
   );
 });
+
+test("POST /placements keeps the existing MAC when mac_address is omitted for an existing fridge", () => {
+  const serverSource = fs.readFileSync(
+    path.join(__dirname, "..", "server.js"),
+    "utf8",
+  );
+
+  assert.match(
+    serverSource,
+    /iotMacAddress:\s*nextMac\s*\?\?\s*existingFridge\.iotMacAddress,\s*cNumber:\s*incomingCNumber/,
+  );
+});
