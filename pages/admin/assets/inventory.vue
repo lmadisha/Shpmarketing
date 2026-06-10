@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Clock3,
   Download,
+  MoveRight,
   Pencil,
   Refrigerator,
   RefreshCw,
@@ -16,6 +17,8 @@ import Card from "~/components/ui/Card.vue";
 import Input from "~/components/ui/Input.vue";
 import Button from "~/components/ui/Button.vue";
 import Badge from "~/components/ui/Badge.vue";
+import Select from "~/components/ui/Select.vue";
+import Textarea from "~/components/ui/Textarea.vue";
 import ModalDialog from "~/components/ui/ModalDialog.vue";
 import AccessDeniedCard from "~/components/auth/AccessDeniedCard.vue";
 import {
@@ -23,10 +26,117 @@ import {
   normalizeCNumber,
   normalizeHexIdentifier,
 } from "~/utils/adminAssets";
+import type { BulkOperationResult } from "~/types/adminAssets";
 
 const store = useAdminAssetsStore();
 const deleteConfirmSerial = ref<string | null>(null);
 const deleteReason = ref("");
+const exportingInventory = ref(false);
+
+const canUseBulkSelection = computed(
+  () => store.canBulkDeleteAssets || (store.canManageOrganisations && store.isOrganisationFilterEnabled),
+);
+
+const inventoryStats = computed(() => store.inventoryScopeStats);
+
+async function exportInventory() {
+  if (!store.canDownloadAssets) return;
+  exportingInventory.value = true;
+  try {
+    const params = new URLSearchParams();
+    if (store.searchTerm.trim()) params.set("searchTerm", store.searchTerm.trim());
+    if (store.inventoryVerifiedFilter !== "all") params.set("verified", store.inventoryVerifiedFilter);
+    const basePath = `/exports/fridges${params.toString() ? `?${params.toString()}` : ""}`;
+    const payload = await store.adminRequest<{
+      sheet: string;
+      columns: string[];
+      rows: Array<Array<string | number | null>>;
+    }>("exportInventory", store.withOrganisationFilter(basePath));
+
+    downloadExcel(
+      `fridges_${new Date().toISOString().slice(0, 10)}.xls`,
+      payload.sheet || "Inventory",
+      payload.columns || ["Serial Number", "MAC Address", "C-Number", "Verified"],
+      Array.isArray(payload.rows) ? payload.rows : [],
+    );
+  } catch (error) {
+    store.fridgeError = error instanceof Error ? error.message : "Could not export inventory.";
+  } finally {
+    exportingInventory.value = false;
+  }
+}
+
+// ── Bulk delete modal ───────────────────────────────────────────────────────
+const bulkDeleteOpen = ref(false);
+const bulkDeleteReason = ref("");
+const bulkDeleteResult = ref<BulkOperationResult | null>(null);
+
+function openBulkDelete() {
+  bulkDeleteReason.value = "";
+  bulkDeleteResult.value = null;
+  bulkDeleteOpen.value = true;
+}
+
+function closeBulkDelete() {
+  bulkDeleteOpen.value = false;
+  bulkDeleteReason.value = "";
+  bulkDeleteResult.value = null;
+}
+
+async function submitBulkDelete() {
+  const serials = Array.from(store.selectedSerials);
+  const result = await store.bulkDeleteFridges(
+    serials,
+    bulkDeleteReason.value.trim() || undefined,
+  );
+  bulkDeleteResult.value = result;
+  if (result.errors.length === 0) {
+    closeBulkDelete();
+  }
+}
+
+// ── Bulk move modal ─────────────────────────────────────────────────────────
+const bulkMoveOpen = ref(false);
+const bulkMoveTargetOrgId = ref("");
+const bulkMoveResult = ref<BulkOperationResult | null>(null);
+
+const orgSelectOptions = computed(() =>
+  store.organisationOptions.map((o) => ({ value: String(o.id), label: o.name })),
+);
+
+function openBulkMove() {
+  bulkMoveTargetOrgId.value = "";
+  bulkMoveResult.value = null;
+  bulkMoveOpen.value = true;
+}
+
+function closeBulkMove() {
+  bulkMoveOpen.value = false;
+  bulkMoveTargetOrgId.value = "";
+  bulkMoveResult.value = null;
+}
+
+async function submitBulkMove() {
+  const targetId = Number(bulkMoveTargetOrgId.value);
+  if (!targetId) return;
+  const serials = Array.from(store.selectedSerials);
+  const result = await store.bulkMoveFridges(serials, targetId);
+  bulkMoveResult.value = result;
+  if (result.errors.length === 0) {
+    closeBulkMove();
+  }
+}
+
+// ── Header checkbox indeterminate state ─────────────────────────────────────
+const headerCheckboxRef = ref<HTMLInputElement | null>(null);
+watch(
+  [() => store.isAllSelected, () => store.isPartialSelected],
+  ([all, partial]) => {
+    if (headerCheckboxRef.value) {
+      headerCheckboxRef.value.indeterminate = partial && !all;
+    }
+  },
+);
 
 definePageMeta({ middleware: "auth" });
 
@@ -46,13 +156,37 @@ onMounted(async () => {
 
   <Card v-else>
     <div class="border-b border-slate-200 p-5">
-      <div class="flex items-center gap-2">
-        <Refrigerator class="h-4 w-4 text-[#006aea]" />
-        <h2 class="text-lg font-semibold text-slate-900">Fridge Inventory</h2>
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <Refrigerator class="h-4 w-4 text-[#006aea]" />
+            <h2 class="text-lg font-semibold text-slate-900">Fridge Inventory</h2>
+          </div>
+          <p class="mt-1 text-sm text-slate-600">
+            Search, update, delete, and inspect per-device history.
+          </p>
+        </div>
+        <div class="flex shrink-0 items-stretch divide-x divide-slate-200">
+          <div class="pr-5 text-right">
+            <p class="text-2xl font-semibold leading-none tabular-nums text-[#006aea]">
+              {{ store.fridgeLoading && inventoryStats.total === 0 ? "—" : inventoryStats.total }}
+            </p>
+            <p class="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Total</p>
+          </div>
+          <div class="px-5 text-right">
+            <p class="text-2xl font-semibold leading-none tabular-nums text-emerald-600">
+              {{ store.fridgeLoading && inventoryStats.total === 0 ? "—" : inventoryStats.verified }}
+            </p>
+            <p class="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Verified</p>
+          </div>
+          <div class="pl-5 text-right">
+            <p class="text-2xl font-semibold leading-none tabular-nums text-slate-400">
+              {{ store.fridgeLoading && inventoryStats.total === 0 ? "—" : inventoryStats.unverified }}
+            </p>
+            <p class="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Unverified</p>
+          </div>
+        </div>
       </div>
-      <p class="mt-1 text-sm text-slate-600">
-        Search, update, delete, and inspect per-device history.
-      </p>
     </div>
     <div class="space-y-4 p-5">
       <div class="flex flex-col gap-3 lg:flex-row">
@@ -66,6 +200,30 @@ onMounted(async () => {
             class="pl-9"
           />
         </div>
+        <!-- Verified filter toggle -->
+        <div class="inline-flex rounded-md border border-slate-200 bg-slate-50 p-0.5">
+          <button
+            v-for="opt in [
+              { value: 'all', label: 'All' },
+              { value: 'verified', label: 'Verified' },
+              { value: 'unverified', label: 'Not Verified' },
+            ]"
+            :key="opt.value"
+            :class="[
+              'rounded px-3 py-1.5 text-xs font-medium transition-colors',
+              store.inventoryVerifiedFilter === opt.value
+                ? opt.value === 'verified'
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : opt.value === 'unverified'
+                    ? 'bg-slate-400 text-white shadow-sm'
+                    : 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                : 'text-slate-500 hover:text-slate-700',
+            ]"
+            @click="store.inventoryVerifiedFilter = opt.value as 'all' | 'verified' | 'unverified'"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
         <Button
           :disabled="store.fridgeLoading"
           @click="store.loadFridges(store.searchTerm)"
@@ -78,6 +236,7 @@ onMounted(async () => {
           :disabled="store.fridgeLoading"
           @click="
             store.searchTerm = '';
+            store.inventoryVerifiedFilter = 'all';
             store.loadFridges('');
           "
         >
@@ -85,18 +244,13 @@ onMounted(async () => {
           Reset
         </Button>
         <Button
+          v-if="store.canDownloadAssets"
           variant="outline"
-          @click="
-            downloadExcel(
-              `fridges_${new Date().toISOString().slice(0, 10)}.xls`,
-              'Inventory',
-              ['Serial Number', 'MAC Address', 'C-Number', 'Verified'],
-              store.inventoryExportRows,
-            )
-          "
+          :disabled="exportingInventory"
+          @click="exportInventory"
         >
           <Download class="h-4 w-4" />
-          Download Excel
+          {{ exportingInventory ? "Exporting..." : "Download Excel" }}
         </Button>
       </div>
 
@@ -104,12 +258,67 @@ onMounted(async () => {
         {{ store.fridgeError }}
       </p>
 
+      <!-- Bulk action bar -->
+      <div
+        v-if="store.selectedCount > 0"
+        class="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5"
+      >
+        <span class="text-sm font-medium text-blue-800">
+          {{ store.selectedCount }}
+          {{ store.selectedCount === 1 ? "fridge" : "fridges" }} selected
+        </span>
+        <div class="flex flex-wrap gap-2">
+          <Button
+            v-if="store.canBulkDeleteAssets"
+            size="sm"
+            variant="destructive"
+            :disabled="store.bulkDeleting"
+            @click="openBulkDelete"
+          >
+            <Trash2 class="h-4 w-4" />
+            Delete Selected
+          </Button>
+          <Button
+            v-if="store.canManageOrganisations && store.isOrganisationFilterEnabled"
+            size="sm"
+            variant="outline"
+            :disabled="store.bulkMoving"
+            @click="openBulkMove"
+          >
+            <MoveRight class="h-4 w-4" />
+            Move to Org
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            @click="store.clearSelection"
+          >
+            Clear
+          </Button>
+        </div>
+        <p v-if="store.bulkError" class="w-full text-xs text-red-600">
+          {{ store.bulkError }}
+        </p>
+      </div>
+
       <div class="overflow-x-auto rounded-xl border border-slate-200">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
             <tr
               class="text-left text-sm font-semibold tracking-wide text-slate-500"
             >
+              <th
+                v-if="canUseBulkSelection"
+                class="w-10 px-4 py-3"
+              >
+                <input
+                  ref="headerCheckboxRef"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-slate-300 text-[#006aea] accent-[#006aea] cursor-pointer"
+                  :checked="store.isAllSelected"
+                  @change="store.toggleSelectAll"
+                />
+              </th>
               <th class="px-4 py-3">
                 <button
                   class="inline-flex items-center gap-1 hover:text-slate-700 transition-colors"
@@ -151,7 +360,23 @@ onMounted(async () => {
             <tr
               v-for="row in store.paginatedFridgeRows"
               :key="row.fridge_serial_number"
+              :class="
+                store.selectedSerials.has(row.fridge_serial_number)
+                  ? 'bg-blue-50/60'
+                  : ''
+              "
             >
+              <td
+                v-if="canUseBulkSelection"
+                class="px-4 py-3"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-slate-300 text-[#006aea] accent-[#006aea] cursor-pointer"
+                  :checked="store.selectedSerials.has(row.fridge_serial_number)"
+                  @change="store.toggleSelectSerial(row.fridge_serial_number)"
+                />
+              </td>
               <td class="px-4 py-3 font-medium">
                 {{ row.fridge_serial_number }}
               </td>
@@ -269,7 +494,7 @@ onMounted(async () => {
                       </Button>
                     </div>
                   </template>
-                  <Button
+                <Button
                     v-if="store.canDeleteAssets && !store.canEditAssets"
                     size="icon"
                     variant="ghost"
@@ -289,10 +514,14 @@ onMounted(async () => {
               v-if="!store.fridgeLoading && store.sortedFridgeRows.length === 0"
             >
               <td
-                colspan="5"
+                :colspan="canUseBulkSelection ? 6 : 5"
                 class="px-4 py-10 text-center text-sm text-slate-500"
               >
-                No fridge rows found.
+                <template v-if="store.inventoryVerifiedFilter !== 'all'">
+                  No {{ store.inventoryVerifiedFilter === 'verified' ? 'verified' : 'unverified' }} fridges found.
+                  <button class="ml-1 text-[#006aea] underline" @click="store.inventoryVerifiedFilter = 'all'">Show all</button>
+                </template>
+                <template v-else>No fridge rows found.</template>
               </td>
             </tr>
           </tbody>
@@ -329,6 +558,7 @@ onMounted(async () => {
     </div>
   </Card>
 
+  <!-- Single delete confirm -->
   <ModalDialog
     :open="Boolean(deleteConfirmSerial)"
     title="Delete Fridge"
@@ -371,6 +601,126 @@ onMounted(async () => {
           store.deletingSerial === deleteConfirmSerial
             ? "Deleting..."
             : "Delete Fridge"
+        }}
+      </Button>
+    </template>
+  </ModalDialog>
+
+  <!-- Bulk delete modal -->
+  <ModalDialog
+    :open="bulkDeleteOpen"
+    title="Delete Fridges"
+    max-width-class="max-w-md"
+    @close="closeBulkDelete"
+  >
+    <p class="text-sm text-slate-600">
+      Delete
+      <span class="font-medium text-slate-900">{{ store.selectedCount }}</span>
+      {{ store.selectedCount === 1 ? "fridge" : "fridges" }} from inventory?
+    </p>
+    <div
+      class="max-h-36 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+    >
+      <p
+        v-for="serial in Array.from(store.selectedSerials)"
+        :key="serial"
+        class="text-xs font-mono text-slate-700"
+      >
+        {{ serial }}
+      </p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-slate-700">
+        Reason for deletion
+        <span class="text-slate-400 font-normal">(optional)</span>
+      </label>
+      <Textarea
+        v-model="bulkDeleteReason"
+        :rows="2"
+        placeholder="e.g. Batch decommission..."
+        class="mt-1"
+      />
+    </div>
+    <div v-if="bulkDeleteResult && bulkDeleteResult.errors.length > 0" class="rounded-md border border-red-200 bg-red-50 p-3">
+      <p class="text-xs font-medium text-red-700">
+        {{ bulkDeleteResult.succeeded.length }} deleted,
+        {{ bulkDeleteResult.errors.length }} failed:
+      </p>
+      <ul class="mt-1 space-y-0.5">
+        <li
+          v-for="err in bulkDeleteResult.errors"
+          :key="err.serial"
+          class="text-xs text-red-600"
+        >
+          {{ err.serial }}: {{ err.message }}
+        </li>
+      </ul>
+    </div>
+    <template #footer>
+      <Button variant="outline" @click="closeBulkDelete">Cancel</Button>
+      <Button
+        variant="destructive"
+        :disabled="store.bulkDeleting"
+        @click="submitBulkDelete"
+      >
+        {{
+          store.bulkDeleting
+            ? "Deleting..."
+            : `Delete ${store.selectedCount} ${store.selectedCount === 1 ? "Fridge" : "Fridges"}`
+        }}
+      </Button>
+    </template>
+  </ModalDialog>
+
+  <!-- Bulk move modal -->
+  <ModalDialog
+    :open="bulkMoveOpen"
+    title="Move Fridges to Organisation"
+    max-width-class="max-w-md"
+    @close="closeBulkMove"
+  >
+    <p class="text-sm text-slate-600">
+      Move
+      <span class="font-medium text-slate-900">{{ store.selectedCount }}</span>
+      {{ store.selectedCount === 1 ? "fridge" : "fridges" }} to a different organisation.
+    </p>
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">
+        Target organisation
+      </label>
+      <Select
+        v-model="bulkMoveTargetOrgId"
+        :options="orgSelectOptions"
+        placeholder="Select organisation..."
+        :searchable="true"
+        :disabled="store.organisationsLoading"
+      />
+    </div>
+    <div v-if="bulkMoveResult && bulkMoveResult.errors.length > 0" class="rounded-md border border-red-200 bg-red-50 p-3">
+      <p class="text-xs font-medium text-red-700">
+        {{ bulkMoveResult.succeeded.length }} moved,
+        {{ bulkMoveResult.errors.length }} failed:
+      </p>
+      <ul class="mt-1 space-y-0.5">
+        <li
+          v-for="err in bulkMoveResult.errors"
+          :key="err.serial"
+          class="text-xs text-red-600"
+        >
+          {{ err.serial }}: {{ err.message }}
+        </li>
+      </ul>
+    </div>
+    <template #footer>
+      <Button variant="outline" @click="closeBulkMove">Cancel</Button>
+      <Button
+        :disabled="!bulkMoveTargetOrgId || store.bulkMoving"
+        @click="submitBulkMove"
+      >
+        {{
+          store.bulkMoving
+            ? "Moving..."
+            : `Move ${store.selectedCount} ${store.selectedCount === 1 ? "Fridge" : "Fridges"}`
         }}
       </Button>
     </template>

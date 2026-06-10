@@ -15,6 +15,7 @@ type DeviceCheckForm = {
   fridge_serial_number: string
   mac_address: string
   c_number: string
+  image?: File | null
 }
 
 type DeviceCheckSuccess = {
@@ -43,11 +44,15 @@ function parsePenguinMacAddress(deviceName: string | null | undefined): string |
 const store = useAdminAssetsStore()
 const bluetoothNavigator = typeof navigator !== 'undefined' ? (navigator as BluetoothNavigator) : null
 const isSecureContextNow = typeof window !== 'undefined' && window.isSecureContext
+const browserUserAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+const isIosChrome = /CriOS/i.test(browserUserAgent)
 const bluetoothSupported = isSecureContextNow && Boolean(bluetoothNavigator?.bluetooth)
 const bluetoothUnavailableReason = !isSecureContextNow
   ? 'Bluetooth scan requires HTTPS or localhost.'
+  : isIosChrome && !bluetoothNavigator?.bluetooth
+    ? 'Bluetooth scan is not available in Chrome on iPhone. Use Safari, or paste the Penguin+ device name below.'
   : !bluetoothNavigator?.bluetooth
-    ? 'Bluetooth scan is only supported in Chromium-based browsers.'
+    ? 'Bluetooth scan is not available in this browser. Paste the Penguin+ device name below.'
     : ''
 
 const serials = ref<Fridge[]>([])
@@ -58,10 +63,13 @@ const form = reactive<DeviceCheckForm>({
   fridge_serial_number: '',
   mac_address: '',
   c_number: '',
+  image: null,
 })
 const submitting = ref(false)
 const error = ref<string | null>(null)
 const success = ref<DeviceCheckSuccess | null>(null)
+const imagePreviewUrl = ref<string | null>(null)
+const imageInputRef = ref<HTMLInputElement | null>(null)
 const locationLatitude = ref<number | null>(null)
 const locationLongitude = ref<number | null>(null)
 const locationStatus = ref<'pending' | 'granted' | 'denied' | 'unavailable'>('pending')
@@ -82,6 +90,11 @@ const bluetoothConfirm = ref<{ open: boolean; deviceName: string; macAddress: st
   open: false,
   deviceName: '',
   macAddress: '',
+})
+const bluetoothManualEntry = ref<{ open: boolean; deviceName: string; error: string | null }>({
+  open: false,
+  deviceName: '',
+  error: null,
 })
 
 definePageMeta({ middleware: 'auth' })
@@ -213,6 +226,23 @@ async function handleImageScanFile(event: Event) {
   }
 }
 
+function handleImageSelect(event: Event) {
+  const file = ((event.target as HTMLInputElement).files || [])[0]
+  if (!file) return
+  form.image = file
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    imagePreviewUrl.value = e.target?.result as string
+  }
+  reader.readAsDataURL(file)
+}
+
+function clearImage() {
+  form.image = null
+  imagePreviewUrl.value = null
+  if (imageInputRef.value) imageInputRef.value.value = ''
+}
+
 async function requestBluetoothMacAddress() {
   error.value = null
   success.value = null
@@ -238,26 +268,45 @@ async function requestBluetoothMacAddress() {
   }
 }
 
+function openBluetoothManualEntry() {
+  bluetoothManualEntry.value = { open: true, deviceName: '', error: null }
+}
+
+function applyBluetoothDeviceName(deviceNameInput: string) {
+  const deviceName = String(deviceNameInput || '').trim()
+  const parsedMac = parsePenguinMacAddress(deviceName)
+  if (!deviceName || !parsedMac) {
+    bluetoothManualEntry.value.error = 'Enter a valid Penguin+ device name, for example Penguin+001122AABBCC.'
+    return
+  }
+  form.mac_address = parsedMac
+  bluetoothMessage.value = `Loaded MAC address from ${deviceName}.`
+  bluetoothManualEntry.value = { open: false, deviceName: '', error: null }
+}
+
 async function submitDeviceCheck() {
   error.value = null
   success.value = null
   submitting.value = true
   try {
+    const formData = new FormData()
+    formData.append('fridge_serial_number', form.fridge_serial_number)
+    formData.append('mac_address', form.mac_address)
+    formData.append('c_number', form.c_number)
+    formData.append('organisation_id', String(store.mutationOrganisationScopeValue))
+    if (locationLatitude.value != null) formData.append('latitude', String(locationLatitude.value))
+    if (locationLongitude.value != null) formData.append('longitude', String(locationLongitude.value))
+    if (form.image) formData.append('image', form.image)
+
     const result = await store.adminRequest<DeviceCheckSuccess>('deviceCheck:submit', store.withMutationOrganisationScope('/mismatches/manual'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        organisation_id: store.mutationOrganisationScopeValue,
-        ...(locationLatitude.value != null && locationLongitude.value != null
-          ? { latitude: locationLatitude.value, longitude: locationLongitude.value }
-          : {}),
-      }),
+      body: formData,
     })
     success.value = result
     form.fridge_serial_number = ''
     form.mac_address = ''
     form.c_number = ''
+    clearImage()
   } catch (submitError) {
     error.value = submitError instanceof Error ? submitError.message : 'Submission failed.'
   } finally {
@@ -268,10 +317,27 @@ async function submitDeviceCheck() {
 
 <template>
   <AccessDeniedCard
-    v-if="!store.canSubmitDeviceCheck"
+    v-if="!store.canViewDeviceChecker"
     title="Device Checker access denied"
-    description="You do not have permission to run device checks."
+    description="You do not have permission to view the Device Checker tab."
   />
+
+  <Card v-else-if="!store.canSubmitDeviceCheck && !store.canSubmitDeviceCheckScanOnly" class="max-w-2xl">
+    <div class="border-b border-slate-200 p-5">
+      <div class="flex items-center gap-2">
+        <Search class="h-4 w-4 text-[#006aea]" />
+        <h2 class="text-lg font-semibold text-slate-900">Device Checker</h2>
+      </div>
+    </div>
+    <div class="space-y-2 p-5">
+      <p class="text-sm text-slate-700">
+        You have view-only access to this tab.
+      </p>
+      <p class="text-sm text-slate-500">
+        Manual entry and submission are available for Intermediate, Advanced, and Admin roles.
+      </p>
+    </div>
+  </Card>
 
   <Card v-else class="max-w-2xl">
     <div class="border-b border-slate-200 p-5">
@@ -292,29 +358,55 @@ async function submitDeviceCheck() {
         </div>
         <Select
           v-model="form.fridge_serial_number"
-          searchable
+          :searchable="!store.canSubmitDeviceCheckScanOnly"
           search-placeholder="Search serial number..."
-          :placeholder="serialsLoading ? 'Loading serials...' : 'Select a serial number'"
+          :placeholder="store.canSubmitDeviceCheckScanOnly ? (form.fridge_serial_number || 'Scan a barcode to set serial') : (serialsLoading ? 'Loading serials...' : 'Select a serial number')"
           :options="serials.map(f => ({ value: f.fridge_serial_number, label: f.fridge_serial_number }))"
+          :disabled="store.canSubmitDeviceCheckScanOnly"
           @search="(q) => { serialQuery = q }"
         />
+        <p v-if="store.canSubmitDeviceCheckScanOnly" class="text-xs text-amber-600">Serial number must be set via barcode scan.</p>
       </div>
 
       <div class="space-y-1">
         <label class="text-sm font-medium text-slate-700">MAC Address</label>
         <div class="flex gap-2">
-          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
-          <Button type="button" variant="outline" :disabled="submitting || bluetoothBusy || !bluetoothSupported" @click="requestBluetoothMacAddress">
-            {{ bluetoothBusy ? 'Scanning...' : 'Scan via Bluetooth' }}
+          <Input :model-value="form.mac_address" placeholder="MAC Address (12 hex chars)" :disabled="store.canSubmitDeviceCheckScanOnly" @update:model-value="(value) => { bluetoothMessage = null; form.mac_address = cleanHex12(String(value || '')) }" />
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="submitting || bluetoothBusy"
+            @click="bluetoothSupported ? requestBluetoothMacAddress() : openBluetoothManualEntry()"
+          >
+            {{ bluetoothSupported ? (bluetoothBusy ? 'Scanning...' : 'Scan via Bluetooth') : 'Paste Penguin+ Name' }}
           </Button>
         </div>
         <p class="text-xs text-slate-500">{{ bluetoothSupported ? 'Bluetooth scan only matches devices whose name starts with Penguin+.' : bluetoothUnavailableReason }}</p>
+        <p v-if="store.canSubmitDeviceCheckScanOnly" class="text-xs text-amber-600">MAC address must be set via Bluetooth scan.</p>
         <p v-if="bluetoothMessage" class="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">{{ bluetoothMessage }}</p>
       </div>
 
       <div class="space-y-1">
         <label class="text-sm font-medium text-slate-700">C-Code / C-Number</label>
         <Input :model-value="form.c_number" placeholder="C-Code / C-Number" @update:model-value="(value) => form.c_number = cleanCNumber(String(value || ''))" />
+      </div>
+
+      <div class="space-y-1">
+        <label class="text-sm font-medium text-slate-700">Device Image (Optional)</label>
+        <div class="flex flex-col gap-2">
+          <input
+            ref="imageInputRef"
+            type="file"
+            accept="image/*"
+            class="block w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+            @change="handleImageSelect"
+          />
+          <p class="text-xs text-slate-500">Upload a clear image of the device for reference.</p>
+          <div v-if="imagePreviewUrl" class="flex flex-col gap-2">
+            <img :src="imagePreviewUrl" alt="Preview" class="h-32 w-auto rounded-md border border-slate-200 object-cover" />
+            <Button type="button" variant="outline" size="sm" @click="clearImage" class="w-fit">Clear Image</Button>
+          </div>
+        </div>
       </div>
 
       <div class="flex items-center gap-2 text-sm">
@@ -401,6 +493,22 @@ async function submitDeviceCheck() {
     <template #footer>
       <Button variant="outline" @click="bluetoothConfirm = { open: false, deviceName: '', macAddress: '' }">Cancel</Button>
       <Button @click="form.mac_address = bluetoothConfirm.macAddress; bluetoothMessage = `Loaded MAC address from ${bluetoothConfirm.deviceName}.`; bluetoothConfirm = { open: false, deviceName: '', macAddress: '' }">Use MAC Address</Button>
+    </template>
+  </ModalDialog>
+
+  <ModalDialog :open="bluetoothManualEntry.open" title="Paste Penguin+ Device Name" description="Paste the Bluetooth device name shown in iPhone Bluetooth settings." @close="bluetoothManualEntry = { open: false, deviceName: '', error: null }">
+    <div class="space-y-3">
+      <Input
+        :model-value="bluetoothManualEntry.deviceName"
+        placeholder="Penguin+001122AABBCC"
+        @update:model-value="(value) => { bluetoothManualEntry.error = null; bluetoothManualEntry.deviceName = String(value || '').trim() }"
+      />
+      <p class="text-xs text-slate-500">Expected format: <span class="font-mono">Penguin+001122AABBCC</span></p>
+      <p v-if="bluetoothManualEntry.error" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{{ bluetoothManualEntry.error }}</p>
+    </div>
+    <template #footer>
+      <Button variant="outline" @click="bluetoothManualEntry = { open: false, deviceName: '', error: null }">Cancel</Button>
+      <Button @click="applyBluetoothDeviceName(bluetoothManualEntry.deviceName)">Use MAC Address</Button>
     </template>
   </ModalDialog>
 </template>

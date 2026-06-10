@@ -1,11 +1,11 @@
 {
-  "name": "frostlink-analytics-api",
+  "name": "shpmarketing-analytics-api",
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "dev": "node server.js",
-    "start": "node server.js"
+    "migrate:deploy": "node run-migrations.js",
+    "migrate:down": "node run-migrations.js --down"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE OR REPLACE FUNCTION log_fridge_mismatch_changes()
+CREATE OR REPLACE FUNCTION frostlink.log_fridge_mismatch_changes()
 RETURNS TRIGGER AS $$
 DECLARE
   current_user_id_text TEXT;
@@ -12,11 +12,11 @@ BEGIN
   IF (TG_OP = 'INSERT') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = NEW.fridge_serial_number
     LIMIT 1;
 
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,
@@ -48,7 +48,7 @@ BEGIN
   ELSIF (TG_OP = 'UPDATE') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number)
     LIMIT 1;
 
@@ -58,7 +58,7 @@ BEGIN
       ELSE 'MISMATCH_UPDATE'
     END;
 
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,
@@ -97,11 +97,11 @@ BEGIN
   ELSIF (TG_OP = 'DELETE') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = OLD.fridge_serial_number
     LIMIT 1;
 
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,

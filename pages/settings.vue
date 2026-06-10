@@ -23,11 +23,29 @@ type ProfileDetails = {
 
 const { request } = useApiClient();
 const authStore = useAuthStore();
+const config = useRuntimeConfig();
 const canViewTotalUnits = computed(() =>
   authStore.session?.user.permissions
     ? hasPermission(authStore.session.user.permissions, "assets.view")
     : false,
 );
+const canEditProfile = computed(() =>
+  authStore.session?.user.permissions
+    ? hasPermission(authStore.session.user.permissions, "profile.edit_details")
+    : false,
+);
+
+const totalUnits = ref<number | null>(null);
+
+async function loadStats() {
+  if (!canViewTotalUnits.value) return;
+  try {
+    const data = await request<{ total_units: number }>("/stats");
+    totalUnits.value = data.total_units;
+  } catch {
+    totalUnits.value = null;
+  }
+}
 
 const profile = ref<ProfileDetails | null>(null);
 const profileLoading = ref(false);
@@ -141,6 +159,7 @@ async function submitPasswordChange() {
 
 onMounted(() => {
   void loadProfile();
+  void loadStats();
 });
 </script>
 
@@ -177,20 +196,23 @@ onMounted(() => {
             <p v-if="profileSaveSuccess" class="text-sm text-emerald-600">
               {{ profileSaveSuccess }}
             </p>
+            <p v-if="!canEditProfile" class="text-sm text-amber-700">
+              Profile detail edits are available for Advanced and Admin roles.
+            </p>
 
             <div class="grid gap-4 md:grid-cols-2">
               <div class="space-y-1">
                 <Label for="first-name">First Name</Label>
-                <Input id="first-name" v-model="profileForm.first_name" />
+                <Input id="first-name" v-model="profileForm.first_name" :disabled="!canEditProfile" />
               </div>
               <div class="space-y-1">
                 <Label for="last-name">Last Name</Label>
-                <Input id="last-name" v-model="profileForm.last_name" />
+                <Input id="last-name" v-model="profileForm.last_name" :disabled="!canEditProfile" />
               </div>
             </div>
             <div class="space-y-1">
               <Label for="email">Email</Label>
-              <Input id="email" v-model="profileForm.username" type="email" />
+              <Input id="email" v-model="profileForm.username" type="email" :disabled="!canEditProfile" />
             </div>
             <div class="grid gap-4 md:grid-cols-2">
               <div class="space-y-1">
@@ -212,7 +234,7 @@ onMounted(() => {
             </div>
             <div class="flex gap-2">
               <Button
-                :disabled="profileSaving || profileLoading"
+                :disabled="profileSaving || profileLoading || !canEditProfile"
                 @click="submitProfileUpdate"
                 >{{ profileSaving ? "Saving..." : "Save Profile" }}</Button
               >
@@ -278,19 +300,13 @@ onMounted(() => {
         <div class="space-y-4 p-5 text-sm">
           <div>
             <p class="text-slate-500">Version</p>
-            <p class="font-medium text-slate-900">Frostlink v1.2.4</p>
-          </div>
-          <div>
-            <p class="text-slate-500">Last Data Sync</p>
-            <p class="font-medium text-slate-900">2 minutes ago</p>
+            <p class="font-medium text-slate-900">v{{ config.public.appVersion }}</p>
           </div>
           <div v-if="canViewTotalUnits">
             <p class="text-slate-500">Total Units</p>
-            <p class="font-medium text-slate-900">624 active</p>
-          </div>
-          <div>
-            <p class="text-slate-500">Data Retention</p>
-            <p class="font-medium text-slate-900">90 days</p>
+            <p class="font-medium text-slate-900">
+              {{ totalUnits !== null ? totalUnits : "—" }}
+            </p>
           </div>
         </div>
       </Card>

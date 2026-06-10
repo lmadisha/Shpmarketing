@@ -701,8 +701,13 @@ Notes:
 
 - If submitted MAC and C-number match the fridge row:
   no mismatch is inserted; fridge is updated with `verified=true`, `verified_at=NOW()`, and submitted location when available.
+- If submitted MAC and C-number match and an image is uploaded:
+  linked `frostlink.fridge_images.mismatch_action` remains `null` (no action is written).
 - If submitted values do not match:
   inserts a mismatch row with status `open`, `db_mac`, `db_c_number`, `sender_id`, and submitted location when available.
+- If a mismatch is inserted and an uploaded image is linked:
+  linked `frostlink.fridge_images.mismatch_action` is set to `open`.
+- If no image is linked (no uploaded image row), no `mismatch_action` write is attempted.
 - On mismatch, if the fridge was previously verified:
   fridge is updated with `verified=false` and `verified_at=NOW()`.
 - Runs in transaction with `myapp.current_user_id` set for audit trigger context.
@@ -764,7 +769,9 @@ Notes:
 
 - On resolve, server updates fridge `iot_mac_address` and `c_number` from mismatch `received_mac` and `received_c_number` (when present).
 - On resolve, server also copies mismatch `latitude` and `longitude` into the fridge row when the mismatch has location data.
+- On resolve, server also copies mismatch `image_id` into `fridges.image_id` when the mismatch has an image.
 - On resolve, server always sets fridge `verified = true` and `verified_at = NOW()`.
+- On resolve, if the mismatch has `image_id`, linked `frostlink.fridge_images.mismatch_action` is set to `resolve`.
 - Non-admin users can only resolve mismatches that belong to their own organisation.
 - Admin users can target a selected organisation via `organisation_id`.
 - If admin sends `organisation_id="all"` (or omits it), scope defaults to the admin user's own organisation.
@@ -793,6 +800,7 @@ Responses:
 
 Notes:
 
+- On delete, if the mismatch has `image_id`, linked `frostlink.fridge_images.mismatch_action` is set to `delete`.
 - Non-admin users can only delete mismatches that belong to their own organisation.
 - Admin users can target a selected organisation via `organisation_id`.
 - If admin sends `organisation_id="all"` (or omits it), scope defaults to the admin user's own organisation.
@@ -811,8 +819,11 @@ Any unknown route returns:
 - organisation has optional `domin` column (unique when provided).
 - Fridge change auditing is trigger-based via fridge_audit_log.
 - fridge_mismatches.sender_id references users(id) and records the admin user who manually submitted the mismatch via POST /mismatches/manual.
+- `frostlink.fridge_images` is mapped by Prisma model `FridgeImage`; `mismatch_action` stores image-linked mismatch lifecycle values (`open`, `resolve`, `delete`) when applicable.
 - Fridge payloads now include nullable `latitude` and `longitude` fields.
 - Mismatch payloads now include nullable `latitude` and `longitude` fields.
+- Fridge payloads include nullable `image_id` when an image is linked.
+- Mismatch payloads include nullable `image_id` when an image is linked.
 
 ## Operational Notes
 

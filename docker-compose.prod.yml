@@ -30,7 +30,8 @@ services:
       retries: 5
     networks:
       - frostlink
-    # Don't expose port - only accessible via docker network
+    ports:
+      - "5432:5432"  # Exposed for VPN-restricted access; firewall protects
 
   operations-api:
     image: crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:${OPS_API_TAG:-latest}
@@ -38,6 +39,7 @@ services:
       context: .
       dockerfile: operations-api/Dockerfile
     container_name: frostlink-api-prod
+    command: ["npm", "run", "start:with-migrations"]
     depends_on:
       postgres:
         condition: service_healthy

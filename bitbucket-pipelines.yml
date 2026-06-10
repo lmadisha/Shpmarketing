@@ -20,7 +20,13 @@ pipelines:
             - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
             - export DOCKER_BUILDKIT=0
             - export COMPOSE_DOCKER_CLI_BUILD=0
-            - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+            - export REG_USER="${BITBUCKET_PACKAGES_USERNAME:-${REGISTRY_USER:-${REGISTRY_USERNAME:-}}}"
+            - export REG_PASS="${BITBUCKET_PACKAGES_TOKEN:-${REGISTRY_PASSWORD:-${REGISTRY_TOKEN:-}}}"
+            - export REG_USER="$(printf '%s' "$REG_USER" | tr -d '\r\n')"
+            - export REG_PASS="$(printf '%s' "$REG_PASS" | tr -d '\r\n')"
+            - test -n "$REG_USER" || (echo "Missing registry username. Set BITBUCKET_PACKAGES_USERNAME or REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
+            - test -n "$REG_PASS" || (echo "Missing registry password/token. Set BITBUCKET_PACKAGES_TOKEN or REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
+            - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:uat" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:uat" .
             - docker push "${FRONTEND_IMAGE}:uat"
@@ -30,8 +36,19 @@ pipelines:
           deployment: test
           script:
             - apk add --no-cache openssh-client bash
+            - export REGISTRY="crg.apkg.io"
+            - export REG_USER="${BITBUCKET_PACKAGES_USERNAME:-${REGISTRY_USER:-${REGISTRY_USERNAME:-}}}"
+            - export REG_PASS="${BITBUCKET_PACKAGES_TOKEN:-${REGISTRY_PASSWORD:-${REGISTRY_TOKEN:-}}}"
+            - export REG_USER="$(printf '%s' "$REG_USER" | tr -d '\r\n')"
+            - export REG_PASS="$(printf '%s' "$REG_PASS" | tr -d '\r\n')"
+            - test -n "$REG_USER" || (echo "Missing registry username. Set BITBUCKET_PACKAGES_USERNAME or REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
+            - test -n "$REG_PASS" || (echo "Missing registry password/token. Set BITBUCKET_PACKAGES_TOKEN or REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
+            - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - mkdir -p ~/.ssh
             - ssh-keyscan -p "${UAT_SSH_PORT:-4242}" "$UAT_SSH_HOST" >> ~/.ssh/known_hosts
+            - ssh -p "${UAT_SSH_PORT:-4242}" "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}" "mkdir -p ~/.docker && chmod 700 ~/.docker"
+            - scp -P "${UAT_SSH_PORT:-4242}" ~/.docker/config.json "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:~/.docker/config.json"
+            - ssh -p "${UAT_SSH_PORT:-4242}" "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}" "chmod 600 ~/.docker/config.json"
             - scp -P "${UAT_SSH_PORT:-4242}" docker-compose.uat.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/docker-compose.uat.yml"
             - scp -P "${UAT_SSH_PORT:-4242}" traefik/uat-dynamic.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/traefik/uat-dynamic.yml"
             - scp -P "${UAT_SSH_PORT:-4242}" operations-api/schema.sql "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/operations-api/schema.sql"
@@ -41,7 +58,8 @@ pipelines:
               cd /home/docker/frostlink
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:uat
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:uat
-              docker compose --env-file .env.uat -f docker-compose.uat.yml up -d --no-build
+              FRONTEND_TAG=uat OPS_API_TAG=uat docker compose --env-file /home/docker/frostlink/.env.uat -f /home/docker/frostlink/docker-compose.uat.yml run --rm operations-api npm run migrate:deploy
+              FRONTEND_TAG=uat OPS_API_TAG=uat docker compose --env-file /home/docker/frostlink/.env.uat -f /home/docker/frostlink/docker-compose.uat.yml up -d --no-build
               EOSSH
 
     main:
@@ -58,7 +76,13 @@ pipelines:
             - export API_IMAGE="${REPO_BASE}/digital.frostlink.operations-api"
             - export DOCKER_BUILDKIT=0
             - export COMPOSE_DOCKER_CLI_BUILD=0
-            - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+            - export REG_USER="${BITBUCKET_PACKAGES_USERNAME:-${REGISTRY_USER:-${REGISTRY_USERNAME:-}}}"
+            - export REG_PASS="${BITBUCKET_PACKAGES_TOKEN:-${REGISTRY_PASSWORD:-${REGISTRY_TOKEN:-}}}"
+            - export REG_USER="$(printf '%s' "$REG_USER" | tr -d '\r\n')"
+            - export REG_PASS="$(printf '%s' "$REG_PASS" | tr -d '\r\n')"
+            - test -n "$REG_USER" || (echo "Missing registry username. Set BITBUCKET_PACKAGES_USERNAME or REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
+            - test -n "$REG_PASS" || (echo "Missing registry password/token. Set BITBUCKET_PACKAGES_TOKEN or REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
+            - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:prod" .
             - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:prod" .
             - docker push "${FRONTEND_IMAGE}:prod"
@@ -69,8 +93,19 @@ pipelines:
           trigger: manual
           script:
             - apk add --no-cache openssh-client bash
+            - export REGISTRY="crg.apkg.io"
+            - export REG_USER="${BITBUCKET_PACKAGES_USERNAME:-${REGISTRY_USER:-${REGISTRY_USERNAME:-}}}"
+            - export REG_PASS="${BITBUCKET_PACKAGES_TOKEN:-${REGISTRY_PASSWORD:-${REGISTRY_TOKEN:-}}}"
+            - export REG_USER="$(printf '%s' "$REG_USER" | tr -d '\r\n')"
+            - export REG_PASS="$(printf '%s' "$REG_PASS" | tr -d '\r\n')"
+            - test -n "$REG_USER" || (echo "Missing registry username. Set BITBUCKET_PACKAGES_USERNAME or REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
+            - test -n "$REG_PASS" || (echo "Missing registry password/token. Set BITBUCKET_PACKAGES_TOKEN or REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
+            - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
             - mkdir -p ~/.ssh
             - ssh-keyscan -p "${PROD_SSH_PORT:-4242}" "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
+            - ssh -p "${PROD_SSH_PORT:-4242}" "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}" "mkdir -p ~/.docker && chmod 700 ~/.docker"
+            - scp -P "${PROD_SSH_PORT:-4242}" ~/.docker/config.json "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:~/.docker/config.json"
+            - ssh -p "${PROD_SSH_PORT:-4242}" "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}" "chmod 600 ~/.docker/config.json"
             - scp -P "${PROD_SSH_PORT:-4242}" docker-compose.prod.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/docker-compose.prod.yml"
             - scp -P "${PROD_SSH_PORT:-4242}" traefik/prod-dynamic.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/traefik/prod-dynamic.yml"
             - scp -P "${PROD_SSH_PORT:-4242}" operations-api/schema.sql "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/operations-api/schema.sql"
@@ -80,9 +115,8 @@ pipelines:
               cd /home/docker/frostlink
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:prod
               docker pull crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:prod
-              sed -i 's/^FRONTEND_TAG=.*/FRONTEND_TAG=prod/' .env.prod
-              sed -i 's/^OPS_API_TAG=.*/OPS_API_TAG=prod/' .env.prod
-              docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build
+              FRONTEND_TAG=prod OPS_API_TAG=prod docker compose --env-file /home/docker/frostlink/.env.prod -f /home/docker/frostlink/docker-compose.prod.yml run --rm operations-api npm run migrate:deploy
+              FRONTEND_TAG=prod OPS_API_TAG=prod docker compose --env-file /home/docker/frostlink/.env.prod -f /home/docker/frostlink/docker-compose.prod.yml up -d --no-build
               EOSSH
 
 definitions:

@@ -22,6 +22,10 @@ operations-api/.env
 operations-api/.env.local
 
 database_details
+
+# Always include SQL migrations in API image build context
+!operations-api/migrations/
+!operations-api/migrations/*.sql
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

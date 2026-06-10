@@ -10,6 +10,7 @@ COPY operations-api/package.json operations-api/package-lock.json ./
 RUN npm ci
 
 COPY operations-api/ ./
+RUN test -d ./migrations && ls -1 ./migrations/*.sql >/dev/null
 RUN npx prisma generate
 RUN npm prune --omit=dev
 
@@ -17,4 +18,4 @@ ENV PORT=5001
 
 EXPOSE 5001
 
-CMD ["node", "server.js"]
+CMD ["npm", "run", "start:with-migrations"]

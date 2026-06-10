@@ -6,6 +6,7 @@ import Input from '~/components/ui/Input.vue'
 import Select from '~/components/ui/Select.vue'
 import Label from '~/components/ui/Label.vue'
 import { useAuthStore } from '~/stores/auth'
+import { hasPermission } from '~/utils/permissionPolicy'
 import {
   validateOrganisationAssetValidationForm,
   type OrganisationAssetValidationRules,
@@ -49,9 +50,13 @@ function toFormState(rules: OrganisationAssetValidationRules): RulesFormState {
 const { request } = useApiClient()
 const authStore = useAuthStore()
 
-const isAdmin = computed(() => authStore.session?.user.permissions === 'Admin')
-const isAdvanced = computed(() => authStore.session?.user.permissions === 'Advanced')
-const canManageRules = computed(() => isAdmin.value || isAdvanced.value)
+const permissionLevel = computed(() => authStore.session?.user.permissions ?? null)
+const canManageRules = computed(() =>
+  permissionLevel.value ? hasPermission(permissionLevel.value, 'organisation_asset_validation.manage') : false
+)
+const canManageAllOrganisations = computed(() =>
+  permissionLevel.value ? hasPermission(permissionLevel.value, 'organisations.manage') : false
+)
 
 const organisationOptions = ref<OrganisationOption[]>([])
 const organisationsLoading = ref(false)
@@ -64,7 +69,7 @@ const rulesForm = ref<RulesFormState>({ ...EMPTY_RULES_FORM })
 const fieldErrors = ref<Record<string, string>>({})
 
 const effectiveOrganisationId = computed(() => {
-  if (isAdmin.value) {
+  if (canManageAllOrganisations.value) {
     return selectedOrganisationId.value ? Number(selectedOrganisationId.value) : null
   }
   return authStore.session?.user.organisation_id ?? null
@@ -76,7 +81,7 @@ async function loadRules(organisationId?: number | null) {
   }
 
   const params = new URLSearchParams()
-  if (isAdmin.value && organisationId) {
+  if (canManageAllOrganisations.value && organisationId) {
     params.set('organisation_id', String(organisationId))
   }
 
@@ -99,7 +104,7 @@ async function loadRules(organisationId?: number | null) {
 }
 
 async function loadOrganisations() {
-  if (!isAdmin.value) {
+  if (!canManageAllOrganisations.value) {
     return
   }
 
@@ -167,7 +172,7 @@ async function saveRules() {
 }
 
 watch(
-  isAdmin,
+  canManageAllOrganisations,
   (value) => {
     if (value) {
       void loadOrganisations()
@@ -199,7 +204,7 @@ watch(
       </p>
     </div>
     <div class="space-y-4 p-6">
-      <div v-if="isAdmin" class="space-y-2">
+      <div v-if="canManageAllOrganisations" class="space-y-2">
         <Label for="asset-validation-organisation">Organisation</Label>
         <Select
           id="asset-validation-organisation"

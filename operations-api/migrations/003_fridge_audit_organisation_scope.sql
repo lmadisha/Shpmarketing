@@ -1,27 +1,27 @@
 BEGIN;
 
-ALTER TABLE fridge_audit_log
-  ADD COLUMN IF NOT EXISTS organisation_id INTEGER REFERENCES organisation(id) ON DELETE SET NULL;
+ALTER TABLE frostlink.fridge_audit_log
+  ADD COLUMN IF NOT EXISTS organisation_id INTEGER REFERENCES frostlink.organisation(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_fridge_audit_log_organisation_id
-ON fridge_audit_log (organisation_id);
+ON frostlink.fridge_audit_log (organisation_id);
 
-UPDATE fridge_audit_log fal
+UPDATE frostlink.fridge_audit_log fal
 SET organisation_id = derived.organisation_id
 FROM (
   SELECT
     fal_inner.log_id,
     COALESCE(f.organisation_id, fm_org.organisation_id) AS organisation_id
-  FROM fridge_audit_log fal_inner
-  LEFT JOIN fridges f
+  FROM frostlink.fridge_audit_log fal_inner
+  LEFT JOIN frostlink.fridges f
     ON f.fridge_serial_number = fal_inner.fridge_serial_number
   LEFT JOIN (
     SELECT DISTINCT ON (fm.id)
       fm.id,
-      fridges.organisation_id
-    FROM fridge_mismatches fm
-    LEFT JOIN fridges
-      ON fridges.fridge_serial_number = fm.fridge_serial_number
+      frostlink.fridges.organisation_id
+    FROM frostlink.fridge_mismatches fm
+    LEFT JOIN frostlink.fridges
+      ON frostlink.fridges.fridge_serial_number = fm.fridge_serial_number
     ORDER BY fm.id
   ) fm_org
     ON fal_inner.mismatch_id = fm_org.id
@@ -30,7 +30,7 @@ WHERE fal.log_id = derived.log_id
   AND fal.organisation_id IS NULL
   AND derived.organisation_id IS NOT NULL;
 
-CREATE OR REPLACE FUNCTION log_fridge_changes()
+CREATE OR REPLACE FUNCTION frostlink.log_fridge_changes()
 RETURNS TRIGGER AS $$
 DECLARE
   current_user_id_text TEXT;
@@ -38,7 +38,7 @@ BEGIN
   current_user_id_text := current_setting('myapp.current_user_id', true);
 
   IF (TG_OP = 'UPDATE') THEN
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       action_type,
@@ -47,21 +47,31 @@ BEGIN
       old_c_num,
       new_c_num,
       organisation_id,
-      changed_by
+      changed_by,
+      metadata
     )
     VALUES (
       OLD.fridge_serial_number,
       'fridges',
-      'UPDATE',
+      CASE
+        WHEN OLD.verified = false AND NEW.verified = true THEN 'VERIFY'
+        WHEN OLD.verified = true AND NEW.verified = false THEN 'UNVERIFY'
+        ELSE 'UPDATE'
+      END,
       OLD.iot_mac_address,
       NEW.iot_mac_address,
       OLD.c_number,
       NEW.c_number,
       COALESCE(NEW.organisation_id, OLD.organisation_id),
-      NULLIF(current_user_id_text, '')::integer
+      NULLIF(current_user_id_text, '')::integer,
+      CASE
+        WHEN OLD.verified IS DISTINCT FROM NEW.verified THEN
+          jsonb_build_object('old_verified', OLD.verified, 'new_verified', NEW.verified)
+        ELSE NULL
+      END
     );
   ELSIF (TG_OP = 'INSERT') THEN
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       action_type,
@@ -80,7 +90,7 @@ BEGIN
       NULLIF(current_user_id_text, '')::integer
     );
   ELSIF (TG_OP = 'DELETE') THEN
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       action_type,
@@ -104,7 +114,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION log_fridge_mismatch_changes()
+CREATE OR REPLACE FUNCTION frostlink.log_fridge_mismatch_changes()
 RETURNS TRIGGER AS $$
 DECLARE
   current_user_id_text TEXT;
@@ -115,11 +125,11 @@ BEGIN
   IF (TG_OP = 'INSERT') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = NEW.fridge_serial_number
     LIMIT 1;
 
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,
@@ -151,11 +161,11 @@ BEGIN
   ELSIF (TG_OP = 'UPDATE') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = COALESCE(NEW.fridge_serial_number, OLD.fridge_serial_number)
     LIMIT 1;
 
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,
@@ -194,11 +204,11 @@ BEGIN
   ELSIF (TG_OP = 'DELETE') THEN
     SELECT organisation_id
     INTO audit_organisation_id
-    FROM fridges
+    FROM frostlink.fridges
     WHERE fridge_serial_number = OLD.fridge_serial_number
     LIMIT 1;
 
-    INSERT INTO fridge_audit_log (
+    INSERT INTO frostlink.fridge_audit_log (
       fridge_serial_number,
       source_table,
       mismatch_id,

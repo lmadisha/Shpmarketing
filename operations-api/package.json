@@ -11,8 +11,13 @@
     "deps:update": "npm update",
     "deps:audit": "npm audit",
     "deps:fix": "npm audit fix",
+    "migrate": "node migrate.js",
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate:deploy": "node run-migrations.js && node database/post-migrate.js",
+    "migrate:down": "node run-migrations.js --down && node database/post-migrate.js",
+    "schema:extract": "node database/extract-schema.js",
+    "start:with-migrations": "npm run migrate:deploy && node server.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
@@ -21,6 +26,7 @@
     "prisma": "^6.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1028.0",
     "@prisma/client": "^6.0.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
