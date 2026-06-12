@@ -1,41 +1,40 @@
 
-# Shpmarketing
+# Shpmarketing (FrostLink)
 
-Frontend dashboard (Nuxt 3 + Vue 3) with a companion operations API (Express + PostgreSQL).
+Monorepo: Nuxt 4 dashboard frontend with two companion Express + PostgreSQL APIs.
 
 ## Workspace Layout
 
-- Root: frontend app
-- operations-api: backend API service
+- `apps/frontend` — Nuxt 4 SPA dashboard
+- `apps/operations-api` — asset-management backend (port 5001)
+- `apps/analytics-api` — read-only reporting backend (port 5002)
+- `packages/` — shared libraries and future add-on modules
 
-All commands below are relative to the repository root, so moving this folder does not require path edits.
+Each app is self-contained with its own `package.json`; root scripts orchestrate via `npm --prefix`.
 
-## Frontend Commands
+## Commands
 
 ```bash
-npm install
-npm run dev
+npm run install:all   # install deps for all apps
+npm run dev           # migrations + frontend + both APIs
+npm run dev:frontend  # Nuxt only
+npm run dev:api       # operations-api only
 npm run build
 npm run lint
 npm run test
 ```
 
-`npm run dev` starts both the frontend and `operations-api`. To run only the Nuxt app, use `npm run dev:frontend`.
-
-## Operations API Commands
-
-```bash
-cd operations-api
-npm install
-npm run migrate
-npm run dev
-npm run lint
-npm run test
-```
-
-`npm run migrate` applies any pending SQL migrations to the database. Run this before starting the API whenever migrations have been added. Safe to run repeatedly — already-applied migrations are skipped.
+Migrations (from `apps/operations-api`): `npm run migrate:deploy` applies pending reversible migrations and regenerates schema docs. Safe to run repeatedly.
 
 ## Environment
 
-- Root frontend env: .env.example -> .env
-- API env: operations-api/.env.example -> operations-api/.env
+- Compose/root env: `.env.example` → `.env`
+- Frontend env: `apps/frontend/.env.example` → `apps/frontend/.env`
+- API env: `apps/operations-api/.env.example` → `apps/operations-api/.env`
+- Analytics env: `apps/analytics-api/.env.example` → `apps/analytics-api/.env`
+
+## Docs
+
+- `docs/CODEBASE.md` — file structure and per-file purpose
+- `apps/operations-api/API_CONTRACT.md`, `apps/analytics-api/API_CONTRACT.md` — endpoint contracts
+- `DEVELOPMENT_WORKFLOW.md`, `DOCKER_*.md` — Docker workflows and deployment

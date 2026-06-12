@@ -19,7 +19,7 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./operations-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./apps/operations-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     ports:
       - "${DATABASE_PORT:-5432}:5432"
     restart: unless-stopped
@@ -34,8 +34,8 @@ services:
   operations-api:
     image: crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:${OPS_API_TAG:-latest}
     build:
-      context: .
-      dockerfile: operations-api/Dockerfile
+      context: ./apps/operations-api
+      dockerfile: Dockerfile
     container_name: frostlink-api
     command: ["npm", "run", "start:with-migrations"]
     depends_on:
@@ -43,7 +43,7 @@ services:
         condition: service_healthy
     env_file:
       - ./.env
-      - ./operations-api/.env
+      - ./apps/operations-api/.env
     environment:
       PORT: ${OPS_API_PORT:-5001}
       OPS_DB_HOST: postgres
@@ -68,12 +68,12 @@ services:
   analytics-api:
     image: crg.apkg.io/digitaltwin_za/digital.frostlink.analytics-api:${ANALYTICS_API_TAG:-latest}
     build:
-      context: .
-      dockerfile: analytics-api/Dockerfile
+      context: ./apps/analytics-api
+      dockerfile: Dockerfile
     container_name: frostlink-analytics-api
     env_file:
       - ./.env
-      - ./analytics-api/.env
+      - ./apps/analytics-api/.env
     environment:
       PORT: ${ANALYTICS_API_PORT:-5002}
       ANALYTICS_DB_HOST: ${ANALYTICS_DB_HOST:-host.docker.internal}
@@ -99,7 +99,7 @@ services:
   frontend:
     image: crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:${FRONTEND_TAG:-latest}
     build:
-      context: .
+      context: ./apps/frontend
       dockerfile: Dockerfile
       args:
         NUXT_PUBLIC_OPERATIONS_API_BASE: ${NUXT_PUBLIC_OPERATIONS_API_BASE:-http://localhost:5001}

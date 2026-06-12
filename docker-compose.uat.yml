@@ -21,7 +21,7 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres_data_uat:/var/lib/postgresql/data
-      - ./operations-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./apps/operations-api/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
@@ -36,8 +36,8 @@ services:
   operations-api:
     image: crg.apkg.io/digitaltwin_za/digital.frostlink.operations-api:${OPS_API_TAG:-latest}
     build:
-      context: .
-      dockerfile: operations-api/Dockerfile
+      context: ./apps/operations-api
+      dockerfile: Dockerfile
     container_name: frostlink-api-uat
     command: ["npm", "run", "start:with-migrations"]
     depends_on:
@@ -45,7 +45,7 @@ services:
         condition: service_healthy
     env_file:
       - ./.env.uat
-      - ./operations-api/.env.uat
+      - ./apps/operations-api/.env.uat
     environment:
       PORT: 5001
       OPS_DB_HOST: postgres
@@ -70,7 +70,7 @@ services:
   frontend:
     image: crg.apkg.io/digitaltwin_za/digital.frostlink.frontend:${FRONTEND_TAG:-latest}
     build:
-      context: .
+      context: ./apps/frontend
       dockerfile: Dockerfile
       args:
         NUXT_PUBLIC_OPERATIONS_API_BASE: /api

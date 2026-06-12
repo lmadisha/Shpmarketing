@@ -45,7 +45,9 @@ process.on("SIGTERM", () => {
   process.exit(143);
 });
 
-const apiDir = path.join(rootDir, "operations-api");
+const apiDir = path.join(rootDir, "apps", "operations-api");
+const analyticsDir = path.join(rootDir, "apps", "analytics-api");
+const frontendDir = path.join(rootDir, "apps", "frontend");
 
 console.log("[dev-all] Running database migrations...");
 const migrateResult = spawnSync(process.execPath, ["run-migrations.js"], {
@@ -69,18 +71,19 @@ startProcess(
   "analytics-api",
   process.execPath,
   ["server.js"],
-  path.join(rootDir, "analytics-api"),
+  analyticsDir,
 );
 
 startProcess(
   "frontend",
   process.execPath,
   [
-    path.join(rootDir, "node_modules", "nuxt", "bin", "nuxt.mjs"),
+    path.join(frontendDir, "node_modules", "nuxt", "bin", "nuxt.mjs"),
     "dev",
     "--host",
     "0.0.0.0",
     "--port",
     "5174",
   ],
+  frontendDir,
 );

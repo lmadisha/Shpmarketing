@@ -2,10 +2,10 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
-COPY analytics-api/package.json analytics-api/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY analytics-api/ ./
+COPY . ./
 
 ENV PORT=5002
 

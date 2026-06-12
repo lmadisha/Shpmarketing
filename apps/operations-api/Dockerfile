@@ -6,10 +6,10 @@ RUN apt-get update -y \
   && apt-get install -y --no-install-recommends openssl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY operations-api/package.json operations-api/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY operations-api/ ./
+COPY . ./
 RUN test -d ./migrations && ls -1 ./migrations/*.sql >/dev/null
 RUN npx prisma generate
 RUN npm prune --omit=dev

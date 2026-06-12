@@ -1,25 +1,25 @@
 # Codebase Reference
 
-File structure and purpose of every file in the Shpmarketing (FrostLink) repository. Three apps live in one repo: a Nuxt 4 SPA frontend (root), the operations-api (Express 5 + Prisma + PostgreSQL, port 5001), and the analytics-api (Express + raw `pg`, port 5002).
+File structure and purpose of every file in the Shpmarketing (FrostLink) repository. Monorepo with three apps under `apps/`: a Nuxt 4 SPA frontend, the operations-api (Express 5 + Prisma + PostgreSQL, port 5001), and the analytics-api (Express + raw `pg`, port 5002), plus a reserved `packages/` directory for shared libraries and future add-ons.
 
-Companion docs: [CLAUDE.md](../CLAUDE.md) (working agreements & commands), [operations-api/API_CONTRACT.md](../operations-api/API_CONTRACT.md), [analytics-api/API_CONTRACT.md](../analytics-api/API_CONTRACT.md), [operations-api/database/schema/SCHEMA.md](../operations-api/database/schema/SCHEMA.md).
+Companion docs: [CLAUDE.md](../CLAUDE.md) (working agreements & commands), [apps/operations-api/API_CONTRACT.md](../apps/operations-api/API_CONTRACT.md), [apps/analytics-api/API_CONTRACT.md](../apps/analytics-api/API_CONTRACT.md), [apps/operations-api/database/schema/SCHEMA.md](../apps/operations-api/database/schema/SCHEMA.md).
 
 ## Top-Level Layout
 
 ```
 Shpmarketing/
-├── app.vue, nuxt.config.ts, ...      Nuxt 4 SPA frontend (root app)
-├── pages/ components/ stores/        Frontend source
-│   composables/ utils/ middleware/
-│   layouts/ plugins/ types/ assets/
-├── operations-api/                   Asset-management backend (port 5001)
-├── analytics-api/                    Read-only reporting backend (port 5002)
+├── apps/
+│   ├── frontend/                     Nuxt 4 SPA dashboard (pages, components, stores…)
+│   ├── operations-api/               Asset-management backend (port 5001)
+│   └── analytics-api/                Read-only reporting backend (port 5002)
+├── packages/                         Shared libraries / future add-on modules (reserved)
 ├── scripts/                          Dev orchestration scripts
 ├── deploy/ traefik/                  Deployment + reverse-proxy config
 ├── docs/                             Project documentation (this file, manuals, plans)
 ├── database_details/                 Reference SQL dumps and report queries
 ├── guidelines/                       Custom guideline template (unused)
-└── docker-compose*.yml, Dockerfile   Container stack (dev / uat / prod)
+├── docker-compose*.yml               Container stack (dev / uat / prod)
+└── package.json                      Root orchestrator (npm --prefix scripts only)
 ```
 
 ---
@@ -28,21 +28,30 @@ Shpmarketing/
 
 | File | Purpose |
 |---|---|
-| `package.json` | Frontend manifest + workspace scripts (`dev`, `build`, `lint`, `test`, `typecheck`); deps: Nuxt 4, Vue 3, Pinia, Tailwind v4, radix-vue, chart.js |
+| `package.json` | Orchestration scripts only (`dev`, `build`, `lint`, `test`, `install:all`) — delegates to apps via `npm --prefix`; no dependencies |
+| `.env.example` | Compose/dev env template: API base URLs, Postgres credentials (`frostlink`), ports, CORS origins |
+| `.gitignore` | Excludes build artifacts, per-app env files, secrets, stray SQL outside migration dirs |
+| `README.md` | Project overview and basic command reference |
+| `CLAUDE.md` | AI-assistant working instructions (layout, commands, migrations, git rules) |
+| `ATTRIBUTIONS.md` | Credits (shadcn/ui, Unsplash) |
+| `issue.md` | Known dev issue note: app-manifest resolution failure + cleanup fix |
+
+## apps/frontend/ — Nuxt 4 SPA
+
+### App config
+
+| File | Purpose |
+|---|---|
+| `package.json` | Frontend manifest (`shpmarketing-frontend`); deps: Nuxt 4, Vue 3, Pinia, Tailwind v4, radix-vue, chart.js |
 | `nuxt.config.ts` | Nuxt config: `ssr: false` (SPA), HTTPS dev server, Pinia + color-mode modules, Tailwind v4 via Vite plugin, auto-import of `stores/`, runtime config `operationsApiBase` (5001) / `analyticsApiBase` (5002) |
 | `app.vue` | Root component: favicon setup, `NuxtLayout`/`NuxtPage` outlet |
 | `vitest.config.ts` | Vitest config for frontend unit tests |
 | `eslint.config.mjs` | Frontend ESLint config (ignores build artifacts) |
 | `postcss.config.mjs` | Empty placeholder — Tailwind v4 handled by `@tailwindcss/vite` |
 | `tsconfig.json` | Extends Nuxt-generated tsconfig |
-| `.env.example` | Frontend/dev env template: API base URLs, Postgres credentials (`frostlink`), ports, CORS origins |
-| `.gitignore` / `.dockerignore` | Exclude build artifacts, env files, secrets, stray migrations |
-| `README.md` | Project overview and basic command reference |
-| `CLAUDE.md` | AI-assistant working instructions (layout, commands, migrations, git rules) |
-| `ATTRIBUTIONS.md` | Credits (shadcn/ui, Unsplash) |
-| `issue.md` | Known dev issue note: app-manifest resolution failure + cleanup fix |
-
-## Frontend
+| `Dockerfile` | Multi-stage build (Node 20), serves `.output/server/index.mjs` on port 3000 |
+| `.dockerignore` | Keeps node_modules/.nuxt/.output/env files out of the build context |
+| `.env.example` | Frontend env template (`NUXT_PUBLIC_*` API base URLs) |
 
 ### `pages/` — routes
 
@@ -141,7 +150,7 @@ Shpmarketing/
 
 ---
 
-## operations-api/ (port 5001)
+## apps/operations-api/ (port 5001)
 
 | File | Purpose |
 |---|---|
@@ -156,12 +165,13 @@ Shpmarketing/
 | `schema.sql` | Legacy schema baseline (superseded by migrations + schema docs) |
 | `prisma/schema.prisma` | Prisma models: Organisation, OrganisationAssetValidationRules, User, Fridge, FridgeMismatch, FridgeImage, FridgeAuditLog, FridgePlacement + permission/mismatch enums. Client-only — schema changes go through SQL migrations |
 | `Dockerfile` | Node 20 slim image; `prisma generate`, dev-deps prune, runs `start:with-migrations` |
+| `.dockerignore` | Keeps node_modules/env files out of the build context |
 | `package.json` | Scripts: `dev`, `test` (node --test), `migrate:deploy`/`migrate:down`, `schema:extract`, `start:with-migrations` |
 | `eslint.config.mjs` | API ESLint config (Node globals) |
 | `.env.example` | Env template: PORT, DB credentials/`DATABASE_URL`, `JWT_SECRET`, `MOBILE_API_KEY` (both required), CORS, SMTP/SES |
 | `API_CONTRACT.md` | Full endpoint contract — keep updated when changing routes |
 
-### `operations-api/migrations/` (legacy, applied)
+### `migrations/` (legacy, applied)
 
 | File | Purpose |
 |---|---|
@@ -174,7 +184,7 @@ Shpmarketing/
 | `007_add_fridge_placed.sql` | Adds `placed` flag to `fridges` |
 | `008_add_deletion_reason.sql` | Adds `deletion_reason` to `fridge_audit_log` |
 
-### `operations-api/database/` (current migration system)
+### `database/` (current migration system)
 
 | File | Purpose |
 |---|---|
@@ -189,7 +199,7 @@ Shpmarketing/
 | `schema/SCHEMA.md` | Generated human-readable DB schema reference |
 | `schema/schema.json` | Generated machine-readable schema snapshot |
 
-### `operations-api/test/`
+### `test/`
 
 | File | Purpose |
 |---|---|
@@ -200,7 +210,7 @@ Shpmarketing/
 
 ---
 
-## analytics-api/ (port 5002)
+## apps/analytics-api/ (port 5002)
 
 | File | Purpose |
 |---|---|
@@ -209,9 +219,18 @@ Shpmarketing/
 | `run-migrations.js` | Reversible migration runner (same design as operations-api) against `public` schema |
 | `migrations/` | Empty — no analytics migrations yet |
 | `Dockerfile` | Node 20 slim, prod deps only, runs `node server.js` |
+| `.dockerignore` | Keeps node_modules/env files out of the build context |
 | `package.json` | Scripts: `migrate:deploy`, `migrate:down`; deps: express, pg, cors, dotenv |
 | `.env.example` | Env template: PORT 5002, `ANALYTICS_DB_*`, CORS |
 | `API_CONTRACT.md` | Full endpoint contract |
+
+---
+
+## packages/
+
+| File | Purpose |
+|---|---|
+| `README.md` | Conventions for shared libraries and future add-on modules (one self-contained package per directory) |
 
 ---
 
@@ -221,19 +240,18 @@ Shpmarketing/
 
 | File | Purpose |
 |---|---|
-| `dev-all.mjs` | `npm run dev` entrypoint: runs operations-api migrations first, then spawns API(s) + Nuxt; SIGINT/SIGTERM cleanup |
+| `dev-all.mjs` | `npm run dev` entrypoint: runs operations-api migrations first, then spawns both APIs + Nuxt from their `apps/` directories; SIGINT/SIGTERM cleanup |
 | `patch-vite-net-use.cjs` | Windows workaround suppressing `net use` permission errors from Vite/esbuild child processes |
 
 ### Docker & deployment
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | Frontend multi-stage build (Node 20), serves `.output/server/index.mjs` on port 3000 |
-| `docker-compose.yml` | Base dev stack: Postgres, operations-api, analytics-api, frontend; `frostlink` network, healthchecks |
-| `docker-compose.override.yml` | Dev hot-reload: mounts source volumes, `NODE_ENV=development` |
+| `docker-compose.yml` | Base dev stack: Postgres, operations-api, analytics-api, frontend; per-app build contexts (`./apps/<app>`); `frostlink` network, healthchecks |
+| `docker-compose.override.yml` | Dev hot-reload: mounts `./apps/<app>` volumes, `NODE_ENV=development` |
 | `docker-compose.uat.yml` | UAT stack + Traefik v3.4, Let's Encrypt TLS, `uat.frostlink.digital`, dashboard :8081 |
 | `docker-compose.prod.yml` | Prod stack + Traefik, `frostlink.scryui.com`, HTTPS-only with HTTP redirect |
-| `bitbucket-pipelines.yml` | CI/CD: builds + pushes images to `crg.apkg.io/digitaltwin_za`; UAT auto-deploy, prod manual |
+| `bitbucket-pipelines.yml` | CI/CD: builds images from `apps/frontend` and `apps/operations-api` contexts, pushes to `crg.apkg.io/digitaltwin_za`; UAT auto-deploy, prod manual |
 | `deploy/uat/docker-compose.uat.yml` | Server-side copy of the UAT compose file |
 | `traefik/uat-dynamic.yml` | UAT Traefik routes: hosts, API prefix strip, fallback redirects |
 | `traefik/prod-dynamic.yml` | Prod Traefik routes (same pattern) |

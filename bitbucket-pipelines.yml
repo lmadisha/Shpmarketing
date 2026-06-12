@@ -27,8 +27,8 @@ pipelines:
             - test -n "$REG_USER" || (echo "Missing registry username. Set BITBUCKET_PACKAGES_USERNAME or REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
             - test -n "$REG_PASS" || (echo "Missing registry password/token. Set BITBUCKET_PACKAGES_TOKEN or REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
             - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
-            - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:uat" .
-            - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:uat" .
+            - docker build -f apps/frontend/Dockerfile -t "${FRONTEND_IMAGE}:uat" apps/frontend
+            - docker build -f apps/operations-api/Dockerfile -t "${API_IMAGE}:uat" apps/operations-api
             - docker push "${FRONTEND_IMAGE}:uat"
             - docker push "${API_IMAGE}:uat"
       - step:
@@ -51,7 +51,8 @@ pipelines:
             - ssh -p "${UAT_SSH_PORT:-4242}" "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}" "chmod 600 ~/.docker/config.json"
             - scp -P "${UAT_SSH_PORT:-4242}" docker-compose.uat.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/docker-compose.uat.yml"
             - scp -P "${UAT_SSH_PORT:-4242}" traefik/uat-dynamic.yml "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/traefik/uat-dynamic.yml"
-            - scp -P "${UAT_SSH_PORT:-4242}" operations-api/schema.sql "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/operations-api/schema.sql"
+            - ssh -p "${UAT_SSH_PORT:-4242}" "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}" "mkdir -p /home/docker/frostlink/apps/operations-api"
+            - scp -P "${UAT_SSH_PORT:-4242}" apps/operations-api/schema.sql "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}:/home/docker/frostlink/apps/operations-api/schema.sql"
             - |
               ssh -p "${UAT_SSH_PORT:-4242}" "${UAT_SSH_USER:-frostdeploy}@${UAT_SSH_HOST}" <<'EOSSH'
               set -e
@@ -83,8 +84,8 @@ pipelines:
             - test -n "$REG_USER" || (echo "Missing registry username. Set BITBUCKET_PACKAGES_USERNAME or REGISTRY_USER (or REGISTRY_USERNAME)." && exit 1)
             - test -n "$REG_PASS" || (echo "Missing registry password/token. Set BITBUCKET_PACKAGES_TOKEN or REGISTRY_PASSWORD (or REGISTRY_TOKEN)." && exit 1)
             - printf '%s' "$REG_PASS" | docker login "$REGISTRY" --username "$REG_USER" --password-stdin
-            - docker build -f Dockerfile -t "${FRONTEND_IMAGE}:prod" .
-            - docker build -f operations-api/Dockerfile -t "${API_IMAGE}:prod" .
+            - docker build -f apps/frontend/Dockerfile -t "${FRONTEND_IMAGE}:prod" apps/frontend
+            - docker build -f apps/operations-api/Dockerfile -t "${API_IMAGE}:prod" apps/operations-api
             - docker push "${FRONTEND_IMAGE}:prod"
             - docker push "${API_IMAGE}:prod"
       - step:
@@ -108,7 +109,8 @@ pipelines:
             - ssh -p "${PROD_SSH_PORT:-4242}" "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}" "chmod 600 ~/.docker/config.json"
             - scp -P "${PROD_SSH_PORT:-4242}" docker-compose.prod.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/docker-compose.prod.yml"
             - scp -P "${PROD_SSH_PORT:-4242}" traefik/prod-dynamic.yml "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/traefik/prod-dynamic.yml"
-            - scp -P "${PROD_SSH_PORT:-4242}" operations-api/schema.sql "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/operations-api/schema.sql"
+            - ssh -p "${PROD_SSH_PORT:-4242}" "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}" "mkdir -p /home/docker/frostlink/apps/operations-api"
+            - scp -P "${PROD_SSH_PORT:-4242}" apps/operations-api/schema.sql "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}:/home/docker/frostlink/apps/operations-api/schema.sql"
             - |
               ssh -p "${PROD_SSH_PORT:-4242}" "${PROD_SSH_USER:-frostdeploy}@${PROD_SSH_HOST}" <<'EOSSH'
               set -e

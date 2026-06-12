@@ -18,8 +18,13 @@ function resolveColor(item: PieItem, index: number) {
   if (item.color) return item.color
   const label = item.label.toLowerCase()
   if (label === 'ok') return '#16a34a'
+  if (label === 'OK') return '#16a34a'
+  if (label === 'Green') return '#16a34a'
   if (label === 'warn') return '#f59e0b'
+  if (label === 'Medium (≥15%)') return '#f59e0b'
   if (label === 'bad') return '#dc2626'
+  if (label === 'Red') return '#dc2626'
+  if (label === 'High (≥20%)') return '#dc2626'
   return fallbackPalette[index % fallbackPalette.length]
 }
 

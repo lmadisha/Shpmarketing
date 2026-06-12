@@ -1,5 +1,5 @@
 node_modules/
-operations-api/node_modules/
+apps/*/node_modules/
 dist/
 .nuxt/
 .output/
@@ -12,17 +12,12 @@ coverage/
 .env.prod
 .env.prod.local
 .env.uat.local
-operations-api/.env
-operations-api/.env.local
-operations-api/.env.prod
-operations-api/.env.prod.local
-operations-api/.env.uat
-operations-api/.env.uat.local
-analytics-api/.env
-analytics-api/.env.local
-analytics-api/.env.prod
-analytics-api/.env.uat
-analytics-api/node_modules/
+apps/*/.env
+apps/*/.env.local
+apps/*/.env.prod
+apps/*/.env.prod.local
+apps/*/.env.uat
+apps/*/.env.uat.local
 
 # Docker
 docker-compose.override.yml.local
@@ -49,10 +44,13 @@ Thumbs.db
 
 # Backups
 *.sql
-!operations-api/migrations/
-!operations-api/migrations/*.sql
-!operations-api/database/migrations/
-!operations-api/database/migrations/*.sql
+!apps/operations-api/schema.sql
+!apps/operations-api/migrations/
+!apps/operations-api/migrations/*.sql
+!apps/operations-api/database/migrations/
+!apps/operations-api/database/migrations/*.sql
+!apps/analytics-api/migrations/
+!apps/analytics-api/migrations/*.sql
 *.sql.gz
 backup*
 *.bak
@@ -66,6 +64,7 @@ acme.json
 
 # Docker artifacts
 .dockerignore
+!apps/*/.dockerignore
 
 .env.uat
 
