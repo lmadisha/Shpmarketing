@@ -1,6 +1,8 @@
-# API_CONTRACT
+# API_CONTRACT — Operations API
 
 This document describes the Operations API used by the Shpmarketing application.
+
+For the Analytics API, see [analytics-api/API_CONTRACT.md](../analytics-api/API_CONTRACT.md).
 
 ## Service Overview
 
