@@ -14,7 +14,9 @@ export default defineNuxtConfig({
   },
 
   devServer: {
-    https: true,
+    // HTTPS by default for local dev; set NUXT_DEV_HTTPS=false to serve plain
+    // HTTP (e.g. for headless preview/screenshot tools that reject self-signed certs).
+    https: process.env.NUXT_DEV_HTTPS !== 'false',
   },
 
   modules: [

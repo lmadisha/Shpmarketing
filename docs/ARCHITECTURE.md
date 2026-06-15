@@ -7,7 +7,7 @@ System-level view of the Shpmarketing (FrostLink) platform — how the apps, dat
 FrostLink is a fleet-management platform for monitoring refrigeration units ("fridges"). It is a monorepo of three apps over two PostgreSQL databases, fronted by Traefik in deployed environments.
 
 ```
-                         ┌──────────────────────────────┐
+                         ┌───────────────────────────────┐
                          │  Browser (SPA, Nuxt 4)        │
                          │  apps/frontend  :5173/:5174   │
                          └───────┬───────────────┬───────┘
