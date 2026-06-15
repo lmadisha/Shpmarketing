@@ -261,6 +261,10 @@ Shpmarketing/
 | File | Purpose |
 |---|---|
 | `CODEBASE.md` | This file — file structure and per-file purpose |
+| `ARCHITECTURE.md` | System-level view: apps, databases, request/data flows, key decisions |
+| `AUTH.md` | Authentication (JWT, mobile key) and the role/permission model |
+| `ENVIRONMENT.md` | Consolidated environment-variable reference for all apps |
+| `ANALYTICS_SCHEMA.md` | Analytics DB (`shpmarketing_analytics`) schema reference |
 | `permission-role-matrix.md` | Role → permission mapping (37 permissions across assets, mismatches, history, device-checker, placement, workspace, users, profile, org validation) |
 | `user-manual.md` | End-user functionality guide |
 | `plans/PLAN_2026_03_25_report_api.md` | Implementation plan for the report (analytics) API |

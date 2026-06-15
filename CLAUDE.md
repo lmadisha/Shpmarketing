@@ -83,8 +83,12 @@ analytics-api has its own `run-migrations.js` and `migrations/` directory agains
 ## Reference Docs
 
 - `docs/CODEBASE.md` — file structure and per-file purpose for the whole repo
+- `docs/ARCHITECTURE.md` — system-level view: apps, databases, request/data flows, key decisions
+- `docs/AUTH.md` — authentication (JWT, mobile key) and the role/permission model
+- `docs/ENVIRONMENT.md` — consolidated environment-variable reference for all apps
 - `apps/operations-api/API_CONTRACT.md` — operations-api endpoint contract
 - `apps/analytics-api/API_CONTRACT.md` — analytics-api endpoint contract
-- `apps/operations-api/database/schema/SCHEMA.md` — generated DB schema reference
+- `apps/operations-api/database/schema/SCHEMA.md` — generated operational DB (`frostlink`) schema reference
+- `docs/ANALYTICS_SCHEMA.md` — analytics DB (`shpmarketing_analytics`) schema reference
 - `DEVELOPMENT_WORKFLOW.md`, `DOCKER_*.md` — Docker workflows and deployment
 - `MIGRATION_AUTOMATION.md` — migration automation details
