@@ -2,8 +2,9 @@
 import Sidebar from '~/components/layout/Sidebar.vue'
 import AppHeader from '~/components/layout/AppHeader.vue'
 import AIAssistantDrawer from '~/components/dashboard/AIAssistantDrawer.vue'
+import { useAiAssistant } from '~/composables/useAiAssistant'
 
-const isDrawerOpen = ref(false);
+const ai = useAiAssistant()
 </script>
 
 <template>
@@ -15,6 +16,6 @@ const isDrawerOpen = ref(false);
         <slot />
       </main>
     </div>
-    <AIAssistantDrawer :open="isDrawerOpen" @update:open="isDrawerOpen = $event" />
+    <AIAssistantDrawer :open="ai.isOpen.value" @update:open="ai.isOpen.value = $event" />
   </div>
 </template>

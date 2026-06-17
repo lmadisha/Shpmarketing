@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { Menu } from 'lucide-vue-next'
+import { Menu, Sparkles } from 'lucide-vue-next'
 import UserMenu from '~/components/layout/UserMenu.vue'
 import { useSidebar } from '~/composables/useSidebar'
+import { useAiAssistant } from '~/composables/useAiAssistant'
 
 // Global top app bar. Lives in the content column (right of the sidebar),
 // so it intentionally does not repeat the Frostlink brand — the sidebar owns
 // the logo. Left side carries only the mobile drawer trigger; right side the
-// user/profile menu.
+// AI Assistant trigger and the user/profile menu.
 const { toggle } = useSidebar()
+const ai = useAiAssistant()
 </script>
 
 <template>
@@ -22,10 +24,21 @@ const { toggle } = useSidebar()
     >
       <Menu class="h-5 w-5" />
     </button>
-    <!-- Spacer keeps the user menu right-aligned on desktop where the
+    <!-- Spacer keeps the right cluster right-aligned on desktop where the
          hamburger is hidden. -->
     <span class="hidden lg:block" aria-hidden="true" />
 
-    <UserMenu />
+    <div class="flex items-center gap-1.5">
+      <button
+        type="button"
+        class="flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500"
+        aria-label="Open AI Assistant"
+        @click="ai.open()"
+      >
+        <Sparkles class="h-4 w-4 shrink-0 text-[#006aea]" />
+        <span class="hidden sm:inline">AI Assistant</span>
+      </button>
+      <UserMenu />
+    </div>
   </header>
 </template>
